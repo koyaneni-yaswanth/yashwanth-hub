@@ -97,14 +97,29 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
   const notificationCount = useLiveQuery(() => db.notifications.count(), []) || 0;
 
   // Google Handlers
-  const handleConnectGoogle = () => {
-    if (!googleClientId.trim()) {
+  const handleConnectGoogle = async () => {
+    const trimmedId = googleClientId.trim();
+    if (!trimmedId) {
       alert('Please enter your Google OAuth 2.0 Web Client ID from Google Cloud Console.');
       return;
     }
-    localStorage.setItem('yash_google_client_id', googleClientId.trim());
-    const redirectUri = window.location.origin;
-    const authUrl = GoogleAuthService.getAuthUrl(googleClientId.trim(), redirectUri);
+    if (!GoogleAuthService.isValidClientId(trimmedId)) {
+      alert('Invalid Client ID format. Must end with ".apps.googleusercontent.com" from a Web application client.');
+      return;
+    }
+    GoogleAuthService.saveClientId(trimmedId);
+
+    try {
+      const res = await GoogleAuthService.requestGisToken(trimmedId);
+      if (res.success) {
+        setGoogleConfig(GoogleAuthService.getConfig());
+        return;
+      }
+    } catch {
+      // Fallback to standard redirect
+    }
+
+    const authUrl = GoogleAuthService.getAuthUrl(trimmedId, GoogleAuthService.getRedirectUri());
     window.location.href = authUrl;
   };
 

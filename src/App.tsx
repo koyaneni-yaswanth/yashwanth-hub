@@ -8,6 +8,8 @@ import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
 import { MobileNav } from './components/layout/MobileNav';
 import { CommandPalette } from './components/common/CommandPalette';
+import { Modal } from './components/common/Modal';
+import { AlertTriangle } from 'lucide-react';
 import { ReminderEngine } from './services/reminderEngine';
 import { GoogleAuthService } from './services/google/googleAuthService';
 
@@ -23,6 +25,7 @@ import { FilesAndPhotosPage } from './pages/FilesAndPhotosPage';
 import { GmailPage } from './pages/GmailPage';
 import { IntegrationsPage } from './pages/IntegrationsPage';
 import { NeoMemoryCenterPage } from './pages/NeoMemoryCenterPage';
+import { SystemHealthSyncCenterPage } from './pages/SystemHealthSyncCenterPage';
 import { ExpensesPage } from './pages/ExpensesPage';
 import { ContactsPage } from './pages/ContactsPage';
 import { WindPlanPage } from './pages/WindPlanPage';
@@ -37,6 +40,7 @@ function HubMain() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isDbReady, setIsDbReady] = useState(false);
+  const [oauthError, setOauthError] = useState<{ message: string; hint?: string } | null>(null);
 
   // Initialize IndexedDB and Reminder Engine
   useEffect(() => {
@@ -46,24 +50,26 @@ function HubMain() {
       ReminderEngine.runIntelligenceScan().catch(() => {});
     });
 
-    // Check for Google OAuth Token in URL hash (#access_token=...)
-    if (window.location.hash.includes('access_token=')) {
-      const params = new URLSearchParams(window.location.hash.replace('#', '?'));
-      const token = params.get('access_token');
-      const expiresIn = params.get('expires_in');
-      if (token) {
-        const expiresAt = Date.now() + (Number(expiresIn) || 3600) * 1000;
+    // Check for Google OAuth Token or Error in URL hash or search parameters
+    const hash = window.location.hash;
+    const search = window.location.search;
+    if (hash.includes('access_token=') || hash.includes('error=') || search.includes('error=')) {
+      const rawStr = hash.includes('access_token=') || hash.includes('error=') ? hash : search;
+      const res = GoogleAuthService.parseOAuthCallback(rawStr);
+
+      if (res.success && res.token) {
+        const expiresAt = Date.now() + (res.expiresIn || 3600) * 1000;
         const config = GoogleAuthService.getConfig();
         GoogleAuthService.saveConfig({
           ...config,
           connected: true,
-          accessToken: token,
+          accessToken: res.token,
           expiresAt,
           calendarSyncEnabled: true,
           driveSyncEnabled: true,
           gmailSyncEnabled: true,
         });
-        GoogleAuthService.fetchUserProfile(token).then((profile) => {
+        GoogleAuthService.fetchUserProfile(res.token).then((profile) => {
           if (profile) {
             GoogleAuthService.saveConfig({
               ...GoogleAuthService.getConfig(),
@@ -74,8 +80,14 @@ function HubMain() {
           }
         });
         setCurrentTab('integrations');
-        window.history.replaceState(null, '', window.location.pathname);
+      } else if (!res.success && res.error) {
+        setOauthError({
+          message: res.errorMessage || 'Google OAuth Error',
+          hint: res.resolutionHint,
+        });
+        setCurrentTab('integrations');
       }
+      window.history.replaceState(null, '', window.location.pathname);
     }
 
     // Periodic reminder check every 60 seconds
@@ -175,6 +187,13 @@ function HubMain() {
         );
       case 'integrations':
         return <IntegrationsPage />;
+      case 'system-health':
+        return (
+          <SystemHealthSyncCenterPage
+            onNavigateToIntegrations={() => setCurrentTab('integrations')}
+            onNavigateToNeoMemory={() => setCurrentTab('neo-memory')}
+          />
+        );
       case 'notifications':
         return <NotificationsPage onNavigate={(tab) => setCurrentTab(tab)} />;
       case 'analytics':
@@ -256,6 +275,58 @@ function HubMain() {
         onSelectArea={(area) => setCurrentArea(area)}
         areas={areas}
       />
+
+      {/* OAuth Diagnostic Error Modal */}
+      {oauthError && (
+        <Modal
+          isOpen={!!oauthError}
+          onClose={() => setOauthError(null)}
+          title="Google OAuth Diagnostics"
+          maxWidth="max-w-lg"
+        >
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 p-3.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500">
+              <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="text-sm font-bold">{oauthError.message}</h4>
+                {oauthError.hint && (
+                  <p className="text-xs text-[var(--hub-muted)] mt-1.5 leading-relaxed">
+                    {oauthError.hint}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs space-y-2">
+              <div className="font-bold text-[var(--hub-ink)]">Current Registered Origins:</div>
+              <p className="text-[var(--hub-muted)]">
+                Authorized JavaScript Origin:{' '}
+                <code className="text-teal-400 font-mono px-1 py-0.5 rounded bg-black/20">
+                  {typeof window !== 'undefined' ? window.location.origin : 'https://yashwanth-hub.vercel.app'}
+                </code>
+              </p>
+              <p className="text-[var(--hub-muted)]">
+                Authorized Redirect URI:{' '}
+                <code className="text-teal-400 font-mono px-1 py-0.5 rounded bg-black/20">
+                  {typeof window !== 'undefined' ? window.location.origin : 'https://yashwanth-hub.vercel.app'}
+                </code>
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => {
+                  setOauthError(null);
+                  setCurrentTab('integrations');
+                }}
+                className="px-4 py-2 rounded-xl bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer"
+              >
+                Open Integrations Settings
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

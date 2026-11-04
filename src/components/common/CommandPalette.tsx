@@ -20,6 +20,7 @@ import {
   Cloud,
   Users,
   Brain,
+  Activity,
 } from 'lucide-react';
 import { db } from '../../db';
 import type { NavigationTab, Area } from '../../types';
@@ -76,6 +77,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     { label: 'Go to Wind Plan (90-Day TRL)', tab: 'wind-plan' as NavigationTab, icon: Wind, category: 'Navigation' },
     { label: 'Go to AI Copilot', tab: 'ai-assistant' as NavigationTab, icon: Sparkles, category: 'Navigation' },
     { label: 'Go to Google & AI Integrations', tab: 'integrations' as NavigationTab, icon: Cloud, category: 'Navigation' },
+    { label: 'Go to System Health & Sync Center', tab: 'system-health' as NavigationTab, icon: Activity, category: 'Navigation' },
     { label: 'Go to Notifications', tab: 'notifications' as NavigationTab, icon: Bell, category: 'Navigation' },
     { label: 'Go to Expenses', tab: 'expenses' as NavigationTab, icon: IndianRupee, category: 'Navigation' },
     { label: 'Go to Settings', tab: 'settings' as NavigationTab, icon: Settings, category: 'Navigation' },

@@ -17,6 +17,7 @@ import {
   Cloud,
   X,
   Brain,
+  Activity,
 } from 'lucide-react';
 import type { NavigationTab } from '../../types';
 
@@ -67,6 +68,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'ai-assistant', label: 'Yashwanth AI', icon: Sparkles, highlight: true },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
     { id: 'integrations', label: 'Integrations & Sync', icon: Cloud },
+    { id: 'system-health', label: 'System Health & Sync', icon: Activity },
     {
       id: 'notifications',
       label: 'Reminders & Alerts',

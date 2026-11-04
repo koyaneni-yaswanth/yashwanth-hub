@@ -15,6 +15,10 @@ import {
   Smartphone,
   Laptop,
   Bluetooth,
+  AlertTriangle,
+  HelpCircle,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { db } from '../db';
 import type { GoogleServiceKey } from '../types';
@@ -25,10 +29,14 @@ import { Badge } from '../components/common/Badge';
 
 export const IntegrationsPage: React.FC = () => {
   const [googleConfig, setGoogleConfig] = useState(() => GoogleAuthService.getConfig());
-  const [googleClientId, setGoogleClientId] = useState(() => localStorage.getItem('yash_google_client_id') || '');
+  const [googleClientId, setGoogleClientId] = useState(() => GoogleAuthService.getEffectiveClientId());
   const [syncStatus, setSyncStatus] = useState(() => UnifiedSyncEngine.getStatus());
   const [isSyncingAll, setIsSyncingAll] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+  const [isConnectingGIS, setIsConnectingGIS] = useState(false);
+  const [oauthErrorMessage, setOauthErrorMessage] = useState<string | null>(null);
+  const [showSetupGuide, setShowSetupGuide] = useState(false);
+  const [copiedOrigin, setCopiedOrigin] = useState(false);
 
   // NeoSapien State
   const [neoConfig, setNeoConfig] = useState(() => NeoSapienService.getConfig());
@@ -45,19 +53,75 @@ export const IntegrationsPage: React.FC = () => {
   }, []);
 
   const handleSaveClientId = () => {
-    localStorage.setItem('yash_google_client_id', googleClientId.trim());
-    alert('Google OAuth 2.0 Client ID saved.');
+    GoogleAuthService.saveClientId(googleClientId);
+    setOauthErrorMessage(null);
+    alert('Google OAuth 2.0 Web Client ID saved.');
   };
 
-  const handleConnectGoogle = (service?: GoogleServiceKey) => {
-    if (!googleClientId.trim()) {
-      alert('Please enter your Google Cloud OAuth 2.0 Web Client ID first.');
+  const handleCopyOrigin = () => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://yashwanth-hub.vercel.app';
+    navigator.clipboard.writeText(origin);
+    setCopiedOrigin(true);
+    setTimeout(() => setCopiedOrigin(false), 2000);
+  };
+
+  const handleConnectGoogle = async (service?: GoogleServiceKey) => {
+    const trimmedId = googleClientId.trim();
+    if (!trimmedId) {
+      setOauthErrorMessage('Please enter your Google Cloud OAuth 2.0 Web Client ID.');
+      setShowSetupGuide(true);
       return;
     }
-    const redirectUri = window.location.origin + window.location.pathname;
+
+    if (!GoogleAuthService.isValidClientId(trimmedId)) {
+      setOauthErrorMessage(
+        'Invalid Client ID format. A valid Google Web Client ID must end with ".apps.googleusercontent.com" (e.g., 123456789-abcdef.apps.googleusercontent.com).'
+      );
+      setShowSetupGuide(true);
+      return;
+    }
+
+    setOauthErrorMessage(null);
+    setIsConnectingGIS(true);
+
+    try {
+      // 1. Try Google Identity Services (GIS) Token Client Popup (Official SPA standard)
+      const res = await GoogleAuthService.requestGisToken(
+        trimmedId,
+        service ? ['identity', service] : ['identity', 'calendar', 'drive', 'gmail', 'tasks', 'contacts', 'photos']
+      );
+
+      if (res.success) {
+        setGoogleConfig(GoogleAuthService.getConfig());
+        setOauthErrorMessage(null);
+      } else {
+        // Fallback to standard redirect if popup was closed or unavailable
+        console.warn('GIS Token Client popup unfulfilled, offering redirect fallback:', res.errorMessage);
+        setOauthErrorMessage(res.errorMessage || 'Popup sign-in was closed or blocked.');
+      }
+    } catch (gisErr: any) {
+      console.warn('GIS loader error, falling back to full-page redirect:', gisErr);
+      const authUrl = GoogleAuthService.getAuthUrl(
+        trimmedId,
+        GoogleAuthService.getRedirectUri(),
+        service ? ['identity', service] : ['identity', 'calendar', 'drive', 'gmail', 'tasks', 'contacts', 'photos']
+      );
+      window.location.href = authUrl;
+    } finally {
+      setIsConnectingGIS(false);
+    }
+  };
+
+  const handleConnectRedirectFallback = (service?: GoogleServiceKey) => {
+    const trimmedId = googleClientId.trim();
+    if (!trimmedId || !GoogleAuthService.isValidClientId(trimmedId)) {
+      setOauthErrorMessage('Valid Google Web Client ID is required before initiating redirect.');
+      setShowSetupGuide(true);
+      return;
+    }
     const authUrl = GoogleAuthService.getAuthUrl(
-      googleClientId.trim(),
-      redirectUri,
+      trimmedId,
+      GoogleAuthService.getRedirectUri(),
       service ? ['identity', service] : ['identity', 'calendar', 'drive', 'gmail', 'tasks', 'contacts', 'photos']
     );
     window.location.href = authUrl;
@@ -182,18 +246,42 @@ export const IntegrationsPage: React.FC = () => {
             </button>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-4">
+            {oauthErrorMessage && (
+              <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-600 dark:text-red-400 space-y-1">
+                <div className="flex items-center gap-2 font-bold">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>Google OAuth Diagnostics Alert</span>
+                </div>
+                <p className="leading-relaxed">{oauthErrorMessage}</p>
+              </div>
+            )}
+
             <div>
-              <label className="block text-xs font-bold text-[var(--hub-ink)] mb-1">
-                Google Cloud OAuth 2.0 Web Client ID
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-[var(--hub-ink)]">
+                  Google Cloud OAuth 2.0 Web Client ID
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowSetupGuide(!showSetupGuide)}
+                  className="text-[11px] text-[var(--hub-accent)] hover:underline flex items-center gap-1 font-semibold"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                  <span>{showSetupGuide ? 'Hide Setup Guide' : 'How to Fix 401 invalid_client'}</span>
+                </button>
+              </div>
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={googleClientId}
                   onChange={(e) => setGoogleClientId(e.target.value)}
                   placeholder="e.g. 123456789-abcdefg.apps.googleusercontent.com"
-                  className="flex-1 px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs text-[var(--hub-ink)] font-mono"
+                  className={`flex-1 px-3 py-2 rounded-lg border bg-[var(--hub-bg)] text-xs text-[var(--hub-ink)] font-mono ${
+                    googleClientId && !GoogleAuthService.isValidClientId(googleClientId)
+                      ? 'border-amber-500 focus:border-amber-500'
+                      : 'border-[var(--hub-line)] focus:border-[var(--hub-accent)]'
+                  }`}
                 />
                 <button
                   onClick={handleSaveClientId}
@@ -204,13 +292,85 @@ export const IntegrationsPage: React.FC = () => {
               </div>
             </div>
 
-            <button
-              onClick={() => handleConnectGoogle()}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-bold hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
-            >
-              <Cloud className="w-4 h-4" />
-              <span>Sign in & Authorize Google Workspace</span>
-            </button>
+            {/* Google Cloud Console Setup & 401 Troubleshooting Card */}
+            {showSetupGuide && (
+              <div className="p-4 rounded-xl bg-[var(--hub-bg)] border border-teal-500/30 text-xs space-y-3">
+                <div className="font-bold text-sm text-[var(--hub-ink)] flex items-center gap-2">
+                  <Cloud className="w-4 h-4 text-teal-500" />
+                  <span>Google Cloud Console — Setup & 401 Repair Guide</span>
+                </div>
+
+                <ol className="list-decimal list-inside space-y-1.5 text-[var(--hub-muted)] leading-relaxed">
+                  <li>
+                    Open{' '}
+                    <a
+                      href="https://console.cloud.google.com/apis/credentials"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[var(--hub-accent)] underline font-semibold"
+                    >
+                      Google Cloud Console Credentials
+                    </a>{' '}
+                    under account <code className="text-teal-400">koyaneniyaswanth@gmail.com</code>.
+                  </li>
+                  <li>
+                    Click <strong>Create Credentials → OAuth Client ID</strong>.
+                  </li>
+                  <li>
+                    Application type must be <strong>Web application</strong> (NOT Desktop, Android, or iOS).
+                  </li>
+                  <li>
+                    Add this exact URL to <strong>Authorized JavaScript origins</strong>:
+                    <div className="mt-1 flex items-center gap-2 font-mono text-[11px] text-[var(--hub-ink)] bg-black/20 p-2 rounded-lg">
+                      <span>{typeof window !== 'undefined' ? window.location.origin : 'https://yashwanth-hub.vercel.app'}</span>
+                      <button
+                        onClick={handleCopyOrigin}
+                        className="ml-auto px-2 py-0.5 rounded bg-teal-500/20 text-teal-400 hover:bg-teal-500/30 text-[10px] flex items-center gap-1 font-sans"
+                      >
+                        {copiedOrigin ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                        <span>{copiedOrigin ? 'Copied' : 'Copy'}</span>
+                      </button>
+                    </div>
+                  </li>
+                  <li>
+                    Add the same URL to <strong>Authorized redirect URIs</strong>:
+                    <div className="mt-1 flex items-center gap-2 font-mono text-[11px] text-[var(--hub-ink)] bg-black/20 p-2 rounded-lg">
+                      <span>{typeof window !== 'undefined' ? window.location.origin : 'https://yashwanth-hub.vercel.app'}</span>
+                    </div>
+                  </li>
+                  <li>
+                    In <strong>OAuth consent screen → Test users</strong>, ensure <code className="text-teal-400">koyaneniyaswanth@gmail.com</code> is added.
+                  </li>
+                </ol>
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+              <button
+                onClick={() => handleConnectGoogle()}
+                disabled={isConnectingGIS}
+                className="flex-1 flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-bold hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs disabled:opacity-60"
+              >
+                {isConnectingGIS ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Opening Google Sign-In...</span>
+                  </>
+                ) : (
+                  <>
+                    <Cloud className="w-4 h-4" />
+                    <span>Sign in with Google (GIS Popup)</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={() => handleConnectRedirectFallback()}
+                className="px-4 py-2.5 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-muted)] hover:text-[var(--hub-ink)] cursor-pointer"
+              >
+                Use Full-Page Redirect
+              </button>
+            </div>
           </div>
         )}
 

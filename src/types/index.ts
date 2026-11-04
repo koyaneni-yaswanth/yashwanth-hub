@@ -313,9 +313,11 @@ export type NeoMemorySource = 'wearable_neo1' | 'desktop_meeting' | 'web_import'
 export type NeoMeetingPlatform = 'google_meet' | 'zoom' | 'microsoft_teams' | 'whatsapp' | 'in_person' | 'phone_call' | 'other';
 
 export interface NeoSpeaker {
-  speakerId: string;
+  speakerId?: string;
+  id?: string;
   name: string;
-  isUser: boolean;
+  isUser?: boolean;
+  isCurrentUser?: boolean;
 }
 
 export interface NeoActionItem {
@@ -360,6 +362,8 @@ export interface NeoMemory {
   tags: string[];
   importedAt: string;
   syncMethod: 'mcp' | 'webhook' | 'json_export' | 'manual_entry';
+  isImportant?: boolean;
+  userNotes?: string;
 }
 
 export interface NeoMcpConfig {
@@ -482,4 +486,5 @@ export type NavigationTab =
   | 'analytics'
   | 'integrations'
   | 'neo-memory'
+  | 'system-health'
   | 'settings';
