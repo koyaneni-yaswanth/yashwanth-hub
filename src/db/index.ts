@@ -11,6 +11,9 @@ import type {
   Area,
   AppSetting,
   SyncQueueItem,
+  Project,
+  AppNotification,
+  AIUsageLog,
 } from '../types';
 import { generateId, getTodayISO } from '../lib/utils';
 
@@ -26,6 +29,9 @@ export class YashwanthHubDatabase extends Dexie {
   areas!: Table<Area, string>;
   settings!: Table<AppSetting, string>;
   sync_queue!: Table<SyncQueueItem, string>;
+  projects!: Table<Project, string>;
+  notifications!: Table<AppNotification, string>;
+  ai_logs!: Table<AIUsageLog, string>;
 
   constructor() {
     super('YashwanthHubDB');
@@ -41,6 +47,12 @@ export class YashwanthHubDatabase extends Dexie {
       areas: 'id, name, created_at',
       settings: 'key, updated_at',
       sync_queue: 'id, table_name, record_id, created_at',
+    });
+
+    this.version(2).stores({
+      projects: 'id, title, area, status, priority, target_date, created_at',
+      notifications: 'id, type, priority, read, created_at',
+      ai_logs: 'id, provider, modelId, timestamp',
     });
   }
 }
@@ -69,6 +81,18 @@ export async function initializeDatabase() {
         updated_at: now,
       }));
       await db.areas.bulkAdd(areasToInsert);
+    }
+
+    // Seed projects if empty
+    const projectCount = await db.projects.count();
+    if (projectCount === 0) {
+      await seedProjects();
+    }
+
+    // Seed sample notifications if empty
+    const notifCount = await db.notifications.count();
+    if (notifCount === 0) {
+      await seedNotifications();
     }
 
     // Check for legacy localStorage migration from "yash-hub-v1"
@@ -172,6 +196,108 @@ export async function initializeDatabase() {
   } catch (error) {
     console.error('Database initialization error:', error);
   }
+}
+
+async function seedProjects() {
+  const now = new Date().toISOString();
+  const today = getTodayISO();
+  const nextMonth = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
+
+  const sampleProjects: Project[] = [
+    {
+      id: generateId(),
+      title: 'Small Wind Turbine TRL 6 Prototype Demonstration',
+      description: 'Design freeze, fabrication of axial flux generator, blade aero-pitch testing, and 4-week field validation run.',
+      area: 'PAWAN SHAKTI',
+      status: 'active',
+      priority: 'urgent',
+      start_date: today,
+      target_date: nextMonth,
+      progress: 45,
+      milestones: [
+        { id: generateId(), title: 'Rotor aerodynamic analysis & NACA 4412 airfoils', target_date: today, done: true },
+        { id: generateId(), title: 'Axial flux PM stator coil winding & testing bench', target_date: today, done: true },
+        { id: generateId(), title: 'IEC 61400-2 braking caliper and overspeed test', target_date: nextMonth, done: false },
+        { id: generateId(), title: 'Customer field pilot installation & LOI signature', target_date: nextMonth, done: false },
+      ],
+      tags: ['TRL-6', 'Aerodynamics', 'Hardware'],
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: generateId(),
+      title: 'Autonomous Mobile Robot (AMR) Visual SLAM Navigation',
+      description: 'ROS 2 Humble navigation stack integration with OAK-D spatial depth cameras, IMU sensor fusion, and dynamic obstacle avoidance.',
+      area: 'IvLabs',
+      status: 'active',
+      priority: 'high',
+      start_date: today,
+      target_date: nextMonth,
+      progress: 60,
+      milestones: [
+        { id: generateId(), title: 'OAK-D stereo camera calibration & point-cloud filtering', target_date: today, done: true },
+        { id: generateId(), title: 'Nav2 waypoint follower tuning & costmap recovery', target_date: nextMonth, done: false },
+      ],
+      tags: ['Robotics', 'ROS2', 'SLAM', 'IvLabs'],
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: generateId(),
+      title: 'Industrial PLC Automated Control Cabinet Suite',
+      description: '24V DC signal isolation, emergency stop safety relays, client factory commissioning for packaging line.',
+      area: 'MG Automation',
+      status: 'active',
+      priority: 'medium',
+      start_date: today,
+      target_date: nextMonth,
+      progress: 30,
+      milestones: [
+        { id: generateId(), title: 'Single line wiring diagrams & electrical cabinet CAD', target_date: today, done: true },
+        { id: generateId(), title: 'Factory on-site commissioning & safety sign-off', target_date: nextMonth, done: false },
+      ],
+      tags: ['Automation', 'PLC', 'Industrial'],
+      created_at: now,
+      updated_at: now,
+    },
+  ];
+
+  await db.projects.bulkAdd(sampleProjects);
+}
+
+async function seedNotifications() {
+  const now = new Date().toISOString();
+  const sampleNotifications: AppNotification[] = [
+    {
+      id: generateId(),
+      title: 'Upcoming Professor Review Meeting',
+      message: 'Professor Lab Review is scheduled today at 14:30. Ensure your power curves and 1-page gap report are prepared.',
+      type: 'meeting',
+      priority: 'high',
+      read: false,
+      created_at: now,
+    },
+    {
+      id: generateId(),
+      title: 'IEC 61400-2 Safety Register Action Required',
+      message: 'Finalize IEC 61400-2 safety risk register for wind rotor braking system today.',
+      type: 'deadline',
+      priority: 'urgent',
+      read: false,
+      created_at: now,
+    },
+    {
+      id: generateId(),
+      title: 'Jarvis AI Automation Engine Online',
+      message: 'Intelligent proactive reminders and local heuristic synthesis active.',
+      type: 'system',
+      priority: 'low',
+      read: true,
+      created_at: now,
+    },
+  ];
+
+  await db.notifications.bulkAdd(sampleNotifications);
 }
 
 export async function seedStarterData() {

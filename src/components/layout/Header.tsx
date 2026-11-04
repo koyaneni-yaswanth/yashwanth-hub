@@ -1,15 +1,30 @@
 import React from 'react';
-import { Sun, Moon, Database, Cloud, RefreshCw, WifiOff, Menu } from 'lucide-react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import {
+  Sun,
+  Moon,
+  Database,
+  Cloud,
+  RefreshCw,
+  WifiOff,
+  Menu,
+  Bell,
+  Search,
+  Command,
+} from 'lucide-react';
+import { db } from '../../db';
 import { TurbineLogo } from '../common/TurbineLogo';
 import { useTheme } from '../../context/ThemeContext';
 import { useSync } from '../../context/SyncContext';
-import type { Area } from '../../types';
+import type { Area, NavigationTab } from '../../types';
 
 interface HeaderProps {
   currentArea: string;
   onAreaChange: (area: string) => void;
   areas: Area[];
   onOpenMobileMenu: () => void;
+  onOpenCommandPalette: () => void;
+  onNavigate: (tab: NavigationTab) => void;
   turbineDuration?: number;
 }
 
@@ -18,10 +33,18 @@ export const Header: React.FC<HeaderProps> = ({
   onAreaChange,
   areas,
   onOpenMobileMenu,
+  onOpenCommandPalette,
+  onNavigate,
   turbineDuration = 8,
 }) => {
   const { isDark, toggleTheme } = useTheme();
-  const { status, statusMessage, syncNow } = useSync();
+  const { status, syncNow } = useSync();
+
+  // Unread notifications query
+  const unreadNotifs = useLiveQuery(
+    () => db.notifications.filter((n) => !n.read).toArray(),
+    []
+  ) || [];
 
   const todayStr = new Intl.DateTimeFormat('en-IN', {
     weekday: 'long',
@@ -71,14 +94,14 @@ export const Header: React.FC<HeaderProps> = ({
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-teal-500/10 text-teal-700 dark:text-teal-300 border border-teal-500/20"
           >
             <Database className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-            <span className="hidden sm:inline">Local (IndexedDB)</span>
+            <span className="hidden sm:inline">Local OS</span>
           </div>
         );
     }
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-[var(--hub-surface)] border-b border-[var(--hub-line)] backdrop-blur-md px-4 sm:px-6 py-3 transition-colors">
+    <header className="sticky top-0 z-30 bg-[var(--hub-surface)] border-b border-[var(--hub-line)] backdrop-blur-md px-4 sm:px-6 py-2.5 transition-colors">
       <div className="flex items-center justify-between gap-3 max-w-7xl mx-auto">
         {/* Left: Mobile Toggle & Brand */}
         <div className="flex items-center gap-3">
@@ -90,8 +113,11 @@ export const Header: React.FC<HeaderProps> = ({
             <Menu className="w-5 h-5" />
           </button>
 
-          <div className="flex items-center gap-3">
-            <TurbineLogo size={38} durationSeconds={turbineDuration} />
+          <div
+            onClick={() => onNavigate('dashboard')}
+            className="flex items-center gap-3 cursor-pointer"
+          >
+            <TurbineLogo size={36} durationSeconds={turbineDuration} />
             <div>
               <h1 className="text-xl sm:text-2xl font-bold font-heading text-[var(--hub-ink)] tracking-tight leading-none flex items-center gap-2">
                 Yashwanth Hub
@@ -103,8 +129,22 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Right: Area filter, Sync Badge, Theme Toggle */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        {/* Center: Command Palette Trigger */}
+        <button
+          onClick={onOpenCommandPalette}
+          className="hidden md:flex items-center gap-2 px-3.5 py-1.5 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:border-[var(--hub-accent)] transition-all cursor-pointer w-64 justify-between shadow-xs"
+        >
+          <div className="flex items-center gap-2">
+            <Search className="w-3.5 h-3.5" />
+            <span>Search or command...</span>
+          </div>
+          <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded">
+            Ctrl K
+          </kbd>
+        </button>
+
+        {/* Right: Area filter, Notifications, Sync Badge, Theme Toggle */}
+        <div className="flex items-center gap-2 sm:gap-2.5">
           {/* Workspace Area Filter */}
           <div className="relative">
             <select
@@ -127,6 +167,21 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Sync Status Badge */}
           {getSyncBadge()}
+
+          {/* Notifications Bell */}
+          <button
+            onClick={() => onNavigate('notifications')}
+            className="relative p-2 rounded-lg border border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-bg)] transition-colors cursor-pointer"
+            aria-label="Notifications"
+            title="Notifications & Reminders"
+          >
+            <Bell className="w-4 h-4" />
+            {unreadNotifs.length > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center animate-pulse">
+                {unreadNotifs.length}
+              </span>
+            )}
+          </button>
 
           {/* Theme Toggle Button */}
           <button

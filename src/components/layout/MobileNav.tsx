@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, CheckSquare, Calendar, Wind, MoreHorizontal } from 'lucide-react';
+import { LayoutDashboard, FolderKanban, CheckSquare, Sparkles, MoreHorizontal } from 'lucide-react';
 import type { NavigationTab } from '../../types';
 
 interface MobileNavProps {
@@ -15,9 +15,9 @@ export const MobileNav: React.FC<MobileNavProps> = ({
 }) => {
   const quickItems = [
     { id: 'dashboard' as NavigationTab, label: 'Today', icon: LayoutDashboard },
+    { id: 'projects' as NavigationTab, label: 'Projects', icon: FolderKanban },
     { id: 'tasks' as NavigationTab, label: 'Tasks', icon: CheckSquare },
-    { id: 'calendar' as NavigationTab, label: 'Calendar', icon: Calendar },
-    { id: 'wind-plan' as NavigationTab, label: 'Plan', icon: Wind },
+    { id: 'ai-assistant' as NavigationTab, label: 'Jarvis', icon: Sparkles },
   ];
 
   return (

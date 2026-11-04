@@ -17,9 +17,17 @@ import {
   RefreshCw,
   Code2,
   HardDrive,
-  ShieldCheck,
+  Bluetooth,
+  Radio,
+  Mail,
+  Video,
+  CalendarDays,
+  FileCheck,
   CheckCircle2,
   AlertTriangle,
+  FolderKanban,
+  Bell,
+  Cpu,
 } from 'lucide-react';
 import { db } from '../db';
 import type { Area } from '../types';
@@ -32,6 +40,9 @@ import {
   getSupabaseClient,
   SUPABASE_SCHEMA_SQL,
 } from '../lib/supabase';
+import { GoogleAuthService } from '../services/google/googleAuthService';
+import { GoogleCalendarService } from '../services/google/googleCalendarService';
+import { NeoSapienService } from '../services/neoSapienService';
 import { generateId } from '../lib/utils';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
@@ -54,6 +65,18 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
   const [isSchemaModalOpen, setIsSchemaModalOpen] = useState(false);
   const [schemaCopied, setSchemaCopied] = useState(false);
 
+  // Google Workspace State
+  const [googleConfig, setGoogleConfig] = useState(() => GoogleAuthService.getConfig());
+  const [googleClientId, setGoogleClientId] = useState(() => localStorage.getItem('yash_google_client_id') || '');
+  const [googleSyncStatus, setGoogleSyncStatus] = useState<string | null>(null);
+  const [isGoogleSyncing, setIsGoogleSyncing] = useState(false);
+
+  // NeoSapien State
+  const [neoConfig, setNeoConfig] = useState(() => NeoSapienService.getConfig());
+  const [isScanningBLE, setIsScanningBLE] = useState(false);
+  const [neoTranscriptInput, setNeoTranscriptInput] = useState('');
+  const [neoIngestResult, setNeoIngestResult] = useState<string | null>(null);
+
   // Backup & Restore State
   const [backupText, setBackupText] = useState('');
   const [restoreText, setRestoreText] = useState('');
@@ -70,6 +93,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
 
   // Table row counts
   const taskCount = useLiveQuery(() => db.tasks.count(), []) || 0;
+  const projectCount = useLiveQuery(() => db.projects.count(), []) || 0;
   const eventCount = useLiveQuery(() => db.events.count(), []) || 0;
   const meetingCount = useLiveQuery(() => db.meetings.count(), []) || 0;
   const travelCount = useLiveQuery(() => db.travel.count(), []) || 0;
@@ -77,6 +101,66 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
   const expenseCount = useLiveQuery(() => db.expenses.count(), []) || 0;
   const contactCount = useLiveQuery(() => db.contacts.count(), []) || 0;
   const documentCount = useLiveQuery(() => db.documents.count(), []) || 0;
+  const notificationCount = useLiveQuery(() => db.notifications.count(), []) || 0;
+
+  // Google Handlers
+  const handleConnectGoogle = () => {
+    if (!googleClientId.trim()) {
+      alert('Please enter your Google OAuth 2.0 Web Client ID from Google Cloud Console.');
+      return;
+    }
+    localStorage.setItem('yash_google_client_id', googleClientId.trim());
+    const redirectUri = window.location.origin;
+    const authUrl = GoogleAuthService.getAuthUrl(googleClientId.trim(), redirectUri);
+    window.location.href = authUrl;
+  };
+
+  const handleDisconnectGoogle = async () => {
+    await GoogleAuthService.disconnect();
+    setGoogleConfig(GoogleAuthService.getConfig());
+  };
+
+  const handleSyncGoogleCalendar = async () => {
+    setIsGoogleSyncing(true);
+    setGoogleSyncStatus(null);
+    try {
+      const res = await GoogleCalendarService.syncFromGoogle();
+      setGoogleSyncStatus(`Synced! Imported ${res.imported} new events, updated ${res.updated}.`);
+    } catch (err: any) {
+      setGoogleSyncStatus(`Google Sync: ${err.message || 'Authentication required'}`);
+    } finally {
+      setIsGoogleSyncing(false);
+    }
+  };
+
+  // NeoSapien BLE Connect Handler
+  const handleConnectNeoSapienBLE = async () => {
+    setIsScanningBLE(true);
+    try {
+      const cfg = await NeoSapienService.scanAndConnectBLE();
+      setNeoConfig(cfg);
+    } catch (err: any) {
+      setNeoConfig(NeoSapienService.getConfig());
+    } finally {
+      setIsScanningBLE(false);
+    }
+  };
+
+  const handleDisconnectNeoSapien = () => {
+    NeoSapienService.disconnectDevice();
+    setNeoConfig(NeoSapienService.getConfig());
+  };
+
+  const handleIngestNeoTranscript = async () => {
+    if (!neoTranscriptInput.trim()) return;
+    try {
+      const res = await NeoSapienService.ingestTranscript(neoTranscriptInput, 'webhook_import');
+      setNeoIngestResult(`Successfully ingested: Created ${res.tasksCreated} tasks and ${res.notesCreated} notes!`);
+      setNeoTranscriptInput('');
+    } catch (err: any) {
+      setNeoIngestResult(`Ingest failed: ${err.message}`);
+    }
+  };
 
   // Save Supabase Config
   const handleSaveSupabase = () => {
@@ -98,7 +182,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
       }
       const { error } = await client.from('tasks').select('id').limit(1);
       if (error && error.code !== 'PGRST116') {
-        // Table might not exist yet, but connection succeeded!
         if (error.message.includes('relation "public.tasks" does not exist')) {
           setTestResult({
             success: true,
@@ -129,9 +212,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
   // Full Backup Generation
   const handleGenerateBackup = async () => {
     try {
-      const [tasks, events, meetings, travel, notes, expenses, contacts, areasData, settings] =
+      const [tasks, projects, events, meetings, travel, notes, expenses, contacts, areasData, notifications] =
         await Promise.all([
           db.tasks.toArray(),
+          db.projects.toArray(),
           db.events.toArray(),
           db.meetings.toArray(),
           db.travel.toArray(),
@@ -139,15 +223,16 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
           db.expenses.toArray(),
           db.contacts.toArray(),
           db.areas.toArray(),
-          db.settings.toArray(),
+          db.notifications.toArray(),
         ]);
 
       const backupObject = {
-        version: '2.0.0',
-        app: 'Yashwanth Hub',
+        version: '2.5.0',
+        app: 'Yashwanth Hub OS',
         timestamp: new Date().toISOString(),
         data: {
           tasks,
+          projects,
           events,
           meetings,
           travel,
@@ -155,14 +240,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
           expenses,
           contacts,
           areas: areasData,
-          settings,
+          notifications,
         },
       };
 
       const jsonStr = JSON.stringify(backupObject, null, 2);
       setBackupText(jsonStr);
 
-      // Trigger file download as well
       const blob = new Blob([jsonStr], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -192,47 +276,16 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
 
     try {
       const parsed = JSON.parse(restoreText.trim());
-      const now = new Date().toISOString();
-
-      // Support v1 prototype backup format or v2 object
       const data = parsed.data || parsed;
 
       if (Array.isArray(data.tasks)) await db.tasks.bulkPut(data.tasks);
+      if (Array.isArray(data.projects)) await db.projects.bulkPut(data.projects);
       if (Array.isArray(data.events)) await db.events.bulkPut(data.events);
       if (Array.isArray(data.meetings)) await db.meetings.bulkPut(data.meetings);
       if (Array.isArray(data.travel)) await db.travel.bulkPut(data.travel);
       if (Array.isArray(data.notes)) await db.notes.bulkPut(data.notes);
       if (Array.isArray(data.expenses)) await db.expenses.bulkPut(data.expenses);
-      if (Array.isArray(data.exp)) {
-        // Legacy prototype key
-        const mapped = data.exp.map((x: any) => ({
-          id: x.id || generateId(),
-          amount: Number(x.amt) || 0,
-          category: x.cat || 'Business',
-          area: 'PAWAN SHAKTI',
-          note: x.note || '',
-          date: x.date || now.slice(0, 10),
-          created_at: now,
-          updated_at: now,
-        }));
-        await db.expenses.bulkPut(mapped);
-      }
       if (Array.isArray(data.contacts)) await db.contacts.bulkPut(data.contacts);
-      if (Array.isArray(data.people)) {
-        // Legacy prototype key
-        const mappedP = data.people.map((p: any) => ({
-          id: p.id || generateId(),
-          name: p.name || '',
-          role: p.role || '',
-          phone: p.contact?.includes('@') ? undefined : p.contact,
-          email: p.contact?.includes('@') ? p.contact : undefined,
-          area: 'PAWAN SHAKTI',
-          note: p.note || '',
-          created_at: now,
-          updated_at: now,
-        }));
-        await db.contacts.bulkPut(mappedP);
-      }
       if (Array.isArray(data.areas)) await db.areas.bulkPut(data.areas);
 
       setRestoreStatus('Backup successfully restored into IndexedDB!');
@@ -287,34 +340,169 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
     setIsAreaModalOpen(false);
   };
 
-  const handleConfirmDeleteArea = async () => {
-    if (areaToDelete) {
-      await db.areas.delete(areaToDelete);
-      setAreaToDelete(null);
-    }
-  };
-
   return (
     <div className="space-y-8 pb-16 max-w-4xl">
       {/* Header */}
       <div>
         <h2 className="text-2xl font-bold font-heading text-[var(--hub-ink)] tracking-tight">
-          Hub Settings & Configuration
+          System Settings & Integrations
         </h2>
         <p className="text-sm text-[var(--hub-muted)] mt-0.5">
-          Workspace areas, full database backup, themes, and cloud synchronization
+          Configure Google Workspace, NeoSapien hardware, themes, and cloud backup
         </p>
       </div>
 
-      {/* 1. Appearance / Theme */}
+      {/* 1. Google Workspace Integration */}
+      <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
+            <CalendarDays className="w-4 h-4 text-blue-500" />
+            <span>Google Workspace Integration (Calendar, Meet, Drive, Gmail)</span>
+          </h3>
+          <Badge variant={googleConfig.connected ? 'emerald' : 'gray'}>
+            {googleConfig.connected ? 'Connected' : 'Not Connected'}
+          </Badge>
+        </div>
+
+        <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
+          Connect your Google account via official OAuth 2.0 to enable two-way calendar sync, automated Google Meet conference links, Drive document referencing, and Gmail follow-up detection without auto-sending.
+        </p>
+
+        <div>
+          <label className="block text-xs font-bold text-[var(--hub-ink)] mb-1">
+            Google OAuth 2.0 Web Client ID
+          </label>
+          <input
+            type="text"
+            value={googleClientId}
+            onChange={(e) => setGoogleClientId(e.target.value)}
+            placeholder="123456789-abcdefg.apps.googleusercontent.com"
+            className="w-full py-2 px-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs text-[var(--hub-ink)] font-mono"
+          />
+        </div>
+
+        {googleSyncStatus && (
+          <div className="p-3 rounded-lg bg-teal-500/10 border border-teal-500/30 text-xs text-teal-900 dark:text-teal-200">
+            {googleSyncStatus}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          {!googleConfig.connected ? (
+            <button
+              onClick={handleConnectGoogle}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 cursor-pointer shadow-xs"
+            >
+              <CalendarDays className="w-3.5 h-3.5" />
+              <span>Connect Google Account</span>
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={handleSyncGoogleCalendar}
+                disabled={isGoogleSyncing}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isGoogleSyncing ? 'animate-spin' : ''}`} />
+                <span>{isGoogleSyncing ? 'Syncing...' : 'Sync Google Calendar Now'}</span>
+              </button>
+
+              <button
+                onClick={handleDisconnectGoogle}
+                className="px-4 py-2 rounded-xl border border-red-500/30 text-red-600 text-xs font-semibold hover:bg-red-500/10 cursor-pointer"
+              >
+                Disconnect & Revoke
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* 2. NeoSapien Wearable Device Integration */}
+      <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
+            <Bluetooth className="w-4 h-4 text-purple-600" />
+            <span>NeoSapien "Neo 1" Device Integration</span>
+          </h3>
+          <Badge
+            variant={
+              neoConfig.status === 'connected'
+                ? 'emerald'
+                : neoConfig.status === 'error'
+                ? 'red'
+                : 'gray'
+            }
+          >
+            {neoConfig.status.toUpperCase()}
+          </Badge>
+        </div>
+
+        <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
+          Pair with your NeoSapien Neo 1 pendant via Web Bluetooth LE or ingest ambient meeting audio transcripts to automatically extract action items, founder reminders, and notes.
+        </p>
+
+        <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] flex items-center justify-between text-xs">
+          <div>
+            <span className="font-bold text-[var(--hub-ink)] block">
+              Device: {neoConfig.deviceName || 'No device paired'}
+            </span>
+            <span className="text-[var(--hub-muted)]">
+              Status: {neoConfig.status === 'connected' ? `Connected (Battery: ${neoConfig.batteryLevel ?? 'N/A'}%)` : 'Not currently connected via BLE'}
+            </span>
+          </div>
+
+          {neoConfig.status === 'connected' ? (
+            <button
+              onClick={handleDisconnectNeoSapien}
+              className="text-xs text-red-600 font-bold hover:underline cursor-pointer"
+            >
+              Disconnect
+            </button>
+          ) : (
+            <button
+              onClick={handleConnectNeoSapienBLE}
+              disabled={isScanningBLE}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-purple-600 text-white font-semibold cursor-pointer hover:bg-purple-700 disabled:opacity-50"
+            >
+              <Radio className="w-3.5 h-3.5" />
+              <span>{isScanningBLE ? 'Scanning Bluetooth...' : 'Pair via Bluetooth'}</span>
+            </button>
+          )}
+        </div>
+
+        {/* Ingest Transcript Box */}
+        <div className="space-y-2 pt-2 border-t border-[var(--hub-line)]">
+          <label className="block text-xs font-bold text-[var(--hub-ink)] uppercase tracking-wider">
+            Ingest Ambient Audio / Neo 1 Companion Export
+          </label>
+          <textarea
+            value={neoTranscriptInput}
+            onChange={(e) => setNeoTranscriptInput(e.target.value)}
+            rows={3}
+            placeholder="Paste raw conversation transcript or meeting audio notes here. Jarvis will automatically detect action items and task commitments..."
+            className="w-full p-2.5 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs text-[var(--hub-ink)] focus:outline-none focus:ring-2 focus:ring-purple-500"
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-purple-700 dark:text-purple-300 font-medium">
+              {neoIngestResult}
+            </span>
+            <button
+              onClick={handleIngestNeoTranscript}
+              className="px-4 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-semibold hover:bg-purple-700 cursor-pointer"
+            >
+              Extract Tasks & Notes
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Appearance / Theme */}
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
         <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
           <Sun className="w-4 h-4 text-amber-500" />
           <span>Appearance & Theme</span>
         </h3>
-        <p className="text-xs text-[var(--hub-muted)]">
-          Customize the aesthetic of Yashwanth Hub. Supports system auto-detection and high-contrast modes.
-        </p>
 
         <div className="grid grid-cols-3 gap-3">
           {(
@@ -344,17 +532,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
         </div>
       </div>
 
-      {/* 2. Workspace Areas Management */}
+      {/* 4. Workspace Areas */}
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
         <div className="flex items-center justify-between">
-          <div>
-            <h3 className="font-heading font-bold text-base text-[var(--hub-ink)]">
-              Personal Workspaces (Areas)
-            </h3>
-            <p className="text-xs text-[var(--hub-muted)] mt-0.5">
-              Filter tasks, events, and expenses by business unit or startup entity
-            </p>
-          </div>
+          <h3 className="font-heading font-bold text-base text-[var(--hub-ink)]">
+            Personal Workspaces (Areas)
+          </h3>
           <button
             onClick={openCreateArea}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer"
@@ -404,15 +587,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
         </div>
       </div>
 
-      {/* 3. Full Data Backup & Restore */}
+      {/* 5. Full Data Backup & Restore */}
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
         <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
           <Database className="w-4 h-4 text-teal-600" />
           <span>Local Data Backup & Disaster Recovery</span>
         </h3>
-        <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
-          Export your complete database into a versioned JSON file. You can also paste backup text to restore your application state at any time.
-        </p>
 
         <div className="flex flex-wrap items-center gap-3">
           <button
@@ -469,7 +649,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
         </div>
       </div>
 
-      {/* 4. Future Cloud Architecture: Supabase Staged Rollout */}
+      {/* 6. Supabase Cloud Sync */}
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
@@ -480,19 +660,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
             {isSupabaseConfigured() ? 'Cloud Configured' : 'Local Mode'}
           </Badge>
         </div>
-
-        <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
-          When you are ready to enable multi-device synchronization and Google OAuth, create a free project at{' '}
-          <a
-            href="https://supabase.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[var(--hub-accent)] underline font-semibold"
-          >
-            supabase.com
-          </a>{' '}
-          and enter your Project URL and Anon Public Key below.
-        </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
@@ -565,76 +732,36 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
         </div>
       </div>
 
-      {/* 5. System Diagnostics */}
+      {/* 7. System Diagnostics */}
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
         <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
           <HardDrive className="w-4 h-4 text-purple-500" />
-          <span>Local IndexedDB Diagnostics</span>
+          <span>Local IndexedDB Diagnostics (YashwanthHubDB v2)</span>
         </h3>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
+          <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)]">
+            <span className="text-[var(--hub-muted)] block">Projects</span>
+            <span className="font-bold text-sm text-[var(--hub-ink)]">{projectCount}</span>
+          </div>
           <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)]">
             <span className="text-[var(--hub-muted)] block">Tasks</span>
             <span className="font-bold text-sm text-[var(--hub-ink)]">{taskCount}</span>
           </div>
           <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)]">
-            <span className="text-[var(--hub-muted)] block">Calendar Events</span>
-            <span className="font-bold text-sm text-[var(--hub-ink)]">{eventCount}</span>
+            <span className="text-[var(--hub-muted)] block">Notifications</span>
+            <span className="font-bold text-sm text-[var(--hub-ink)]">{notificationCount}</span>
           </div>
           <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)]">
             <span className="text-[var(--hub-muted)] block">Meetings</span>
             <span className="font-bold text-sm text-[var(--hub-ink)]">{meetingCount}</span>
           </div>
           <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)]">
-            <span className="text-[var(--hub-muted)] block">Travel Records</span>
-            <span className="font-bold text-sm text-[var(--hub-ink)]">{travelCount}</span>
-          </div>
-          <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)]">
-            <span className="text-[var(--hub-muted)] block">Notes</span>
-            <span className="font-bold text-sm text-[var(--hub-ink)]">{noteCount}</span>
-          </div>
-          <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)]">
             <span className="text-[var(--hub-muted)] block">Expenses</span>
             <span className="font-bold text-sm text-[var(--hub-ink)]">{expenseCount}</span>
           </div>
-          <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)]">
-            <span className="text-[var(--hub-muted)] block">Contacts</span>
-            <span className="font-bold text-sm text-[var(--hub-ink)]">{contactCount}</span>
-          </div>
-          <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)]">
-            <span className="text-[var(--hub-muted)] block">Vault Documents</span>
-            <span className="font-bold text-sm text-[var(--hub-ink)]">{documentCount}</span>
-          </div>
         </div>
       </div>
-
-      {/* SQL Schema Modal */}
-      <Modal
-        isOpen={isSchemaModalOpen}
-        onClose={() => setIsSchemaModalOpen(false)}
-        title="Supabase Production SQL Schema"
-        maxWidth="max-w-2xl"
-      >
-        <div className="space-y-4">
-          <p className="text-xs text-[var(--hub-muted)]">
-            Copy and run this SQL script in your Supabase SQL Editor. It creates all tables with PostgreSQL Row Level Security (RLS) guaranteeing private per-user data isolation.
-          </p>
-
-          <pre className="p-3.5 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] font-mono text-[11px] text-[var(--hub-ink)] overflow-x-auto max-h-96">
-            {SUPABASE_SCHEMA_SQL}
-          </pre>
-
-          <div className="flex justify-end gap-3 pt-3 border-t border-[var(--hub-line)]">
-            <button
-              onClick={handleCopySchema}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold cursor-pointer"
-            >
-              {schemaCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{schemaCopied ? 'Copied to Clipboard!' : 'Copy SQL Schema'}</span>
-            </button>
-          </div>
-        </div>
-      </Modal>
 
       {/* Area Modal */}
       <Modal
@@ -708,10 +835,43 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
         </form>
       </Modal>
 
+      {/* SQL Schema Modal */}
+      <Modal
+        isOpen={isSchemaModalOpen}
+        onClose={() => setIsSchemaModalOpen(false)}
+        title="Supabase Production SQL Schema"
+        maxWidth="max-w-2xl"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-[var(--hub-muted)]">
+            Copy and run this SQL script in your Supabase SQL Editor. It creates all tables with PostgreSQL Row Level Security (RLS) guaranteeing private per-user data isolation.
+          </p>
+
+          <pre className="p-3.5 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] font-mono text-[11px] text-[var(--hub-ink)] overflow-x-auto max-h-96">
+            {SUPABASE_SCHEMA_SQL}
+          </pre>
+
+          <div className="flex justify-end gap-3 pt-3 border-t border-[var(--hub-line)]">
+            <button
+              onClick={handleCopySchema}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold cursor-pointer"
+            >
+              {schemaCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{schemaCopied ? 'Copied to Clipboard!' : 'Copy SQL Schema'}</span>
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       <ConfirmDialog
         isOpen={Boolean(areaToDelete)}
         onClose={() => setAreaToDelete(null)}
-        onConfirm={handleConfirmDeleteArea}
+        onConfirm={async () => {
+          if (areaToDelete) {
+            await db.areas.delete(areaToDelete);
+            setAreaToDelete(null);
+          }
+        }}
         title="Delete Workspace Area"
         message="Are you sure you want to delete this workspace area?"
       />

@@ -5,19 +5,26 @@ import {
   Bot,
   Send,
   Key,
+  Sliders,
   CheckCircle,
-  AlertCircle,
   FileText,
   Calendar,
   IndianRupee,
   Wind,
   ListTodo,
-  Settings,
-  HelpCircle,
+  Layers,
+  Wrench,
+  TrendingUp,
+  Cpu,
+  Columns3,
+  Clock,
+  Zap,
 } from 'lucide-react';
 import { db } from '../db';
-import type { Task, Meeting, Expense, Note, Area } from '../types';
-import { formatINR, formatShortDate, getTodayISO, isOverdue, generateId } from '../lib/utils';
+import type { Area, AIMode, AIProvider, AIComparisonResult } from '../types';
+import { formatINR, formatShortDate, getTodayISO, generateId } from '../lib/utils';
+import { SUPPORTED_MODELS } from '../services/ai/aiModels';
+import { AIGateway } from '../services/ai/aiGateway';
 import { Badge } from '../components/common/Badge';
 
 interface AIAssistantPageProps {
@@ -28,10 +35,13 @@ interface AIAssistantPageProps {
 
 interface ChatMessage {
   id: string;
-  sender: 'user' | 'assistant' | 'system';
+  sender: 'user' | 'assistant';
   content: string;
   timestamp: string;
-  dataSynthesis?: boolean;
+  provider?: string;
+  modelId?: string;
+  latencyMs?: number;
+  tokensUsed?: number;
 }
 
 export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
@@ -43,428 +53,431 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
 
   // Queries
   const allTasks = useLiveQuery(() => db.tasks.toArray(), []) || [];
+  const allProjects = useLiveQuery(() => db.projects.toArray(), []) || [];
   const allMeetings = useLiveQuery(() => db.meetings.toArray(), []) || [];
   const allExpenses = useLiveQuery(() => db.expenses.toArray(), []) || [];
-  const allNotes = useLiveQuery(() => db.notes.toArray(), []) || [];
+  const aiLogs = useLiveQuery(() => db.ai_logs.toArray(), []) || [];
 
-  // API Config from localStorage or env
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('yash_ai_key') || '');
-  const [provider, setProvider] = useState(() => localStorage.getItem('yash_ai_provider') || 'local_heuristic');
+  // Configuration State
+  const [selectedProvider, setSelectedProvider] = useState<AIProvider>(() => {
+    return (localStorage.getItem('yash_ai_provider') as AIProvider) || 'gemini';
+  });
+  const [selectedModelId, setSelectedModelId] = useState<string>(() => {
+    return localStorage.getItem('yash_ai_model') || 'gemini-2.5-flash';
+  });
+  const [selectedMode, setSelectedMode] = useState<AIMode>('personal');
   const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [isCompareMode, setIsCompareMode] = useState(false);
 
-  // Chat conversation state
+  // API Keys
+  const [geminiKey, setGeminiKey] = useState(() => localStorage.getItem('yash_ai_key_gemini') || localStorage.getItem('yash_ai_key') || '');
+  const [openaiKey, setOpenaiKey] = useState(() => localStorage.getItem('yash_ai_key_openai') || '');
+  const [anthropicKey, setAnthropicKey] = useState(() => localStorage.getItem('yash_ai_key_anthropic') || '');
+
+  // Comparison State
+  const [comparePrompt, setComparePrompt] = useState('');
+  const [comparisonResults, setComparisonResults] = useState<AIComparisonResult[]>([]);
+  const [isComparing, setIsComparing] = useState(false);
+
+  // Chat State
   const [inputMessage, setInputMessage] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'init-1',
       sender: 'assistant',
       content:
-        "Welcome Yaswanth. I am your Command Center AI Copilot. I analyze your tasks, meetings, expenses, and PAWAN SHAKTI wind roadmap to keep you focused on high-leverage founder actions.\n\nYou can click any prompt template below for an instant data-driven briefing, or type a custom question.",
+        "Welcome Yaswanth. I am your Jarvis-level Personal AI Operating System.\n\nI have real-time memory of your tasks, projects (PAWAN SHAKTI, IvLabs, MG Automation), schedule, and budget.\n\nSelect an AI Mode below (Personal, Engineering, Startup, Research, Meeting, Writing) or ask a question directly.",
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      provider: 'Jarvis Gateway',
+      modelId: 'gemini-2.5-flash',
     },
   ]);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const saveConfig = (newKey: string, newProvider: string) => {
-    setApiKey(newKey);
-    setProvider(newProvider);
-    localStorage.setItem('yash_ai_key', newKey);
-    localStorage.setItem('yash_ai_provider', newProvider);
+  const saveApiKeys = () => {
+    localStorage.setItem('yash_ai_key_gemini', geminiKey.trim());
+    localStorage.setItem('yash_ai_key_openai', openaiKey.trim());
+    localStorage.setItem('yash_ai_key_anthropic', anthropicKey.trim());
+    localStorage.setItem('yash_ai_provider', selectedProvider);
+    localStorage.setItem('yash_ai_model', selectedModelId);
     setIsConfigOpen(false);
   };
 
-  // Pre-built Prompt Templates with REAL data analysis
-  const executeDataSynthesis = (type: 'daily_plan' | 'prioritize' | 'meeting_prep' | 'expense_summary' | 'wind_review') => {
-    setIsProcessing(true);
+  const currentAvailableModels = SUPPORTED_MODELS.filter((m) =>
+    selectedProvider === 'local_heuristic' ? true : m.provider === selectedProvider
+  );
+
+  // Total metrics
+  const totalTokensLogged = aiLogs.reduce((s, l) => s + l.tokensInput + l.tokensOutput, 0);
+  const totalCostLogged = aiLogs.reduce((s, l) => s + l.estimatedCostUSD, 0);
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputMessage.trim() || isProcessing) return;
+
+    const userText = inputMessage.trim();
     const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    let userPromptText = '';
-    let responseText = '';
-
-    const openTasks = allTasks.filter((t) => !t.done);
-    const overdueTasks = openTasks.filter((t) => isOverdue(t.due_date, t.done));
-    const todayTasks = openTasks.filter((t) => t.due_date === today);
-    const upcomingMeetings = allMeetings.filter((m) => m.date >= today && m.status === 'scheduled');
-    const monthExpenses = allExpenses.filter((e) => e.date.startsWith(today.slice(0, 7)));
-    const totalMonthSpend = monthExpenses.reduce((sum, e) => sum + e.amount, 0);
-
-    if (type === 'daily_plan') {
-      userPromptText = 'Generate my founder daily plan and executive priorities for today.';
-      responseText = `### 🎯 Founder Daily Briefing — ${formatShortDate(today)}
-
-**Immediate Action Items:**
-${
-  overdueTasks.length > 0
-    ? `⚠️ **${overdueTasks.length} Overdue Task(s):**\n` +
-      overdueTasks.map((t) => `• [${t.area}] **${t.text}** (Overdue: ${formatShortDate(t.due_date)})`).join('\n')
-    : '✅ No overdue tasks.'
-}
-
-${
-  todayTasks.length > 0
-    ? `📋 **Due Today (${todayTasks.length}):**\n` +
-      todayTasks.map((t) => `• [${t.area}] ${t.text} (${t.priority.toUpperCase()})`).join('\n')
-    : '💡 No tasks explicitly marked due today. Pull from your highest priority backlog.'
-}
-
-${
-  upcomingMeetings.length > 0
-    ? `🗓️ **Upcoming Meetings Today & This Week:**\n` +
-      upcomingMeetings.slice(0, 3).map((m) => `• **${m.title}** at ${m.start_time} (${m.attendees || 'Team'})`).join('\n')
-    : '🗓️ No meetings scheduled today. Enjoy an uninterrupted engineering deep work block!'
-}
-
-**Recommendation:**
-Focus 2 hours of deep work on your top PAWAN SHAKTI engineering milestone before addressing routine operational emails.`;
-    } else if (type === 'prioritize') {
-      userPromptText = 'Prioritize all open tasks based on TRL impact and deadlines.';
-      const urgentTasks = openTasks.filter((t) => t.priority === 'urgent');
-      const highTasks = openTasks.filter((t) => t.priority === 'high');
-      const mediumTasks = openTasks.filter((t) => t.priority === 'medium');
-
-      responseText = `### ⚡ Task Prioritization Matrix
-
-**Tier 1: Critical & Urgent (${urgentTasks.length + overdueTasks.length})**
-${
-  urgentTasks.length + overdueTasks.length > 0
-    ? [...new Set([...urgentTasks, ...overdueTasks])].map((t) => `• [${t.area}] **${t.text}**`).join('\n')
-    : 'No critical bottlenecks detected.'
-}
-
-**Tier 2: High Impact Milestones (${highTasks.length})**
-${highTasks.slice(0, 5).map((t) => `• [${t.area}] ${t.text}`).join('\n')}
-
-**Tier 3: Standard Backlog (${mediumTasks.length})**
-${mediumTasks.slice(0, 3).map((t) => `• [${t.area}] ${t.text}`).join('\n')}
-
-*Total open backlog size:* **${openTasks.length} tasks** across ${areas.length} workspace areas.`;
-    } else if (type === 'meeting_prep') {
-      userPromptText = 'Prepare an executive briefing for my upcoming meetings.';
-      if (upcomingMeetings.length === 0) {
-        responseText = '### 🗓️ Meeting Preparation\n\nYou currently have no upcoming meetings scheduled. Use this calendar freedom for uninterrupted CAD modeling, CFD simulations, or lab bench testing.';
-      } else {
-        const nextM = upcomingMeetings[0];
-        responseText = `### 🤝 Meeting Brief: ${nextM.title}
-
-• **Scheduled:** ${formatShortDate(nextM.date)} at ${nextM.start_time}
-• **Workspace Area:** ${nextM.area}
-• **Attendees:** ${nextM.attendees || 'Unspecified'}
-• **Location / Video:** ${nextM.location_or_link || 'Local meeting'}
-
-**Agenda & Talking Points:**
-${nextM.agenda_and_notes || '• Provide one-page progress update.\n• Present latest experimental data.\n• Ask for one concrete request (lab slot or grant referral).'}
-
-${
-  nextM.action_items
-    ? `**Pending Action Items:**\n${nextM.action_items}`
-    : '**Pre-flight check:** Ensure power curves and test data sheets are ready on your screen before launching the call.'
-}`;
-      }
-    } else if (type === 'expense_summary') {
-      userPromptText = 'Summarize monthly expenses and hardware burn rate.';
-      const categoryMap: Record<string, number> = {};
-      monthExpenses.forEach((e) => {
-        categoryMap[e.category] = (categoryMap[e.category] || 0) + e.amount;
-      });
-
-      responseText = `### 💰 Monthly Financial Burn Summary (${today.slice(0, 7)})
-
-• **Total Spent this Cycle:** **${formatINR(totalMonthSpend)}**
-• **Logged Transactions:** ${monthExpenses.length}
-
-**Top Expense Breakdown:**
-${
-  Object.keys(categoryMap).length > 0
-    ? Object.keys(categoryMap)
-        .map((cat) => `• **${cat}:** ${formatINR(categoryMap[cat])} (${Math.round((categoryMap[cat] / totalMonthSpend) * 100)}%)`)
-        .join('\n')
-    : 'No expenses recorded this month.'
-}
-
-**Founder Capital Observation:**
-${
-  totalMonthSpend > 50000
-    ? 'Hardware fabrication costs are significant. Ensure all long-lead parts conform to frozen engineering specifications.'
-    : 'Monthly expenditure is lean. Maintain capital efficiency while preserving prototype turnaround speed.'
-}`;
-    } else if (type === 'wind_review') {
-      userPromptText = 'Review PAWAN SHAKTI 90-Day Wind Startup Progress.';
-      const planTasks = allTasks.filter((t) => t.plan !== undefined);
-      const donePlan = planTasks.filter((t) => t.done).length;
-      const pct = planTasks.length > 0 ? Math.round((donePlan / planTasks.length) * 100) : 0;
-
-      responseText = `### 🌪️ PAWAN SHAKTI 90-Day TRL Progress Review
-
-• **TRL Plan Progress:** **${pct}% Complete** (${donePlan} of ${planTasks.length} milestones finished)
-• **Target:** TRL 5 realistic environment validation by Day 56, TRL 6 demo by Day 90.
-
-**Active Milestone Directives:**
-1. Maintain focus on aerodynamic rotor efficiency and power curve logging.
-2. Complete the IEC 61400-2 risk register and overspeed brake test plan.
-3. Every 2 weeks, request a specific laboratory validation slot or incubator endorsement.`;
-    }
 
     setMessages((prev) => [
       ...prev,
       {
         id: generateId(),
         sender: 'user',
-        content: userPromptText,
+        content: userText,
         timestamp: nowTime,
-      },
-      {
-        id: generateId(),
-        sender: 'assistant',
-        content: responseText,
-        timestamp: nowTime,
-        dataSynthesis: true,
       },
     ]);
-    setIsProcessing(false);
-  };
-
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputMessage.trim()) return;
-
-    const userText = inputMessage.trim();
-    const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    const userMsg: ChatMessage = {
-      id: generateId(),
-      sender: 'user',
-      content: userText,
-      timestamp: nowTime,
-    };
-
-    setMessages((prev) => [...prev, userMsg]);
     setInputMessage('');
     setIsProcessing(true);
 
-    setTimeout(() => {
-      let reply = '';
-      if (!apiKey && provider !== 'local_heuristic') {
-        reply = `⚠️ **AI Provider Not Configured**\n\nTo connect live generative LLM completions (OpenAI, Gemini, Anthropic, or local Ollama), click the **Configure API** button above to input your endpoint or key.\n\nIn the meantime, you can use the built-in prompt buttons above to instantly synthesize your actual local tasks, calendar, and expense data.`;
-      } else {
-        // Local contextual search
-        const lower = userText.toLowerCase();
-        if (lower.includes('task') || lower.includes('todo')) {
-          const open = allTasks.filter((t) => !t.done);
-          reply = `You have **${open.length} open tasks** in your local database. Top priorities include:\n` +
-            open.slice(0, 4).map((t) => `• [${t.area}] ${t.text}`).join('\n');
-        } else if (lower.includes('expense') || lower.includes('spend') || lower.includes('money')) {
-          const sum = allExpenses.reduce((s, e) => s + e.amount, 0);
-          reply = `Your total logged expenses across all time is **${formatINR(sum)}** across ${allExpenses.length} transactions.`;
-        } else if (lower.includes('meeting') || lower.includes('schedule')) {
-          const upcoming = allMeetings.filter((m) => m.date >= today && m.status === 'scheduled');
-          reply = upcoming.length > 0
-            ? `You have **${upcoming.length} upcoming meetings**:\n` + upcoming.map((m) => `• ${m.title} on ${formatShortDate(m.date)} at ${m.start_time}`).join('\n')
-            : 'No upcoming meetings scheduled. Great time for deep focus.';
-        } else {
-          reply = `I have received your request: "${userText}".\n\nTo perform unrestricted natural-language reasoning with an external model, configure your API key in **Configure API**. Alternatively, click one of the preset prompts above for instant analysis of your local workspace.`;
-        }
-      }
+    try {
+      const response = await AIGateway.executePrompt(userText, {
+        provider: selectedProvider,
+        modelId: selectedModelId,
+        mode: selectedMode,
+        systemPrompt: `You are Jarvis, the executive personal AI operating system for Yaswanth (founder of PAWAN SHAKTI wind startup, robotics lead at IvLabs, and engineer at MG Automation). Provide rigorous, concise, structured answers. Distinguish verified facts from assumptions.`,
+      });
 
       setMessages((prev) => [
         ...prev,
         {
           id: generateId(),
           sender: 'assistant',
-          content: reply,
+          content: response.text,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          provider: response.provider,
+          modelId: response.modelId,
+          latencyMs: response.latencyMs,
+          tokensUsed: response.tokensInput + response.tokensOutput,
+        },
+      ]);
+    } catch (err: any) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: generateId(),
+          sender: 'assistant',
+          content: `Error: ${err.message || 'Execution error.'}`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
+    } finally {
       setIsProcessing(false);
-    }, 400);
+    }
   };
 
+  // Run model comparison
+  const handleRunComparison = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!comparePrompt.trim() || isComparing) return;
+
+    setIsComparing(true);
+    setComparisonResults([]);
+
+    try {
+      // Pick representative flagship models
+      const modelsToCompare = ['gemini-2.5-flash', 'gpt-4o-mini', 'claude-3-5-haiku-20241022'];
+      const results = await AIGateway.compareModels(comparePrompt.trim(), modelsToCompare);
+      setComparisonResults(results);
+    } catch (err) {
+      console.error('Model comparison failed:', err);
+    } finally {
+      setIsComparing(false);
+    }
+  };
+
+  const modes: { id: AIMode; label: string; icon: React.ElementType }[] = [
+    { id: 'personal', label: 'Personal & Habits', icon: CheckCircle },
+    { id: 'engineering', label: 'Engineering & Robotics', icon: Wrench },
+    { id: 'startup', label: 'Startup & TRL Roadmap', icon: Wind },
+    { id: 'research', label: 'Research & Literature', icon: FileText },
+    { id: 'meeting', label: 'Meeting Preparation', icon: Calendar },
+    { id: 'writing', label: 'Executive Writing', icon: Sparkles },
+  ];
+
   return (
-    <div className="space-y-6 pb-12 flex flex-col h-[calc(100vh-140px)] min-h-[600px]">
-      {/* Header */}
+    <div className="space-y-6 pb-12 flex flex-col h-[calc(100vh-140px)] min-h-[650px]">
+      {/* Top Bar: Mode Selector & Model Config */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-none">
         <div>
           <h2 className="text-2xl font-bold font-heading text-[var(--hub-ink)] tracking-tight flex items-center gap-2">
             <Sparkles className="w-6 h-6 text-teal-600 dark:text-teal-400" />
-            <span>AI Executive Copilot</span>
+            <span>Jarvis AI Operating System</span>
           </h2>
-          <p className="text-sm text-[var(--hub-muted)] mt-0.5">
-            Modular intelligence engine for founder planning, meeting prep, and task prioritization
+          <p className="text-xs sm:text-sm text-[var(--hub-muted)] mt-0.5">
+            Multi-model intelligence engine connecting Gemini, Claude, and GPT with local memory
           </p>
         </div>
 
-        <button
-          onClick={() => setIsConfigOpen(!isConfigOpen)}
-          className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-surface)] text-xs font-semibold text-[var(--hub-ink)] hover:bg-[var(--hub-bg)] cursor-pointer self-start sm:self-auto"
-        >
-          <Key className="w-3.5 h-3.5 text-amber-500" />
-          <span>{apiKey ? 'API Configured' : 'Configure AI Provider'}</span>
-        </button>
-      </div>
-
-      {/* Provider Status Alert */}
-      {!apiKey && (
-        <div className="p-3.5 rounded-xl bg-teal-500/10 border border-teal-500/20 text-xs text-teal-900 dark:text-teal-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 flex-none">
-          <div className="flex items-center gap-2">
-            <CheckCircle className="w-4 h-4 text-teal-600 flex-none" />
-            <span>
-              <strong>Local Intelligence Active:</strong> Real-time synthesis of your local tasks, meetings, expenses, and wind roadmap operates 100% offline without cloud tokens.
-            </span>
-          </div>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          {/* Compare toggle */}
           <button
-            onClick={() => setIsConfigOpen(true)}
-            className="text-xs font-bold underline cursor-pointer text-teal-800 dark:text-teal-100 self-end sm:self-auto"
+            onClick={() => setIsCompareMode(!isCompareMode)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer transition-colors ${
+              isCompareMode
+                ? 'bg-purple-600 text-white border-purple-600'
+                : 'bg-[var(--hub-surface)] border-[var(--hub-line)] text-[var(--hub-ink)] hover:border-purple-500'
+            }`}
           >
-            Connect Cloud LLM
+            <Columns3 className="w-3.5 h-3.5" />
+            <span>Benchmark Models</span>
+          </button>
+
+          {/* Config Key Modal toggle */}
+          <button
+            onClick={() => setIsConfigOpen(!isConfigOpen)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-surface)] text-xs font-semibold text-[var(--hub-ink)] hover:bg-[var(--hub-bg)] cursor-pointer"
+          >
+            <Key className="w-3.5 h-3.5 text-amber-500" />
+            <span>API Gateway Settings</span>
           </button>
         </div>
-      )}
+      </div>
 
-      {/* API Configuration Panel */}
+      {/* Model & Mode Quick Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 bg-[var(--hub-surface)] border border-[var(--hub-line)] p-2.5 rounded-xl flex-none shadow-xs text-xs">
+        {/* Mode Selector */}
+        <div className="flex flex-wrap items-center gap-1">
+          {modes.map((m) => {
+            const Icon = m.icon;
+            const isSelected = selectedMode === m.id;
+            return (
+              <button
+                key={m.id}
+                onClick={() => setSelectedMode(m.id)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-semibold transition-colors cursor-pointer ${
+                  isSelected
+                    ? 'bg-[var(--hub-accent)] text-white shadow-xs'
+                    : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-bg)]'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{m.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Active Model Selector */}
+        <div className="flex items-center gap-2">
+          <Cpu className="w-4 h-4 text-[var(--hub-muted)]" />
+          <select
+            value={selectedModelId}
+            onChange={(e) => {
+              setSelectedModelId(e.target.value);
+              const m = SUPPORTED_MODELS.find((x) => x.modelId === e.target.value);
+              if (m) setSelectedProvider(m.provider);
+            }}
+            className="py-1 px-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-ink)] cursor-pointer"
+          >
+            {SUPPORTED_MODELS.map((m) => (
+              <option key={m.modelId} value={m.modelId}>
+                {m.displayName}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Config Drawer / Modal */}
       {isConfigOpen && (
-        <div className="p-4 bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl space-y-3 shadow-md flex-none">
+        <div className="p-5 bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl space-y-4 shadow-xl flex-none animate-in fade-in">
           <div className="flex items-center justify-between pb-2 border-b border-[var(--hub-line)]">
-            <h4 className="text-xs font-bold text-[var(--hub-ink)] uppercase tracking-wider">
-              AI Provider Settings
-            </h4>
+            <h3 className="font-heading font-bold text-sm text-[var(--hub-ink)] uppercase tracking-wider">
+              Multi-Model AI Gateway Credentials
+            </h3>
             <span className="text-[11px] text-[var(--hub-muted)]">
-              Keys are stored strictly in local browser storage (never sent to any server)
+              Keys remain private on your machine (never leaked or stored on external servers)
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-bold text-[var(--hub-ink)] mb-1">
-                Provider
-              </label>
-              <select
-                value={provider}
-                onChange={(e) => setProvider(e.target.value)}
-                className="w-full py-1.5 px-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs text-[var(--hub-ink)]"
-              >
-                <option value="local_heuristic">Local Heuristic (Offline)</option>
-                <option value="openai">OpenAI (GPT-4o / o1)</option>
-                <option value="gemini">Google Gemini 2.5</option>
-                <option value="anthropic">Anthropic Claude 3.5</option>
-                <option value="ollama">Local Ollama (localhost:11434)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-[var(--hub-ink)] mb-1">
-                API Key (Optional for Local Mode)
+                Google Gemini API Key
               </label>
               <input
                 type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="sk-... or AIza..."
-                className="w-full py-1.5 px-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs text-[var(--hub-ink)]"
+                value={geminiKey}
+                onChange={(e) => setGeminiKey(e.target.value)}
+                placeholder="AIzaSy..."
+                className="w-full py-2 px-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-mono text-[var(--hub-ink)]"
               />
+              <span className="text-[10px] text-[var(--hub-muted)] mt-1 block">
+                Powers Gemini 2.5 Pro & 2.5 Flash
+              </span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-[var(--hub-ink)] mb-1">
+                Anthropic Claude API Key
+              </label>
+              <input
+                type="password"
+                value={anthropicKey}
+                onChange={(e) => setAnthropicKey(e.target.value)}
+                placeholder="sk-ant-api03-..."
+                className="w-full py-2 px-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-mono text-[var(--hub-ink)]"
+              />
+              <span className="text-[10px] text-[var(--hub-muted)] mt-1 block">
+                Powers Claude 3.5 Sonnet & Haiku
+              </span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-[var(--hub-ink)] mb-1">
+                OpenAI API Key
+              </label>
+              <input
+                type="password"
+                value={openaiKey}
+                onChange={(e) => setOpenaiKey(e.target.value)}
+                placeholder="sk-proj-..."
+                className="w-full py-2 px-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-mono text-[var(--hub-ink)]"
+              />
+              <span className="text-[10px] text-[var(--hub-muted)] mt-1 block">
+                Powers GPT-4o & o1-mini
+              </span>
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              onClick={() => setIsConfigOpen(false)}
-              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-[var(--hub-line)] text-[var(--hub-ink)] hover:bg-[var(--hub-bg)]"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => saveConfig(apiKey, provider)}
-              className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-[var(--hub-accent)] text-white hover:bg-[var(--hub-accent-hover)]"
-            >
-              Save Configuration
-            </button>
+          <div className="flex items-center justify-between pt-2">
+            <div className="text-xs text-[var(--hub-muted)]">
+              Logged Tokens: <strong>{totalTokensLogged.toLocaleString()}</strong> (~${totalCostLogged.toFixed(4)})
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setIsConfigOpen(false)}
+                className="px-4 py-1.5 text-xs font-medium rounded-lg border border-[var(--hub-line)] text-[var(--hub-ink)] hover:bg-[var(--hub-bg)] cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                onClick={saveApiKeys}
+                className="px-5 py-1.5 text-xs font-semibold rounded-lg bg-[var(--hub-accent)] text-white hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
+              >
+                Save Keys
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Preset Action Prompt Buttons */}
-      <div className="flex flex-wrap items-center gap-2 flex-none">
-        <button
-          onClick={() => executeDataSynthesis('daily_plan')}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--hub-surface)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] hover:bg-[var(--hub-bg)] transition-colors cursor-pointer"
-        >
-          <ListTodo className="w-3.5 h-3.5 text-teal-600" />
-          <span>Daily Plan</span>
-        </button>
+      {/* Model Benchmark Comparison Mode */}
+      {isCompareMode ? (
+        <div className="flex-1 bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-5 overflow-y-auto space-y-4 shadow-xs flex flex-col">
+          <div className="flex items-center justify-between pb-3 border-b border-[var(--hub-line)] flex-none">
+            <div>
+              <h3 className="font-heading font-bold text-sm text-[var(--hub-ink)] flex items-center gap-2">
+                <Columns3 className="w-4 h-4 text-purple-600" />
+                <span>Multi-Model Benchmark Arena (Gemini vs GPT vs Claude)</span>
+              </h3>
+              <p className="text-xs text-[var(--hub-muted)] mt-0.5">
+                Send the same query simultaneously to compare reasoning quality, response time, and token output
+              </p>
+            </div>
+          </div>
 
-        <button
-          onClick={() => executeDataSynthesis('prioritize')}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--hub-surface)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] hover:bg-[var(--hub-bg)] transition-colors cursor-pointer"
-        >
-          <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-          <span>Prioritize Tasks</span>
-        </button>
-
-        <button
-          onClick={() => executeDataSynthesis('meeting_prep')}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--hub-surface)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] hover:bg-[var(--hub-bg)] transition-colors cursor-pointer"
-        >
-          <Calendar className="w-3.5 h-3.5 text-blue-600" />
-          <span>Meeting Briefing</span>
-        </button>
-
-        <button
-          onClick={() => executeDataSynthesis('expense_summary')}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--hub-surface)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] hover:bg-[var(--hub-bg)] transition-colors cursor-pointer"
-        >
-          <IndianRupee className="w-3.5 h-3.5 text-emerald-600" />
-          <span>Expense Burn</span>
-        </button>
-
-        <button
-          onClick={() => executeDataSynthesis('wind_review')}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--hub-surface)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] hover:bg-[var(--hub-bg)] transition-colors cursor-pointer"
-        >
-          <Wind className="w-3.5 h-3.5 text-teal-600" />
-          <span>90-Day TRL Check</span>
-        </button>
-      </div>
-
-      {/* Chat Messages Log */}
-      <div className="flex-1 bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-4 overflow-y-auto space-y-4 shadow-xs">
-        {messages.map((msg) => {
-          const isUser = msg.sender === 'user';
-          return (
-            <div
-              key={msg.id}
-              className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}
+          <form onSubmit={handleRunComparison} className="flex gap-2 flex-none">
+            <input
+              type="text"
+              value={comparePrompt}
+              onChange={(e) => setComparePrompt(e.target.value)}
+              placeholder="e.g. Design a low-drag NACA 4412 blade root attachment or compare grant proposals..."
+              className="flex-1 px-4 py-2.5 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs sm:text-sm text-[var(--hub-ink)] focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+            <button
+              type="submit"
+              disabled={!comparePrompt.trim() || isComparing}
+              className="px-5 py-2.5 rounded-xl bg-purple-600 text-white font-semibold text-xs sm:text-sm hover:bg-purple-700 transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
             >
-              {!isUser && (
-                <div className="w-8 h-8 rounded-full bg-teal-500/10 text-teal-700 dark:text-teal-300 flex items-center justify-center flex-none border border-teal-500/20">
-                  <Bot className="w-4 h-4" />
-                </div>
-              )}
+              <Zap className="w-4 h-4" />
+              <span>{isComparing ? 'Benchmarking...' : 'Run Benchmark'}</span>
+            </button>
+          </form>
 
-              <div
-                className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 text-xs sm:text-sm leading-relaxed ${
-                  isUser
-                    ? 'bg-[var(--hub-accent)] text-white rounded-tr-xs'
-                    : 'bg-[var(--hub-bg)] border border-[var(--hub-line)] text-[var(--hub-ink)] rounded-tl-xs'
-                }`}
-              >
-                <div className="whitespace-pre-wrap font-sans">{msg.content}</div>
+          {/* Comparison Cards Grid */}
+          <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4 min-h-0 overflow-y-auto pt-2">
+            {comparisonResults.length === 0 ? (
+              <div className="col-span-full py-16 text-center text-xs text-[var(--hub-muted)]">
+                Enter an engineering brief or business question above and click "Run Benchmark" to compare models.
+              </div>
+            ) : (
+              comparisonResults.map((res) => (
                 <div
-                  className={`text-[10px] mt-2 text-right ${
-                    isUser ? 'text-white/70' : 'text-[var(--hub-muted)]'
+                  key={res.modelId}
+                  className="bg-[var(--hub-bg)] border border-[var(--hub-line)] rounded-xl p-4 flex flex-col justify-between space-y-3"
+                >
+                  <div>
+                    <div className="flex items-center justify-between pb-2 border-b border-[var(--hub-line)]">
+                      <span className="font-heading font-bold text-xs uppercase text-[var(--hub-ink)]">
+                        {res.provider.toUpperCase()}
+                      </span>
+                      <span className="text-[11px] font-mono text-[var(--hub-muted)]">
+                        {res.latencyMs}ms • {res.tokensUsed} tokens
+                      </span>
+                    </div>
+                    <div className="text-xs text-[var(--hub-ink)] whitespace-pre-wrap leading-relaxed mt-3 max-h-96 overflow-y-auto pr-1">
+                      {res.response}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      ) : (
+        /* Standard Jarvis Conversation Feed */
+        <div className="flex-1 bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-4 overflow-y-auto space-y-4 shadow-xs">
+          {messages.map((msg) => {
+            const isUser = msg.sender === 'user';
+            return (
+              <div
+                key={msg.id}
+                className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}
+              >
+                {!isUser && (
+                  <div className="w-8 h-8 rounded-full bg-teal-500/10 text-teal-700 dark:text-teal-300 flex items-center justify-center flex-none border border-teal-500/20">
+                    <Bot className="w-4 h-4" />
+                  </div>
+                )}
+
+                <div
+                  className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 text-xs sm:text-sm leading-relaxed ${
+                    isUser
+                      ? 'bg-[var(--hub-accent)] text-white rounded-tr-xs shadow-xs'
+                      : 'bg-[var(--hub-bg)] border border-[var(--hub-line)] text-[var(--hub-ink)] rounded-tl-xs'
                   }`}
                 >
-                  {msg.timestamp}
+                  <div className="whitespace-pre-wrap font-sans">{msg.content}</div>
+
+                  <div
+                    className={`flex items-center justify-between gap-3 text-[10px] mt-2 pt-1 border-t ${
+                      isUser
+                        ? 'border-white/20 text-white/70'
+                        : 'border-[var(--hub-line)] text-[var(--hub-muted)]'
+                    }`}
+                  >
+                    {!isUser && msg.modelId && (
+                      <span className="font-mono">
+                        {msg.modelId} {msg.latencyMs ? `(${msg.latencyMs}ms)` : ''}
+                      </span>
+                    )}
+                    <span className="ml-auto">{msg.timestamp}</span>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
 
-        {isProcessing && (
-          <div className="flex gap-3 items-center text-xs text-[var(--hub-muted)] animate-pulse">
-            <Bot className="w-4 h-4 text-teal-600" />
-            <span>Analyzing local workspace data...</span>
-          </div>
-        )}
-      </div>
+          {isProcessing && (
+            <div className="flex gap-3 items-center text-xs text-[var(--hub-muted)] animate-pulse">
+              <Bot className="w-4 h-4 text-teal-600" />
+              <span>Jarvis is reasoning across your local workspace data...</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Input Message Form */}
       <form onSubmit={handleSendMessage} className="flex gap-2 flex-none">
@@ -472,7 +485,7 @@ ${
           type="text"
           value={inputMessage}
           onChange={(e) => setInputMessage(e.target.value)}
-          placeholder="Ask a question about your tasks, meetings, expenses or 90-day plan..."
+          placeholder={`Ask Jarvis in ${selectedMode.toUpperCase()} mode (e.g. prioritize today's milestones, audit burn rate, prep meeting)...`}
           className="flex-1 px-4 py-3 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-surface)] text-[var(--hub-ink)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--hub-accent)] placeholder:text-[var(--hub-muted)] shadow-xs"
         />
         <button
