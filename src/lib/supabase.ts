@@ -222,4 +222,106 @@ create policy "Users can access their own areas"
   on public.areas for all
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+-- 9. Integrations Table (NeoSapien, Google, etc.)
+create table if not exists public.integrations (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade not null default auth.uid(),
+  provider text not null,
+  status text not null default 'disconnected',
+  auth_type text not null default 'oauth2',
+  account_id text,
+  account_email text,
+  permissions_granted text[] default '{}',
+  last_successful_sync timestamptz,
+  last_error text,
+  metadata jsonb default '{}'::jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+alter table public.integrations enable row level security;
+create policy "Users can manage their own integrations"
+  on public.integrations for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+-- 10. Connected Devices Table (Neo 1 Physical Telemetry)
+create table if not exists public.connected_devices (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade not null default auth.uid(),
+  device_type text not null default 'neo1',
+  name text not null,
+  hardware_id text,
+  firmware_version text,
+  battery_percentage integer,
+  connection_state text not null default 'disconnected',
+  listening_state text not null default 'idle',
+  telemetry_source text not null default 'web_bluetooth',
+  last_connected_at timestamptz,
+  last_status_update timestamptz default now(),
+  created_at timestamptz default now()
+);
+
+alter table public.connected_devices enable row level security;
+create policy "Users can manage their own connected devices"
+  on public.connected_devices for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+-- 11. Memories Table (NeoSapien Second Brain)
+create table if not exists public.memories (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade not null default auth.uid(),
+  original_neo_id text,
+  title text not null,
+  source text not null,
+  platform text not null default 'in_person',
+  captured_at timestamptz not null default now(),
+  duration_minutes integer,
+  summary text not null,
+  transcript text,
+  speakers jsonb default '[]'::jsonb,
+  decisions jsonb default '[]'::jsonb,
+  action_items jsonb default '[]'::jsonb,
+  commitments text[] default '{}',
+  follow_ups text[] default '{}',
+  people_mentioned text[] default '{}',
+  tags text[] default '{}',
+  associated_project_id text,
+  associated_area text default 'Personal',
+  associated_google_event_id text,
+  sync_method text default 'webhook',
+  is_important boolean default false,
+  imported_at timestamptz default now()
+);
+
+alter table public.memories enable row level security;
+create policy "Users can manage their own memories"
+  on public.memories for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+-- 12. Meeting Summaries Table
+create table if not exists public.meeting_summaries (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade not null default auth.uid(),
+  meeting_id uuid references public.meetings(id) on delete cascade not null,
+  source_memory_id uuid references public.memories(id) on delete set null,
+  executive_summary text not null,
+  key_decisions text[] default '{}',
+  action_items jsonb default '[]'::jsonb,
+  draft_follow_up_email text,
+  sentiment text,
+  suggested_next_meeting timestamptz,
+  approved_by_user boolean default false,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+alter table public.meeting_summaries enable row level security;
+create policy "Users can manage their own meeting summaries"
+  on public.meeting_summaries for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
 `;

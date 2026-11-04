@@ -18,6 +18,7 @@ import type { Task, Area, Priority } from '../types';
 import { formatINR, formatShortDate, getGreeting, getTodayISO, isOverdue, generateId } from '../lib/utils';
 import { StatCard } from '../components/common/StatCard';
 import { Badge } from '../components/common/Badge';
+import { Neo1DeviceCard } from '../components/neo/Neo1DeviceCard';
 
 interface DashboardPageProps {
   currentArea: string;
@@ -175,6 +176,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           onClick={() => onNavigate('calendar')}
         />
       </div>
+ 
+      {/* Real-time Neo 1 & Ecosystem Telemetry Card */}
+      <Neo1DeviceCard />
 
       {/* Quick Add Task Box */}
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-4 shadow-xs">

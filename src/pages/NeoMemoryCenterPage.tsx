@@ -28,6 +28,7 @@ import { GoogleAuthService } from '../services/google/googleAuthService';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { generateId, getTodayISO } from '../lib/utils';
+import { Neo1DeviceCard } from '../components/neo/Neo1DeviceCard';
 
 interface NeoMemoryCenterPageProps {
   currentArea: string;
@@ -217,6 +218,9 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Real-time Physical Device Status Card (Web Bluetooth / Android Companion) */}
+      <Neo1DeviceCard />
+
       {/* Page Title & Status Header */}
       <div className="bg-[var(--hub-card-bg)] border border-[var(--hub-border)] rounded-2xl p-6 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">

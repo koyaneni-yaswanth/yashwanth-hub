@@ -11,6 +11,10 @@ import {
   Edit2,
   Calendar,
   ListTodo,
+  Sparkles,
+  Brain,
+  Mail,
+  Copy,
 } from 'lucide-react';
 import { db } from '../db';
 import type { Meeting, Area } from '../types';
@@ -18,6 +22,7 @@ import { formatShortDate, getTodayISO, generateId } from '../lib/utils';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
+import { MeetingIntelligenceService, type MeetingBrief } from '../services/meetingIntelligenceService';
 
 interface MeetingsPageProps {
   currentArea: string;
@@ -32,6 +37,16 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({ currentArea, areas }
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
   const [meetingToDelete, setMeetingToDelete] = useState<string | null>(null);
+
+  // Meeting Intelligence state
+  const [selectedBrief, setSelectedBrief] = useState<MeetingBrief | null>(null);
+  const [isBriefModalOpen, setIsBriefModalOpen] = useState(false);
+  const [isGeneratingBrief, setIsGeneratingBrief] = useState(false);
+  const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
+  const [draftEmailText, setDraftEmailText] = useState('');
+  const [followUpMeeting, setFollowUpMeeting] = useState<Meeting | null>(null);
+  const [suggestedSlotText, setSuggestedSlotText] = useState('');
+  const [isSchedulingNext, setIsSchedulingNext] = useState(false);
 
   // Form State
   const [formTitle, setFormTitle] = useState('');
@@ -92,6 +107,75 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({ currentArea, areas }
     setFormActionItems(meeting.action_items || '');
     setFormStatus(meeting.status);
     setIsModalOpen(true);
+  };
+
+  const handleOpenBrief = async (meeting: Meeting) => {
+    setIsGeneratingBrief(true);
+    try {
+      const brief = await MeetingIntelligenceService.generateMeetingBrief(meeting);
+      setSelectedBrief(brief);
+      setIsBriefModalOpen(true);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsGeneratingBrief(false);
+    }
+  };
+
+  const handleOpenFollowUp = async (meeting: Meeting) => {
+    setFollowUpMeeting(meeting);
+    const mockMem = {
+      id: meeting.id,
+      title: meeting.title,
+      source: 'desktop_meeting' as const,
+      platform: 'google_meet' as const,
+      capturedAt: `${meeting.date}T${meeting.start_time}:00Z`,
+      summary: meeting.agenda_and_notes || `${meeting.title} held with ${meeting.attendees || 'team'}.`,
+      decisions: [],
+      actionItems: meeting.action_items
+        ? meeting.action_items.split('\n').filter(Boolean).map((line) => ({
+            id: generateId(),
+            text: line.trim(),
+            status: 'pending_approval' as const,
+            isCommitment: true,
+            priority: 'medium' as const,
+          }))
+        : [],
+      commitments: [],
+      followUps: [],
+      reminders: [],
+      peopleMentioned: meeting.attendees ? meeting.attendees.split(',').map((s) => s.trim()) : [],
+      tags: [],
+      importedAt: new Date().toISOString(),
+      syncMethod: 'manual_entry' as const,
+    };
+    const res = await MeetingIntelligenceService.processMeetingMemory(mockMem, meeting.id);
+    setDraftEmailText(res.draftFollowUpEmail);
+    setSuggestedSlotText(res.suggestedNextMeetingSlot || '');
+    setIsFollowUpModalOpen(true);
+  };
+
+  const handleScheduleNext = async () => {
+    if (!followUpMeeting || !suggestedSlotText) return;
+    setIsSchedulingNext(true);
+    try {
+      const parts = suggestedSlotText.split(' ');
+      const datePart = parts[0];
+      await MeetingIntelligenceService.approveAndScheduleNextMeeting(
+        followUpMeeting.title,
+        datePart,
+        '11:00',
+        '12:00',
+        followUpMeeting.attendees,
+        followUpMeeting.area
+      );
+      alert('Next follow-up meeting scheduled successfully!');
+      setIsFollowUpModalOpen(false);
+    } catch (e: any) {
+      alert(`Failed to schedule meeting: ${e.message}`);
+    } finally {
+      setIsSchedulingNext(false);
+    }
   };
 
   const handleSaveMeeting = async (e: React.FormEvent) => {
@@ -288,7 +372,25 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({ currentArea, areas }
                     <span className="text-xs text-[var(--hub-muted)]">No link set</span>
                   )}
 
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      onClick={() => handleOpenBrief(meeting)}
+                      disabled={isGeneratingBrief}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 hover:bg-teal-500/20 text-xs font-semibold transition-colors cursor-pointer"
+                      title="AI Meeting Preparation Brief & Past Memories"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Prep Brief</span>
+                    </button>
+                    <button
+                      onClick={() => handleOpenFollowUp(meeting)}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 text-xs font-semibold transition-colors cursor-pointer"
+                      title="Draft Follow-Up Email & Schedule Next"
+                    >
+                      <Mail className="w-3.5 h-3.5" />
+                      <span>Follow-Up</span>
+                    </button>
+
                     <button
                       onClick={() => handleToggleCompleted(meeting)}
                       className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
@@ -482,6 +584,154 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({ currentArea, areas }
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* AI Meeting Preparation Brief Modal */}
+      <Modal
+        isOpen={isBriefModalOpen}
+        onClose={() => setIsBriefModalOpen(false)}
+        title="AI Meeting Preparation Brief"
+      >
+        {selectedBrief && (
+          <div className="space-y-4">
+            <div className="p-3 rounded-lg bg-teal-500/10 border border-teal-500/20 text-xs">
+              <div className="font-bold text-teal-700 dark:text-teal-300 text-sm">{selectedBrief.meetingTitle}</div>
+              <div className="text-[var(--hub-muted)] mt-0.5">
+                Scheduled: <strong className="text-[var(--hub-ink)]">{selectedBrief.scheduledTime}</strong> | Attendees:{' '}
+                <strong className="text-[var(--hub-ink)]">{selectedBrief.attendees.join(', ') || 'Team'}</strong>
+              </div>
+            </div>
+
+            {/* Past Context */}
+            <div>
+              <div className="text-xs uppercase font-bold text-[var(--hub-muted)] tracking-wider mb-1.5 flex items-center gap-1.5">
+                <Brain className="w-3.5 h-3.5 text-teal-500" />
+                <span>NeoSapien Past Discussion Context ({selectedBrief.pastMemoriesFound} memories found)</span>
+              </div>
+              <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs text-[var(--hub-ink)] leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto">
+                {selectedBrief.relevantContextSnippet}
+              </div>
+            </div>
+
+            {/* Unresolved Commitments */}
+            {selectedBrief.previousOpenActionItems.length > 0 && (
+              <div>
+                <div className="text-xs uppercase font-bold text-amber-500 tracking-wider mb-1.5 flex items-center gap-1.5">
+                  <ListTodo className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Unresolved Previous Commitments</span>
+                </div>
+                <div className="p-2.5 rounded-lg bg-amber-500/5 border border-amber-500/20 text-xs text-amber-900 dark:text-amber-200 space-y-1">
+                  {selectedBrief.previousOpenActionItems.map((item, idx) => (
+                    <div key={idx} className="flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 flex-none" />
+                      <span>{item}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Suggested Agenda */}
+            <div>
+              <div className="text-xs uppercase font-bold text-sky-500 tracking-wider mb-1.5 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-sky-500" />
+                <span>Suggested Meeting Agenda</span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-sky-500/5 border border-sky-500/20 text-xs text-sky-900 dark:text-sky-200 space-y-1">
+                {selectedBrief.suggestedAgendaTopics.map((topic, idx) => (
+                  <div key={idx} className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-sky-500 flex-none" />
+                    <span>{topic}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--hub-line)]">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(
+                    `Meeting Brief: ${selectedBrief.meetingTitle}\n\nContext:\n${selectedBrief.relevantContextSnippet}\n\nAgenda:\n${selectedBrief.suggestedAgendaTopics.join('\n')}`
+                  );
+                  alert('Meeting brief copied to clipboard!');
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] hover:bg-[var(--hub-bg)] cursor-pointer"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>Copy Brief</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsBriefModalOpen(false)}
+                className="px-4 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Draft Follow-Up Email & Schedule Next Modal */}
+      <Modal
+        isOpen={isFollowUpModalOpen}
+        onClose={() => setIsFollowUpModalOpen(false)}
+        title="Post-Meeting Intelligence & Follow-Up"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-[var(--hub-ink)] uppercase tracking-wider mb-1">
+              Draft Follow-Up Email
+            </label>
+            <textarea
+              value={draftEmailText}
+              onChange={(e) => setDraftEmailText(e.target.value)}
+              rows={8}
+              className="w-full px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)] font-mono text-xs leading-relaxed"
+            />
+          </div>
+
+          {/* Suggested Next Meeting Slot */}
+          {suggestedSlotText && (
+            <div className="p-3 rounded-lg bg-teal-500/10 border border-teal-500/20 text-xs flex items-center justify-between">
+              <div>
+                <div className="font-bold text-teal-700 dark:text-teal-300">Suggested Next Meeting Time:</div>
+                <div className="text-[var(--hub-ink)] font-mono font-semibold mt-0.5">{suggestedSlotText}</div>
+                <div className="text-[10px] text-[var(--hub-muted)]">Verified conflict-free against Google Calendar</div>
+              </div>
+              <button
+                type="button"
+                onClick={handleScheduleNext}
+                disabled={isSchedulingNext}
+                className="px-3 py-1.5 rounded-lg bg-teal-600 text-white font-heading text-xs font-bold hover:bg-teal-700 transition-colors shadow-xs cursor-pointer disabled:opacity-50"
+              >
+                {isSchedulingNext ? 'Scheduling...' : 'Approve & Schedule'}
+              </button>
+            </div>
+          )}
+
+          <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--hub-line)]">
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(draftEmailText);
+                alert('Draft email copied to clipboard!');
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] hover:bg-[var(--hub-bg)] cursor-pointer"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              <span>Copy Email</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsFollowUpModalOpen(false)}
+              className="px-4 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold cursor-pointer"
+            >
+              Done
+            </button>
+          </div>
+        </div>
       </Modal>
 
       <ConfirmDialog

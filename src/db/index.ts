@@ -21,6 +21,12 @@ import type {
   GoogleTaskItem,
   NeoMemory,
   NeoSyncAuditRecord,
+  HubIntegration,
+  ConnectedDevice,
+  DeviceStatusHistory,
+  MeetingSummaryRecord,
+  SyncJobRecord,
+  IntegrationEventRecord,
 } from '../types';
 import { generateId, getTodayISO } from '../lib/utils';
 
@@ -46,6 +52,12 @@ export class YashwanthHubDatabase extends Dexie {
   google_tasks!: Table<GoogleTaskItem, string>;
   neo_memories!: Table<NeoMemory, string>;
   neo_sync_audit!: Table<NeoSyncAuditRecord, string>;
+  hub_integrations!: Table<HubIntegration, string>;
+  connected_devices!: Table<ConnectedDevice, string>;
+  device_status_history!: Table<DeviceStatusHistory, string>;
+  meeting_summaries!: Table<MeetingSummaryRecord, string>;
+  sync_jobs!: Table<SyncJobRecord, string>;
+  integration_events!: Table<IntegrationEventRecord, string>;
 
   constructor() {
     super('YashwanthHubDB');
@@ -80,6 +92,15 @@ export class YashwanthHubDatabase extends Dexie {
     this.version(4).stores({
       neo_memories: 'id, originalNeoId, title, source, platform, capturedAt, associatedProjectId, associatedArea, associatedGoogleEventId, importedAt',
       neo_sync_audit: 'id, timestamp, method, status',
+    });
+
+    this.version(5).stores({
+      hub_integrations: 'id, provider, status, auth_type, updated_at',
+      connected_devices: 'id, device_type, connection_state, listening_state, last_status_update',
+      device_status_history: 'id, device_id, recorded_at',
+      meeting_summaries: 'id, meeting_id, source_memory_id, created_at',
+      sync_jobs: 'id, service, status, started_at',
+      integration_events: 'id, integration_id, event_type, status, created_at',
     });
   }
 }

@@ -488,3 +488,90 @@ export type NavigationTab =
   | 'neo-memory'
   | 'system-health'
   | 'settings';
+
+// ==========================================
+// REAL-TIME AI OPERATING SYSTEM SCHEMA (SUPABASE & DEXIE)
+// ==========================================
+
+export interface HubIntegration {
+  id: string;
+  user_id?: string;
+  provider: 'neosapien' | 'google_workspace' | 'github' | 'custom_mcp';
+  status: 'connected' | 'disconnected' | 'error' | 'pending_auth';
+  auth_type: 'oauth2' | 'api_key' | 'webhook' | 'mcp_sse';
+  account_id?: string;
+  account_email?: string;
+  permissions_granted: string[];
+  last_successful_sync?: string;
+  last_error?: string;
+  metadata?: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConnectedDevice {
+  id: string;
+  user_id?: string;
+  device_type: 'neo1' | 'desktop_companion' | 'android_companion' | 'ios' | 'other';
+  name: string;
+  hardware_id?: string;
+  firmware_version?: string;
+  battery_percentage?: number;
+  connection_state: 'connected' | 'disconnected' | 'stale' | 'pairing';
+  listening_state: 'listening' | 'idle' | 'sleeping' | 'charging' | 'unknown';
+  telemetry_source: 'web_bluetooth' | 'android_companion' | 'desktop_client' | 'cloud_polled';
+  last_connected_at?: string;
+  last_status_update: string;
+  created_at?: string;
+}
+
+export interface DeviceStatusHistory {
+  id: string;
+  device_id: string;
+  user_id?: string;
+  battery_percentage?: number;
+  connection_state: string;
+  listening_state: string;
+  rssi?: number;
+  recorded_at: string;
+}
+
+export interface MeetingSummaryRecord {
+  id: string;
+  user_id?: string;
+  meeting_id: string;
+  source_memory_id?: string;
+  executive_summary: string;
+  key_decisions: string[];
+  action_items: { text: string; assignee?: string; due?: string }[];
+  draft_follow_up_email?: string;
+  sentiment?: 'constructive' | 'neutral' | 'urgent' | 'contentious';
+  suggested_next_meeting?: string;
+  approved_by_user: boolean;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface SyncJobRecord {
+  id: string;
+  user_id?: string;
+  service: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  records_processed: number;
+  records_failed: number;
+  idempotency_key: string;
+  started_at: string;
+  completed_at?: string;
+  error_log?: string;
+}
+
+export interface IntegrationEventRecord {
+  id: string;
+  user_id?: string;
+  integration_id: string;
+  event_type: string;
+  payload_summary: string;
+  status: 'processed' | 'ignored' | 'failed';
+  created_at: string;
+}
+
