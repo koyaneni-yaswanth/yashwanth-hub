@@ -11,8 +11,6 @@ import {
   FileText,
   FileSpreadsheet,
   Image as ImageIcon,
-  Tag,
-  AlertCircle,
 } from 'lucide-react';
 import { db } from '../db';
 import type { DocumentItem, Area } from '../types';

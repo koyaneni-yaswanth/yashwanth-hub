@@ -3,9 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import confetti from 'canvas-confetti';
 import {
   Wind,
-  CheckCircle2,
   Calendar,
-  AlertCircle,
   Sparkles,
   ChevronDown,
   ChevronUp,
@@ -16,7 +14,6 @@ import { db } from '../db';
 import type { Task } from '../types';
 import { formatShortDate, generateId } from '../lib/utils';
 import { TurbineLogo } from '../components/common/TurbineLogo';
-import { Badge } from '../components/common/Badge';
 
 interface PhaseWeek {
   t: string;

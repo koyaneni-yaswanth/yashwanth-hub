@@ -43,7 +43,11 @@ export class GmailService {
       let suggestedAction: string | undefined;
 
       const lower = snippet.toLowerCase();
-      if (lower.includes('by friday') || lower.includes('due') || lower.includes('deadline')) {
+      if (lower.includes('by tomorrow')) {
+        detectedDeadline = 'Tomorrow';
+        suggestedAction = 'Review deliverable or reply with milestone status';
+      } else if (lower.includes('by friday') || lower.includes('due') || lower.includes('deadline')) {
+        detectedDeadline = 'Upcoming milestone';
         suggestedAction = 'Review deliverable or reply with milestone status';
       } else if (lower.includes('call') || lower.includes('meeting') || lower.includes('schedule')) {
         suggestedAction = 'Confirm meeting time or provide calendar slot';

@@ -10,7 +10,6 @@ import {
   Menu,
   Bell,
   Search,
-  Command,
 } from 'lucide-react';
 import { db } from '../../db';
 import { TurbineLogo } from '../common/TurbineLogo';

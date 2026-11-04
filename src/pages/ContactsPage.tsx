@@ -9,7 +9,6 @@ import {
   Building,
   Trash2,
   Edit2,
-  ExternalLink,
 } from 'lucide-react';
 import { db } from '../db';
 import type { Contact, Area } from '../types';

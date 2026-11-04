@@ -1,7 +1,6 @@
 import type {
   AIProvider,
   AIMode,
-  AIModelConfig,
   AIComparisonResult,
   AIUsageLog,
 } from '../../types';

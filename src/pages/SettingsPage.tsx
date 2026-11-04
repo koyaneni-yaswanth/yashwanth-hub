@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
-  Settings as SettingsIcon,
   Moon,
   Sun,
   Monitor,
@@ -19,15 +18,9 @@ import {
   HardDrive,
   Bluetooth,
   Radio,
-  Mail,
-  Video,
   CalendarDays,
-  FileCheck,
   CheckCircle2,
   AlertTriangle,
-  FolderKanban,
-  Bell,
-  Cpu,
 } from 'lucide-react';
 import { db } from '../db';
 import type { Area } from '../types';
@@ -139,7 +132,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
     try {
       const cfg = await NeoSapienService.scanAndConnectBLE();
       setNeoConfig(cfg);
-    } catch (err: any) {
+    } catch {
       setNeoConfig(NeoSapienService.getConfig());
     } finally {
       setIsScanningBLE(false);
@@ -656,9 +649,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
             <Cloud className="w-4 h-4 text-blue-500" />
             <span>Future Cloud Sync (Supabase Backend)</span>
           </h3>
-          <Badge variant={isSupabaseConfigured() ? 'emerald' : 'gray'}>
-            {isSupabaseConfigured() ? 'Cloud Configured' : 'Local Mode'}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant={isSupabaseConfigured() ? 'emerald' : 'gray'}>
+              {statusMessage || (isSupabaseConfigured() ? 'Cloud Configured' : 'Local Mode')}
+            </Badge>
+            {queueCount > 0 && (
+              <Badge variant="amber">{queueCount} pending sync</Badge>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -722,6 +720,16 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
             <span>{isTesting ? 'Testing...' : 'Test Connection'}</span>
           </button>
 
+          {isSupabaseConfigured() && (
+            <button
+              onClick={() => syncNow()}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer"
+            >
+              <Cloud className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Sync Now ({status})</span>
+            </button>
+          )}
+
           <button
             onClick={() => setIsSchemaModalOpen(true)}
             className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer"
@@ -749,16 +757,36 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
             <span className="font-bold text-sm text-[var(--hub-ink)]">{taskCount}</span>
           </div>
           <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)]">
-            <span className="text-[var(--hub-muted)] block">Notifications</span>
-            <span className="font-bold text-sm text-[var(--hub-ink)]">{notificationCount}</span>
+            <span className="text-[var(--hub-muted)] block">Events</span>
+            <span className="font-bold text-sm text-[var(--hub-ink)]">{eventCount}</span>
           </div>
           <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)]">
             <span className="text-[var(--hub-muted)] block">Meetings</span>
             <span className="font-bold text-sm text-[var(--hub-ink)]">{meetingCount}</span>
           </div>
           <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)]">
+            <span className="text-[var(--hub-muted)] block">Travel</span>
+            <span className="font-bold text-sm text-[var(--hub-ink)]">{travelCount}</span>
+          </div>
+          <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)]">
+            <span className="text-[var(--hub-muted)] block">Notes</span>
+            <span className="font-bold text-sm text-[var(--hub-ink)]">{noteCount}</span>
+          </div>
+          <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)]">
             <span className="text-[var(--hub-muted)] block">Expenses</span>
             <span className="font-bold text-sm text-[var(--hub-ink)]">{expenseCount}</span>
+          </div>
+          <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)]">
+            <span className="text-[var(--hub-muted)] block">Contacts</span>
+            <span className="font-bold text-sm text-[var(--hub-ink)]">{contactCount}</span>
+          </div>
+          <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)]">
+            <span className="text-[var(--hub-muted)] block">Documents</span>
+            <span className="font-bold text-sm text-[var(--hub-ink)]">{documentCount}</span>
+          </div>
+          <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)]">
+            <span className="text-[var(--hub-muted)] block">Notifications</span>
+            <span className="font-bold text-sm text-[var(--hub-ink)]">{notificationCount}</span>
           </div>
         </div>
       </div>

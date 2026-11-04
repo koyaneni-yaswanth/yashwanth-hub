@@ -8,7 +8,6 @@ import {
   Plus,
   Star,
   Trash2,
-  Clock,
   MapPin,
   FileText,
   Wind,

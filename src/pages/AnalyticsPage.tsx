@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
-  BarChart3,
   TrendingUp,
   PieChart,
   CheckCircle2,
@@ -9,13 +8,11 @@ import {
   IndianRupee,
   Layers,
   Wind,
-  Calendar,
 } from 'lucide-react';
 import { db } from '../db';
-import type { Area, Task, Expense, EventItem } from '../types';
+import type { Area } from '../types';
 import { formatINR, getTodayISO, isOverdue } from '../lib/utils';
 import { StatCard } from '../components/common/StatCard';
-import { Badge } from '../components/common/Badge';
 
 interface AnalyticsPageProps {
   currentArea: string;
@@ -34,13 +31,10 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
   // Queries
   const allTasks = useLiveQuery(() => db.tasks.toArray(), []) || [];
   const allExpenses = useLiveQuery(() => db.expenses.toArray(), []) || [];
-  const allEvents = useLiveQuery(() => db.events.toArray(), []) || [];
-  const allMeetings = useLiveQuery(() => db.meetings.toArray(), []) || [];
 
   // Filter based on selected area
   const tasks = currentArea === 'All' ? allTasks : allTasks.filter((t) => t.area === currentArea);
   const expenses = currentArea === 'All' ? allExpenses : allExpenses.filter((e) => e.area === currentArea);
-  const events = currentArea === 'All' ? allEvents : allEvents.filter((e) => e.area === currentArea);
 
   // Task Analytics
   const totalTasks = tasks.length;

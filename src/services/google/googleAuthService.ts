@@ -1,5 +1,4 @@
 import type { GoogleWorkspaceConfig } from '../../types';
-import { db } from '../../db';
 
 export const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/calendar.events',

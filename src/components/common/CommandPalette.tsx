@@ -9,13 +9,11 @@ import {
   Video,
   FileText,
   IndianRupee,
-  Users,
   Wind,
   Sparkles,
   Settings,
   Bell,
   Sun,
-  Moon,
   ArrowRight,
 } from 'lucide-react';
 import { db } from '../../db';
@@ -112,7 +110,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       category: 'Projects',
     }));
 
-  const allResults = [...matchedNav, ...matchedActions, ...matchedProjects, ...matchedTasks];
+  const matchedNotes = allNotes
+    .filter((n) => !q || n.title.toLowerCase().includes(q) || (n.body && n.body.toLowerCase().includes(q)))
+    .slice(0, 3)
+    .map((n) => ({
+      label: `Note: ${n.title} (${n.area})`,
+      action: () => onNavigate('notes'),
+      icon: FileText,
+      category: 'Notes',
+    }));
+
+  const allResults = [...matchedNav, ...matchedActions, ...matchedProjects, ...matchedTasks, ...matchedNotes];
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {

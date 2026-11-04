@@ -7,9 +7,6 @@ import {
   Pin,
   Trash2,
   Edit2,
-  Tag,
-  Clock,
-  Sparkles,
 } from 'lucide-react';
 import { db } from '../db';
 import type { Note, Area } from '../types';

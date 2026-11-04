@@ -68,7 +68,6 @@ export class ReminderEngine {
   public static async runIntelligenceScan(): Promise<number> {
     const today = getTodayISO();
     const now = new Date();
-    const currentHHMM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     let countDelivered = 0;
 
     const [tasks, meetings, existingNotifs] = await Promise.all([

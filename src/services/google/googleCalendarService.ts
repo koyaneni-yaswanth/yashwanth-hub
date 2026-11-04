@@ -1,7 +1,7 @@
 import { GoogleAuthService } from './googleAuthService';
 import { db } from '../../db';
 import type { EventItem, Meeting } from '../../types';
-import { generateId, getTodayISO } from '../../lib/utils';
+import { generateId } from '../../lib/utils';
 
 export class GoogleCalendarService {
   private static BASE_URL = 'https://www.googleapis.com/calendar/v3';

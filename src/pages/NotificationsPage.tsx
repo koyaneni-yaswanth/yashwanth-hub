@@ -3,7 +3,6 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import {
   Bell,
   CheckCircle2,
-  Clock,
   AlertCircle,
   Video,
   Sparkles,
@@ -14,7 +13,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { db } from '../db';
-import type { AppNotification, NotificationType, NavigationTab } from '../types';
+import type { NotificationType, NavigationTab } from '../types';
 import { formatShortDate } from '../lib/utils';
 import { ReminderEngine } from '../services/reminderEngine';
 import { Badge } from '../components/common/Badge';

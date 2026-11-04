@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { db } from '../db';
 import type { EventItem, EventKind, Area } from '../types';
-import { formatShortDate, formatFullDate, getTodayISO, generateId } from '../lib/utils';
+import { formatFullDate, getTodayISO, generateId } from '../lib/utils';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';

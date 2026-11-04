@@ -5,27 +5,20 @@ import {
   Bot,
   Send,
   Key,
-  Sliders,
   CheckCircle,
   FileText,
   Calendar,
-  IndianRupee,
   Wind,
-  ListTodo,
-  Layers,
   Wrench,
-  TrendingUp,
   Cpu,
   Columns3,
-  Clock,
   Zap,
 } from 'lucide-react';
 import { db } from '../db';
 import type { Area, AIMode, AIProvider, AIComparisonResult } from '../types';
-import { formatINR, formatShortDate, getTodayISO, generateId } from '../lib/utils';
+import { generateId } from '../lib/utils';
 import { SUPPORTED_MODELS } from '../services/ai/aiModels';
 import { AIGateway } from '../services/ai/aiGateway';
-import { Badge } from '../components/common/Badge';
 
 interface AIAssistantPageProps {
   currentArea: string;
@@ -45,17 +38,11 @@ interface ChatMessage {
 }
 
 export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
-  currentArea,
-  areas,
-  onNavigate,
+  currentArea: _currentArea,
+  areas: _areas,
+  onNavigate: _onNavigate,
 }) => {
-  const today = getTodayISO();
-
   // Queries
-  const allTasks = useLiveQuery(() => db.tasks.toArray(), []) || [];
-  const allProjects = useLiveQuery(() => db.projects.toArray(), []) || [];
-  const allMeetings = useLiveQuery(() => db.meetings.toArray(), []) || [];
-  const allExpenses = useLiveQuery(() => db.expenses.toArray(), []) || [];
   const aiLogs = useLiveQuery(() => db.ai_logs.toArray(), []) || [];
 
   // Configuration State
@@ -102,10 +89,6 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
     localStorage.setItem('yash_ai_model', selectedModelId);
     setIsConfigOpen(false);
   };
-
-  const currentAvailableModels = SUPPORTED_MODELS.filter((m) =>
-    selectedProvider === 'local_heuristic' ? true : m.provider === selectedProvider
-  );
 
   // Total metrics
   const totalTokensLogged = aiLogs.reduce((s, l) => s + l.tokensInput + l.tokensOutput, 0);

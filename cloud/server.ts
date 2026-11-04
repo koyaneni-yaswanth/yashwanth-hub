@@ -66,7 +66,7 @@ app.post('/api/auth/google/callback', async (req: Request, res: Response) => {
 // Cloud Scheduler Cron Endpoint for Background Calendar Sync
 app.post('/api/cron/sync-calendars', async (req: Request, res: Response) => {
   // Verify Cloud Scheduler OIDC token or shared cron secret header
-  const schedulerAuth = req.headers['x-cloudscheduler'];
+  const _schedulerAuth = req.headers['x-cloudscheduler'];
   console.log(`[Cloud Scheduler] Periodic sync triggered: ${new Date().toISOString()}`);
 
   res.json({

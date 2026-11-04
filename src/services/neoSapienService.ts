@@ -1,4 +1,4 @@
-import type { NeoSapienConfig, NeoSapienStatus, NeoSapienTranscript } from '../types';
+import type { NeoSapienConfig, NeoSapienTranscript } from '../types';
 import { db } from '../db';
 import { generateId, getTodayISO } from '../lib/utils';
 

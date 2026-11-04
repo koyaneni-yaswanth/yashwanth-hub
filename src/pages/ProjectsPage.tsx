@@ -4,16 +4,9 @@ import {
   FolderKanban,
   Plus,
   Search,
-  CheckCircle2,
-  Calendar,
-  Layers,
-  Sparkles,
   Edit2,
   Trash2,
   ListTodo,
-  ExternalLink,
-  ChevronRight,
-  TrendingUp,
 } from 'lucide-react';
 import { db } from '../db';
 import type { Project, ProjectStatus, Priority, Area } from '../types';
@@ -315,9 +308,20 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
 
                           {/* Milestones count & due date */}
                           <div className="flex items-center justify-between text-[11px] text-[var(--hub-muted)] pt-2 border-t border-[var(--hub-line)]">
-                            <span className="flex items-center gap-1">
-                              <ListTodo className="w-3 h-3" />
-                              <span>{project.milestones.filter((m) => m.done).length}/{project.milestones.length} milestones</span>
+                            <span className="flex items-center gap-2">
+                              <span className="flex items-center gap-1">
+                                <ListTodo className="w-3 h-3" />
+                                <span>{project.milestones.filter((m) => m.done).length}/{project.milestones.length}</span>
+                              </span>
+                              {linkedTasks.length > 0 && onNavigateToTasks && (
+                                <button
+                                  type="button"
+                                  onClick={onNavigateToTasks}
+                                  className="text-[var(--hub-accent)] hover:underline cursor-pointer"
+                                >
+                                  {linkedTasks.length} tasks
+                                </button>
+                              )}
                             </span>
                             <span className="font-medium text-[var(--hub-ink)]">
                               Due {formatShortDate(project.target_date)}

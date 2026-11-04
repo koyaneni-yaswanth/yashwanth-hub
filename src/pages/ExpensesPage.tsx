@@ -9,7 +9,6 @@ import {
   Trash2,
   Edit2,
   TrendingDown,
-  Filter,
 } from 'lucide-react';
 import { db } from '../db';
 import type { Expense, ExpenseCategory, Area } from '../types';

@@ -8,7 +8,6 @@ import {
   Edit2,
   CheckCircle,
   Filter,
-  Check,
   Calendar,
 } from 'lucide-react';
 import { db } from '../db';
