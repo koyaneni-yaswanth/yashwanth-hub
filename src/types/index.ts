@@ -307,8 +307,93 @@ export interface DeviceSession {
   ipAddress?: string;
 }
 
-// NeoSapien Device Integration Models
+// NeoSapien Device & Personal Memory Ecosystem Models
 export type NeoSapienStatus = 'not_configured' | 'disconnected' | 'connected' | 'error';
+export type NeoMemorySource = 'wearable_neo1' | 'desktop_meeting' | 'web_import' | 'mcp_sync' | 'webhook';
+export type NeoMeetingPlatform = 'google_meet' | 'zoom' | 'microsoft_teams' | 'whatsapp' | 'in_person' | 'phone_call' | 'other';
+
+export interface NeoSpeaker {
+  speakerId: string;
+  name: string;
+  isUser: boolean;
+}
+
+export interface NeoActionItem {
+  id: string;
+  text: string;
+  assigneeName?: string;
+  detectedDeadline?: string;
+  status: 'pending_approval' | 'approved' | 'rejected' | 'synced_to_hub' | 'synced_to_google';
+  hubTaskId?: string;
+  googleTaskId?: string;
+  isCommitment: boolean;
+  priority: Priority;
+  reconciliationStatus?: 'new_commitment' | 'existing_match' | 'overdue' | 'duplicate' | 'completed' | 'deadline_changed';
+}
+
+export interface NeoDecision {
+  id: string;
+  text: string;
+  context?: string;
+}
+
+export interface NeoMemory {
+  id: string; // Hub internal ID
+  originalNeoId?: string; // Original ID from NeoSapien Second Brain
+  title: string;
+  source: NeoMemorySource;
+  platform: NeoMeetingPlatform;
+  capturedAt: string; // ISO datetime
+  durationMinutes?: number;
+  summary: string;
+  transcript?: string;
+  speakers?: NeoSpeaker[];
+  decisions: NeoDecision[];
+  actionItems: NeoActionItem[];
+  commitments: string[];
+  followUps: string[];
+  reminders: string[];
+  peopleMentioned: string[];
+  associatedProjectId?: string;
+  associatedArea?: string; // 'PAWAN SHAKTI' | 'MG Automation' | 'IvLabs' | 'Waffle Whizz' | 'Personal'
+  associatedGoogleEventId?: string;
+  tags: string[];
+  importedAt: string;
+  syncMethod: 'mcp' | 'webhook' | 'json_export' | 'manual_entry';
+}
+
+export interface NeoMcpConfig {
+  enabled: boolean;
+  serverUrl: string; // e.g. http://localhost:3000/sse
+  authToken?: string;
+  authType: 'none' | 'bearer' | 'api_key' | 'custom_header';
+  customHeaderName?: string;
+  readOnly: boolean;
+  status: 'disconnected' | 'connecting' | 'connected' | 'error';
+  lastPing?: string;
+  errorMessage?: string;
+}
+
+export interface NeoSyncAuditRecord {
+  id: string;
+  timestamp: string;
+  method: 'mcp' | 'webhook' | 'json_export' | 'api';
+  status: 'success' | 'warning' | 'error';
+  memoriesImported: number;
+  memoriesUpdated: number;
+  duplicatesSkipped: number;
+  failedCount: number;
+  details?: string;
+}
+
+export interface NeoPrivacySettings {
+  allowGeminiAccess: boolean;
+  allowOpenAIAccess: boolean;
+  allowClaudeAccess: boolean;
+  requireExplicitApprovalForTasks: boolean;
+  maskSpeakerNames: boolean;
+  autoPurgeOlderThanDays?: number;
+}
 
 export interface NeoSapienConfig {
   status: NeoSapienStatus;
@@ -320,6 +405,8 @@ export interface NeoSapienConfig {
   autoVoiceTask: boolean;
   autoSummary: boolean;
   webhookSecret?: string;
+  mcpConfig?: NeoMcpConfig;
+  privacySettings?: NeoPrivacySettings;
 }
 
 export interface NeoSapienTranscript {
@@ -394,4 +481,5 @@ export type NavigationTab =
   | 'notifications'
   | 'analytics'
   | 'integrations'
+  | 'neo-memory'
   | 'settings';

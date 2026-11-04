@@ -7,6 +7,7 @@ import type {
 import { db } from '../../db';
 import { generateId } from '../../lib/utils';
 import { SUPPORTED_MODELS, getRecommendedModel } from './aiModels';
+import { NeoSapienMemoryService } from '../neoSapienMemoryService';
 
 export interface AISendOptions {
   provider?: AIProvider;
@@ -70,19 +71,26 @@ export class AIGateway {
       let tokensIn = 0;
       let tokensOut = 0;
 
+      // 1.5 Permission-Aware NeoSapien Personal Memory Retrieval Layer
+      const neoContext = await NeoSapienMemoryService.buildAIRetrievalContext(userPrompt, provider);
+      let augmentedSystemPrompt = options.systemPrompt || '';
+      if (neoContext.allowed && neoContext.contextSnippet) {
+        augmentedSystemPrompt = `${augmentedSystemPrompt ? `${augmentedSystemPrompt}\n\n` : ''}${neoContext.contextSnippet}\n\nWhen citing information from Neo memories, always include the source reference formatted as [Neo Memory: "Title" (Date)].`;
+      }
+
       // 2. Dispatch to designated provider
       if (provider === 'gemini') {
-        const resp = await this.callGemini(apiKey, selectedModel.modelId, userPrompt, options.systemPrompt);
+        const resp = await this.callGemini(apiKey, selectedModel.modelId, userPrompt, augmentedSystemPrompt);
         resultText = resp.text;
         tokensIn = resp.tokensIn;
         tokensOut = resp.tokensOut;
       } else if (provider === 'openai') {
-        const resp = await this.callOpenAI(apiKey, selectedModel.modelId, userPrompt, options.systemPrompt);
+        const resp = await this.callOpenAI(apiKey, selectedModel.modelId, userPrompt, augmentedSystemPrompt);
         resultText = resp.text;
         tokensIn = resp.tokensIn;
         tokensOut = resp.tokensOut;
       } else if (provider === 'anthropic') {
-        const resp = await this.callAnthropic(apiKey, selectedModel.modelId, userPrompt, options.systemPrompt);
+        const resp = await this.callAnthropic(apiKey, selectedModel.modelId, userPrompt, augmentedSystemPrompt);
         resultText = resp.text;
         tokensIn = resp.tokensIn;
         tokensOut = resp.tokensOut;
@@ -298,6 +306,49 @@ export class AIGateway {
     const totalMonthSpend = monthExpenses.reduce((s, e) => s + e.amount, 0);
 
     const lower = prompt.toLowerCase();
+
+    // Check NeoSapien Authorized Memory Layer
+    const neoSearchResults = await NeoSapienMemoryService.searchMemories(prompt, { limit: 3 });
+    const hasNeoMatch =
+      neoSearchResults.memories.length > 0 &&
+      (lower.includes('discuss') ||
+        lower.includes('pawan') ||
+        lower.includes('wind') ||
+        lower.includes('turbine') ||
+        lower.includes('memory') ||
+        lower.includes('meeting') ||
+        lower.includes('said') ||
+        lower.includes('talk') ||
+        lower.includes('decision') ||
+        lower.includes('commitment'));
+
+    if (hasNeoMatch) {
+      const memorySections = neoSearchResults.memories
+        .map((m) => {
+          let block = `• **[Neo Memory: "${m.title}"]** (${m.source}, ${m.capturedAt.slice(0, 10)})\n  - **Summary:** ${m.summary}`;
+          if (m.decisions.length > 0) {
+            block += `\n  - **Decisions Made:** ${m.decisions.map((d) => d.text).join('; ')}`;
+          }
+          if (m.commitments.length > 0) {
+            block += `\n  - **Commitments:** ${m.commitments.join('; ')}`;
+          }
+          if (m.actionItems.length > 0) {
+            block += `\n  - **Extracted Action Items:** ${m.actionItems
+              .map((a) => `${a.text} (Due: ${a.detectedDeadline || 'TBD'})`)
+              .join('; ')}`;
+          }
+          return block;
+        })
+        .join('\n\n');
+
+      return `### 🧠 NeoSapien Personal Memory Intelligence (${neoSearchResults.latencyMs}ms)
+
+Found **${neoSearchResults.totalCount}** authorized conversation record(s) matching your inquiry:
+
+${memorySections}
+
+*References: Powered by NeoSapien Second Brain timeline. Review and approve commitments in the Neo Memory Center.*`;
+    }
 
     if (mode === 'engineering' || lower.includes('robot') || lower.includes('wind') || lower.includes('cad')) {
       return `### 🛠️ Engineering & Robotics Intelligence

@@ -22,6 +22,7 @@ import { NotesPage } from './pages/NotesPage';
 import { FilesAndPhotosPage } from './pages/FilesAndPhotosPage';
 import { GmailPage } from './pages/GmailPage';
 import { IntegrationsPage } from './pages/IntegrationsPage';
+import { NeoMemoryCenterPage } from './pages/NeoMemoryCenterPage';
 import { ExpensesPage } from './pages/ExpensesPage';
 import { ContactsPage } from './pages/ContactsPage';
 import { WindPlanPage } from './pages/WindPlanPage';
@@ -160,6 +161,16 @@ function HubMain() {
             currentArea={currentArea}
             areas={areas}
             onNavigate={(tab) => setCurrentTab(tab)}
+          />
+        );
+      case 'neo-memory':
+        return (
+          <NeoMemoryCenterPage
+            currentArea={currentArea}
+            areas={areas}
+            onNavigateToTasks={() => setCurrentTab('tasks')}
+            onNavigateToCalendar={() => setCurrentTab('calendar')}
+            onNavigateToAI={() => setCurrentTab('ai-assistant')}
           />
         );
       case 'integrations':

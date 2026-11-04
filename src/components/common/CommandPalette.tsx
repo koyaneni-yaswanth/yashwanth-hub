@@ -19,6 +19,7 @@ import {
   FolderArchive,
   Cloud,
   Users,
+  Brain,
 } from 'lucide-react';
 import { db } from '../../db';
 import type { NavigationTab, Area } from '../../types';
@@ -48,6 +49,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const allTasks = useLiveQuery(() => db.tasks.toArray(), []) || [];
   const allProjects = useLiveQuery(() => db.projects.toArray(), []) || [];
   const allNotes = useLiveQuery(() => db.notes.toArray(), []) || [];
+  const allMemories = useLiveQuery(() => db.neo_memories.toArray(), []) || [];
 
   useEffect(() => {
     if (isOpen) {
@@ -66,6 +68,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     { label: 'Go to Tasks', tab: 'tasks' as NavigationTab, icon: CheckSquare, category: 'Navigation' },
     { label: 'Go to Calendar', tab: 'calendar' as NavigationTab, icon: Calendar, category: 'Navigation' },
     { label: 'Go to Meetings', tab: 'meetings' as NavigationTab, icon: Video, category: 'Navigation' },
+    { label: 'Go to Neo Memory Center', tab: 'neo-memory' as NavigationTab, icon: Brain, category: 'Navigation' },
     { label: 'Go to Files & Photos Vault', tab: 'files' as NavigationTab, icon: FolderArchive, category: 'Navigation' },
     { label: 'Go to Gmail Intelligence', tab: 'gmail' as NavigationTab, icon: Mail, category: 'Navigation' },
     { label: 'Go to Contacts', tab: 'contacts' as NavigationTab, icon: Users, category: 'Navigation' },
@@ -129,7 +132,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       category: 'Notes',
     }));
 
-  const allResults = [...matchedNav, ...matchedActions, ...matchedProjects, ...matchedTasks, ...matchedNotes];
+  const matchedMemories = allMemories
+    .filter((m) => !q || m.title.toLowerCase().includes(q) || m.summary.toLowerCase().includes(q))
+    .slice(0, 3)
+    .map((m) => ({
+      label: `Neo Memory: ${m.title} [${m.source.replace('_', ' ')}]`,
+      action: () => onNavigate('neo-memory'),
+      icon: Brain,
+      category: 'Neo Memories',
+    }));
+
+  const allResults = [...matchedNav, ...matchedActions, ...matchedProjects, ...matchedTasks, ...matchedNotes, ...matchedMemories];
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {

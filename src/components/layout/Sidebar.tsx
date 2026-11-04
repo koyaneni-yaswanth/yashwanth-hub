@@ -16,6 +16,7 @@ import {
   Mail,
   Cloud,
   X,
+  Brain,
 } from 'lucide-react';
 import type { NavigationTab } from '../../types';
 
@@ -51,6 +52,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'calendar', label: 'Calendar', icon: Calendar },
     { id: 'tasks', label: 'Tasks', icon: CheckSquare, badge: openTasksCount > 0 ? openTasksCount : undefined },
     { id: 'meetings', label: 'Meetings & Meet', icon: Video },
+    { id: 'neo-memory', label: 'Neo Memory Center', icon: Brain },
     {
       id: 'projects',
       label: 'Projects & Engineering',

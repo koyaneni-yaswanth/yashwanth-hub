@@ -19,6 +19,8 @@ import type {
   SyncHistoryRecord,
   DeviceSession,
   GoogleTaskItem,
+  NeoMemory,
+  NeoSyncAuditRecord,
 } from '../types';
 import { generateId, getTodayISO } from '../lib/utils';
 
@@ -42,6 +44,8 @@ export class YashwanthHubDatabase extends Dexie {
   sync_history!: Table<SyncHistoryRecord, string>;
   device_sessions!: Table<DeviceSession, string>;
   google_tasks!: Table<GoogleTaskItem, string>;
+  neo_memories!: Table<NeoMemory, string>;
+  neo_sync_audit!: Table<NeoSyncAuditRecord, string>;
 
   constructor() {
     super('YashwanthHubDB');
@@ -71,6 +75,11 @@ export class YashwanthHubDatabase extends Dexie {
       sync_history: 'id, service, status, timestamp',
       device_sessions: 'id, deviceName, platform, isCurrent, lastActive',
       google_tasks: 'id, title, status, due, listId, hubTaskId, updated',
+    });
+
+    this.version(4).stores({
+      neo_memories: 'id, originalNeoId, title, source, platform, capturedAt, associatedProjectId, associatedArea, associatedGoogleEventId, importedAt',
+      neo_sync_audit: 'id, timestamp, method, status',
     });
   }
 }
@@ -555,4 +564,99 @@ export async function seedStarterData() {
     },
   ];
   await db.contacts.bulkAdd(sampleContacts);
+
+  // NeoSapien Personal Memories Seed
+  const sampleNeoMemories: NeoMemory[] = [
+    {
+      id: generateId(),
+      originalNeoId: 'neo-mem-20261102-pawan',
+      title: 'Pawan Shakti 5kW Wind Turbine Aerodynamics & Rotor Hub Review',
+      source: 'wearable_neo1',
+      platform: 'in_person',
+      capturedAt: '2026-11-02T14:30:00.000Z',
+      durationMinutes: 45,
+      summary: 'Technical discussion with Dr. K.S. Sharma regarding blade tip-speed ratio optimization for the 5kW vertical axis turbine. Agreed to select NACA 0018 airfoil for improved low-wind self-starting capability. Need to complete FEA on the central rotor hub before casting.',
+      transcript: 'Yashwanth: "Doctor Sharma, looking at the wind speed distribution data in Maharashtra, our cut-in speed needs to drop below 2.5 m/s."\nDr. Sharma: "Exactly Yashwanth. If you switch to the NACA 0018 profile with a 12-degree pitch, low-wind self-starting torque improves by 28%. But make sure your central hub finite element analysis is completed before freezing the casting patterns."',
+      speakers: [
+        { speakerId: 's1', name: 'Yashwanth Koyaneni', isUser: true },
+        { speakerId: 's2', name: 'Dr. K. S. Sharma', isUser: false },
+      ],
+      decisions: [
+        { id: 'd1', text: 'Approved NACA 0018 airfoil for Pawan Shakti turbine blades' },
+        { id: 'd2', text: 'Maintain cut-in wind speed threshold at 2.5 m/s' },
+      ],
+      actionItems: [
+        {
+          id: generateId(),
+          text: 'Run Ansys FEA on central rotor hub under 45 m/s storm gust conditions',
+          assigneeName: 'Yashwanth Koyaneni',
+          detectedDeadline: '2026-11-10',
+          status: 'pending_approval',
+          isCommitment: true,
+          priority: 'high',
+          reconciliationStatus: 'new_commitment',
+        },
+        {
+          id: generateId(),
+          text: 'Send revised CAD drawings of blade bracket to Vikram Joshi',
+          assigneeName: 'Yashwanth Koyaneni',
+          detectedDeadline: '2026-11-08',
+          status: 'pending_approval',
+          isCommitment: true,
+          priority: 'medium',
+          reconciliationStatus: 'new_commitment',
+        },
+      ],
+      commitments: [
+        'Send revised CAD drawings of blade bracket to Vikram Joshi by Friday',
+        'Complete FEA report for wind turbine grant submission',
+      ],
+      followUps: ['Schedule follow-up review with VNIT Renewable Energy Lab next Tuesday'],
+      reminders: ['Check supplier quotation for dual-row spherical roller bearings'],
+      peopleMentioned: ['Dr. K. S. Sharma', 'Vikram Joshi'],
+      associatedArea: 'PAWAN SHAKTI',
+      tags: ['Pawan Shakti', 'Wind Turbine', 'Aerodynamics', 'TRL-5', 'Hardware'],
+      importedAt: '2026-11-02T15:20:00.000Z',
+      syncMethod: 'mcp',
+    },
+    {
+      id: generateId(),
+      originalNeoId: 'neo-mem-20261103-mgauto',
+      title: 'MG Automation Industrial Robot Cell PLC & Safety Architecture',
+      source: 'desktop_meeting',
+      platform: 'google_meet',
+      capturedAt: '2026-11-03T11:00:00.000Z',
+      durationMinutes: 35,
+      summary: 'Desktop Google Meet call with client engineering team. Finalized Siemens S7-1200 safety interlocks and Profinet communication layout for automated sorting line.',
+      transcript: 'Yashwanth: "Let us review the E-stop safety circuit for cell 2."\nRohan: "We need dual-channel input to meet Category 4 PL-e compliance."\nYashwanth: "Agreed. I will finalize the electrical wiring schematic by Thursday evening."',
+      speakers: [
+        { speakerId: 's1', name: 'Yashwanth Koyaneni', isUser: true },
+        { speakerId: 's3', name: 'Rohan Deshmukh (Lead Controls)', isUser: false },
+      ],
+      decisions: [
+        { id: 'd3', text: 'Standardized on Siemens S7-1200 F-CPU for category 4 safety circuit' },
+      ],
+      actionItems: [
+        {
+          id: generateId(),
+          text: 'Generate electrical wiring schematic for emergency stop relays',
+          assigneeName: 'Yashwanth Koyaneni',
+          detectedDeadline: '2026-11-12',
+          status: 'pending_approval',
+          isCommitment: true,
+          priority: 'high',
+          reconciliationStatus: 'new_commitment',
+        },
+      ],
+      commitments: ['Deliver finalized electrical schematics by Thursday evening'],
+      followUps: ['Verify sensor lead time with Sick India distributor'],
+      reminders: ['Review client factory layout constraints before next call'],
+      peopleMentioned: ['Rohan Deshmukh'],
+      associatedArea: 'MG Automation',
+      tags: ['MG Automation', 'Robotics', 'PLC', 'Google Meet', 'Industrial Automation'],
+      importedAt: '2026-11-03T11:45:00.000Z',
+      syncMethod: 'webhook',
+    },
+  ];
+  await db.neo_memories.bulkAdd(sampleNeoMemories);
 }
