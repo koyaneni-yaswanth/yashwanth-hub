@@ -13,6 +13,7 @@ import type {
 import { generateId, getTodayISO } from '../lib/utils';
 import { GoogleTasksService } from './google/googleTasksService';
 import { GoogleAuthService } from './google/googleAuthService';
+import { SyncQueueService } from './sync/syncQueueService';
 
 export class NeoSapienMemoryService {
   private static STORAGE_KEY_CONFIG = 'yash_neosapien_config';
@@ -236,7 +237,7 @@ export class NeoSapienMemoryService {
             return existingAct ? existingAct : newAct;
           });
 
-          await db.neo_memories.update(existing.id, {
+          const updatedFields = {
             summary: item.summary || existing.summary,
             transcript: item.transcript || existing.transcript,
             decisions: item.decisions || existing.decisions,
@@ -247,7 +248,9 @@ export class NeoSapienMemoryService {
             peopleMentioned: item.peopleMentioned || existing.peopleMentioned,
             tags: Array.from(new Set([...(existing.tags || []), ...(item.tags || [])])),
             importedAt: now,
-          });
+          };
+          await db.neo_memories.update(existing.id, updatedFields);
+          SyncQueueService.enqueueChange('memories', existing.id, 'UPDATE', { ...existing, ...updatedFields });
           updatedCount++;
         } else {
           // New record creation
@@ -283,6 +286,7 @@ export class NeoSapienMemoryService {
             syncMethod: method,
           };
           await db.neo_memories.add(newMem);
+          SyncQueueService.enqueueChange('memories', newMem.id, 'INSERT', newMem);
           importedCount++;
         }
       } catch {

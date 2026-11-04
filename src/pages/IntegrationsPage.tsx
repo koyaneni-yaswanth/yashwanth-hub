@@ -14,6 +14,8 @@ import {
   Users,
   Smartphone,
   Laptop,
+  Tablet,
+  Monitor,
   Bluetooth,
   AlertTriangle,
   HelpCircle,
@@ -25,6 +27,7 @@ import type { GoogleServiceKey } from '../types';
 import { GoogleAuthService } from '../services/google/googleAuthService';
 import { UnifiedSyncEngine } from '../services/sync/unifiedSyncEngine';
 import { NeoSapienService } from '../services/neoSapienService';
+import { DeviceFleetService } from '../services/deviceFleetService';
 import { Badge } from '../components/common/Badge';
 
 export const IntegrationsPage: React.FC = () => {
@@ -44,6 +47,13 @@ export const IntegrationsPage: React.FC = () => {
 
   // Sync History
   const historyLogs = useLiveQuery(() => db.sync_history.orderBy('timestamp').reverse().limit(15).toArray(), []) || [];
+
+  // Live Authenticated Device Fleet
+  const deviceFleet = useLiveQuery(() => db.device_sessions.toArray(), []) || [];
+
+  useEffect(() => {
+    DeviceFleetService.registerCurrentDevice().catch(() => {});
+  }, []);
 
   useEffect(() => {
     const unsubscribe = UnifiedSyncEngine.subscribe((status) => {
@@ -484,27 +494,69 @@ export const IntegrationsPage: React.FC = () => {
           </p>
 
           <div className="space-y-2">
-            <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2.5">
-                <Laptop className="w-4 h-4 text-teal-600" />
-                <div>
-                  <span className="font-semibold text-[var(--hub-ink)] block">Windows Desktop (Current Device)</span>
-                  <span className="text-[10px] text-[var(--hub-muted)]">Edge / Chrome • Active Now</span>
-                </div>
-              </div>
-              <Badge variant="emerald">Online</Badge>
-            </div>
+            {deviceFleet.length === 0 ? (
+              <p className="text-xs text-[var(--hub-muted)] py-2">Registering local device...</p>
+            ) : (
+              deviceFleet.map((dev) => {
+                const isOnline = dev.status === 'online';
+                const isRecent = dev.status === 'recently_active';
+                const isRevoked = dev.status === 'revoked';
 
-            <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2.5">
-                <Smartphone className="w-4 h-4 text-[var(--hub-muted)]" />
-                <div>
-                  <span className="font-semibold text-[var(--hub-ink)] block">Android PWA</span>
-                  <span className="text-[10px] text-[var(--hub-muted)]">IndexedDB Local Cache • Synced</span>
-                </div>
-              </div>
-              <Badge variant="gray">PWA Ready</Badge>
-            </div>
+                const badgeVariant = isRevoked ? 'red' : isOnline ? 'emerald' : isRecent ? 'amber' : 'gray';
+                const statusLabel = isRevoked ? 'Revoked' : isOnline ? 'Online' : isRecent ? 'Recently Active' : 'Offline';
+
+                return (
+                  <div
+                    key={dev.id}
+                    className={`p-3 rounded-lg bg-[var(--hub-bg)] border ${
+                      dev.isCurrent ? 'border-teal-500/40 bg-teal-500/5' : 'border-[var(--hub-line)]'
+                    } flex items-center justify-between text-xs`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {dev.deviceType === 'tablet' ? (
+                        <Tablet className="w-4 h-4 text-purple-600 flex-none" />
+                      ) : dev.deviceType === 'mobile' ? (
+                        <Smartphone className="w-4 h-4 text-emerald-600 flex-none" />
+                      ) : dev.deviceType === 'laptop' ? (
+                        <Laptop className="w-4 h-4 text-teal-600 flex-none" />
+                      ) : (
+                        <Monitor className="w-4 h-4 text-blue-600 flex-none" />
+                      )}
+                      <div className="min-w-0 truncate">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-semibold text-[var(--hub-ink)] truncate">{dev.deviceName}</span>
+                          {dev.isCurrent && (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-teal-500/10 text-teal-700 dark:text-teal-300 font-bold border border-teal-500/20">
+                              Current Device
+                            </span>
+                          )}
+                          {dev.isPwa && (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-500/10 text-purple-700 dark:text-purple-300 font-bold border border-purple-500/20">
+                              PWA Standalone
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-[var(--hub-muted)] block truncate">
+                          {dev.browser} • {dev.platform.toUpperCase()} • Active {new Date(dev.lastActive).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-none ml-2">
+                      <Badge variant={badgeVariant}>{statusLabel}</Badge>
+                      {!dev.isCurrent && !isRevoked && (
+                        <button
+                          onClick={() => DeviceFleetService.revokeDeviceSession(dev.id)}
+                          className="text-[10px] text-red-600 dark:text-red-400 hover:underline cursor-pointer font-medium"
+                          title="Revoke device session"
+                        >
+                          Revoke
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
 

@@ -52,49 +52,72 @@ export const Header: React.FC<HeaderProps> = ({
     year: 'numeric',
   }).format(new Date());
 
+  // Live multi-device session count and pending sync mutations
+  const activeSessions = useLiveQuery(() => db.device_sessions.filter((d) => d.status === 'online').count(), []) || 1;
+  const pendingQueueCount = useLiveQuery(() => db.sync_queue.count(), []) || 0;
+
   const getSyncBadge = () => {
     switch (status) {
       case 'synced':
         return (
           <button
-            onClick={() => syncNow()}
-            title="Cloud Synced (Click to refresh)"
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors"
+            onClick={() => onNavigate('integrations')}
+            title={`All Devices Synchronized • ${activeSessions} Active Device(s) • Pending: ${pendingQueueCount}`}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors cursor-pointer"
           >
             <Cloud className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
             <span className="hidden sm:inline">Synced</span>
+            <span className="text-[10px] px-1 py-0.2 rounded-full bg-emerald-500/20 font-bold">
+              {activeSessions} {activeSessions === 1 ? 'device' : 'devices'}
+            </span>
           </button>
         );
       case 'syncing':
         return (
-          <span
-            title="Syncing with Supabase..."
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 animate-pulse"
+          <button
+            onClick={() => onNavigate('integrations')}
+            title="Synchronizing cross-device data..."
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20 animate-pulse cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-600" />
             <span className="hidden sm:inline">Syncing</span>
-          </span>
+            {pendingQueueCount > 0 && (
+              <span className="text-[10px] px-1 py-0.2 rounded-full bg-amber-500/20 font-bold">
+                {pendingQueueCount}
+              </span>
+            )}
+          </button>
         );
       case 'offline':
         return (
-          <span
-            title="Device is offline. Local changes saved to IndexedDB queue."
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-500/10 text-red-700 dark:text-red-300 border border-red-500/20"
+          <button
+            onClick={() => onNavigate('integrations')}
+            title={`Device is offline • ${pendingQueueCount} local mutations queued`}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-500/10 text-red-700 dark:text-red-300 border border-red-500/20 cursor-pointer"
           >
             <WifiOff className="w-3.5 h-3.5 text-red-600" />
             <span className="hidden sm:inline">Offline</span>
-          </span>
+            {pendingQueueCount > 0 && (
+              <span className="text-[10px] px-1 py-0.2 rounded-full bg-red-500/20 font-bold">
+                {pendingQueueCount} queued
+              </span>
+            )}
+          </button>
         );
       case 'local':
       default:
         return (
-          <div
-            title="Running in Local-First Mode (Data safely stored in browser IndexedDB)"
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-teal-500/10 text-teal-700 dark:text-teal-300 border border-teal-500/20"
+          <button
+            onClick={() => onNavigate('integrations')}
+            title="Local-First Mode (IndexedDB persistent & multi-device ready)"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-teal-500/10 text-teal-700 dark:text-teal-300 border border-teal-500/20 hover:bg-teal-500/20 transition-colors cursor-pointer"
           >
             <Database className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
             <span className="hidden sm:inline">Local OS</span>
-          </div>
+            <span className="text-[10px] px-1 py-0.2 rounded-full bg-teal-500/20 font-bold">
+              {activeSessions} {activeSessions === 1 ? 'device' : 'devices'}
+            </span>
+          </button>
         );
     }
   };

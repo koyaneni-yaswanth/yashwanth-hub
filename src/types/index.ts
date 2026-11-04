@@ -307,12 +307,20 @@ export interface SyncHistoryRecord {
 }
 
 export interface DeviceSession {
-  id: string;
-  deviceName: string;
+  id: string; // Persistent installation ID (e.g. dev_win_desk_...)
+  deviceName: string; // e.g. "Windows Desktop", "Android Phone"
   platform: 'windows' | 'android' | 'ios' | 'mac' | 'linux' | 'browser';
-  browser: string;
+  browser: string; // e.g. "Chrome 122", "Edge 121"
+  deviceType: 'desktop' | 'laptop' | 'mobile' | 'tablet';
   isCurrent: boolean;
-  lastActive: string;
+  isPwa?: boolean;
+  status: 'online' | 'recently_active' | 'offline' | 'revoked';
+  syncStatus: 'synced' | 'syncing' | 'offline' | 'pending';
+  lastActive: string; // ISO datetime
+  lastSyncAt?: string; // ISO datetime
+  registeredAt: string; // ISO datetime
+  revokedAt?: string;
+  appVersion?: string;
   ipAddress?: string;
 }
 

@@ -16,6 +16,7 @@ import { formatShortDate, getTodayISO, isOverdue, generateId } from '../lib/util
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
+import { SyncQueueService } from '../services/sync/syncQueueService';
 
 interface TasksPageProps {
   currentArea: string;
@@ -118,7 +119,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
     const now = new Date().toISOString();
 
     if (editingTask) {
-      await db.tasks.update(editingTask.id, {
+      const updateData = {
         text: formText.trim(),
         description: formDescription.trim() || undefined,
         area: formArea,
@@ -126,7 +127,9 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
         due_date: formDueDate || undefined,
         notes: formNotes.trim() || undefined,
         updated_at: now,
-      });
+      };
+      await db.tasks.update(editingTask.id, updateData);
+      SyncQueueService.enqueueChange('tasks', editingTask.id, 'UPDATE', { ...editingTask, ...updateData });
     } else {
       const newTask: Task = {
         id: generateId(),
@@ -142,35 +145,53 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
         updated_at: now,
       };
       await db.tasks.add(newTask);
+      SyncQueueService.enqueueChange('tasks', newTask.id, 'INSERT', newTask);
     }
 
     setIsModalOpen(false);
   };
 
   const handleToggleTask = async (task: Task) => {
-    await db.tasks.update(task.id, {
+    const updated = {
+      ...task,
       done: !task.done,
       updated_at: new Date().toISOString(),
+    };
+    await db.tasks.update(task.id, {
+      done: updated.done,
+      updated_at: updated.updated_at,
     });
+    SyncQueueService.enqueueChange('tasks', task.id, 'UPDATE', updated);
   };
 
   const handleToggleStar = async (task: Task) => {
-    await db.tasks.update(task.id, {
+    const updated = {
+      ...task,
       starred: !task.starred,
       updated_at: new Date().toISOString(),
+    };
+    await db.tasks.update(task.id, {
+      starred: updated.starred,
+      updated_at: updated.updated_at,
     });
+    SyncQueueService.enqueueChange('tasks', task.id, 'UPDATE', updated);
   };
 
   const handleConfirmDelete = async () => {
     if (taskToDelete) {
       await db.tasks.delete(taskToDelete);
+      SyncQueueService.enqueueChange('tasks', taskToDelete, 'DELETE', { id: taskToDelete });
       setTaskToDelete(null);
     }
   };
 
   const handleClearDone = async () => {
-    const doneIds = allTasks.filter((t) => t.done).map((t) => t.id);
+    const doneTasks = allTasks.filter((t) => t.done);
+    const doneIds = doneTasks.map((t) => t.id);
     await db.tasks.bulkDelete(doneIds);
+    for (const t of doneTasks) {
+      SyncQueueService.enqueueChange('tasks', t.id, 'DELETE', { id: t.id });
+    }
   };
 
   const renderTaskItem = (task: Task) => {

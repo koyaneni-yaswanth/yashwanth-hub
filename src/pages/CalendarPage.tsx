@@ -17,6 +17,7 @@ import { formatFullDate, getTodayISO, generateId } from '../lib/utils';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
+import { SyncQueueService } from '../services/sync/syncQueueService';
 
 interface CalendarPageProps {
   currentArea: string;
@@ -116,7 +117,7 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
     const now = new Date().toISOString();
 
     if (editingEvent) {
-      await db.events.update(editingEvent.id, {
+      const updateData = {
         title: formTitle.trim(),
         date: formDate,
         start_time: formStartTime || undefined,
@@ -126,7 +127,9 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
         area: formArea,
         notes: formNotes.trim() || undefined,
         updated_at: now,
-      });
+      };
+      await db.events.update(editingEvent.id, updateData);
+      SyncQueueService.enqueueChange('events', editingEvent.id, 'UPDATE', { ...editingEvent, ...updateData });
     } else {
       const newEvent: EventItem = {
         id: generateId(),
@@ -142,6 +145,7 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
         updated_at: now,
       };
       await db.events.add(newEvent);
+      SyncQueueService.enqueueChange('events', newEvent.id, 'INSERT', newEvent);
     }
 
     setIsModalOpen(false);
@@ -150,6 +154,7 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
   const handleConfirmDelete = async () => {
     if (eventToDelete) {
       await db.events.delete(eventToDelete);
+      SyncQueueService.enqueueChange('events', eventToDelete, 'DELETE', { id: eventToDelete });
       setEventToDelete(null);
     }
   };

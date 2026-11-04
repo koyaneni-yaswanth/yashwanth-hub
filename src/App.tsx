@@ -12,6 +12,8 @@ import { Modal } from './components/common/Modal';
 import { AlertTriangle } from 'lucide-react';
 import { ReminderEngine } from './services/reminderEngine';
 import { GoogleAuthService } from './services/google/googleAuthService';
+import { DeviceFleetService } from './services/deviceFleetService';
+import { RealtimeSyncManager } from './services/sync/realtimeSyncManager';
 
 // Pages
 import { DashboardPage } from './pages/DashboardPage';
@@ -42,10 +44,14 @@ function HubMain() {
   const [isDbReady, setIsDbReady] = useState(false);
   const [oauthError, setOauthError] = useState<{ message: string; hint?: string } | null>(null);
 
-  // Initialize IndexedDB and Reminder Engine
+  // Initialize IndexedDB, Fleet Identity, Realtime and Reminder Engine
   useEffect(() => {
     initializeDatabase().then(() => {
       setIsDbReady(true);
+      // Register current device in fleet and start heartbeat
+      DeviceFleetService.registerCurrentDevice().catch(() => {});
+      // Initialize universal Realtime subscriptions
+      RealtimeSyncManager.init();
       // Run initial intelligence reminder check
       ReminderEngine.runIntelligenceScan().catch(() => {});
     });
