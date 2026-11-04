@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wind Startup: 90-Day Command Center</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eaf1f0;--surface:#fff;--ink:#12262b;--muted:#4b6368;--line:#c9d9d8;--accent:#0b6e6e;--accent-ink:#fff;--amber:#b8680f;--done:#e3f1ec;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1b1e;--surface:#162a2e;--ink:#e6f0ef;--muted:#9bb4b7;--line:#2a4448;--accent:#4fc3b8;--accent-ink:#06211f;--amber:#f0a24b;--done:#143a37}}
+:root[data-theme="dark"]{--bg:#0e1b1e;--surface:#162a2e;--ink:#e6f0ef;--muted:#9bb4b7;--line:#2a4448;--accent:#4fc3b8;--accent-ink:#06211f;--amber:#f0a24b;--done:#143a37}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "IBM Plex Sans",system-ui,sans-serif}
+h1,h2,h3{font-family:"Bricolage Grotesque","IBM Plex Sans",system-ui,sans-serif;line-height:1.15;margin:0}
+main{max-width:920px;margin:0 auto;padding:20px 16px 64px}
+.hero{display:grid;grid-template-columns:120px 1fr;gap:20px;align-items:center;padding:8px 0 20px}
+.hero svg{width:120px;height:120px}
+.blades{transform-origin:60px 46px;animation:spin 12s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.blades{animation:none}}
+h1{font-size:clamp(1.6rem,5vw,2.4rem)}
+.sub{color:var(--muted);margin:6px 0 12px}
+.bar{height:10px;border-radius:5px;background:var(--line);overflow:hidden}
+.bar>i{display:block;height:100%;width:0;background:var(--accent);transition:width .4s}
+.stats{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:10px;font-size:.95rem}
+.stats b{font-family:"Bricolage Grotesque",sans-serif;font-size:1.2rem}
+.note{background:var(--surface);border-left:4px solid var(--amber);padding:12px 14px;border-radius:6px;margin:8px 0 24px}
+h2{font-size:1.3rem;margin:28px 0 10px}
+.trl{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.trl div{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:.88rem}
+.trl .on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.trl b{display:block;font-family:"Bricolage Grotesque",sans-serif}
+.trl .tag{color:var(--amber);font-weight:500}
+details{background:var(--surface);border:1px solid var(--line);border-radius:8px;margin:8px 0}
+details.cur{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+summary{cursor:pointer;padding:12px 14px;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+summary:focus-visible,button:focus-visible,input:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+summary .t{font-family:"Bricolage Grotesque",sans-serif;font-weight:700}
+summary .d{color:var(--muted);font-size:.85rem;margin-left:auto}
+.wk{padding:0 14px 14px}
+label.task{display:flex;gap:10px;align-items:flex-start;padding:8px 6px;border-radius:6px;cursor:pointer}
+label.task:has(input:checked){background:var(--done);color:var(--muted)}
+input[type=checkbox]{width:20px;height:20px;margin-top:2px;accent-color:var(--accent);flex:none}
+.deliv{margin:8px 6px 0;font-size:.9rem;color:var(--muted)}
+.deliv b{color:var(--ink)}
+.ph{color:var(--muted);font-size:.92rem;margin:-4px 0 8px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.card h3{font-size:1.05rem;margin-bottom:6px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:18px}
+button{font:inherit;background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:8px 14px;cursor:pointer}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+input[type=date]{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}
+@media (max-width:520px){.hero{grid-template-columns:84px 1fr}.hero svg{width:84px;height:84px}}
+</style>
+</head>
+<body>
+<main>
+<section class="hero">
+<svg viewBox="0 0 120 120" aria-hidden="true">
+<path d="M56 46h8l5 66H51z" fill="var(--muted)"/>
+<g class="blades" id="blades">
+<path d="M60 46 57 6q3-4 6 0z" fill="var(--accent)"/>
+<path d="M60 46 57 6q3-4 6 0z" fill="var(--accent)" transform="rotate(120 60 46)"/>
+<path d="M60 46 57 6q3-4 6 0z" fill="var(--accent)" transform="rotate(240 60 46)"/>
+</g>
+<circle cx="60" cy="46" r="5" fill="var(--amber)"/>
+</svg>
+<div>
+<h1>Wind startup: 90-day command center</h1>
+<p class="sub">Founder plan, TRL 4 to a tested TRL 6 prototype. The turbine spins faster as you finish tasks.</p>
+<div class="bar" role="progressbar" aria-label="Overall progress" aria-valuemin="0" aria-valuemax="100" id="pb"><i id="fill"></i></div>
+<div class="stats"><span>Day <b id="day">1</b> of 90</span><span><b id="pct">0%</b> of tasks done</span><span>Week <b id="wk">1</b></span></div>
+</div>
+</section>
+
+<div class="note"><b>Realistic target.</b> The TRL scale ends at 9, so there is no TRL 10. A good 90-day result is TRL 5 evidence, a TRL 6 prototype demo, and one pilot letter. TRL 7 to 9 needs months of field data and certification.</div>
+
+<h2>Where each TRL stands</h2>
+<div class="trl">
+<div><b>TRL 4</b>Parts work in the lab<br><span class="tag">You are here</span></div>
+<div class="on"><b>TRL 5</b>System tested in realistic conditions<br><span class="tag">Target: day 56</span></div>
+<div class="on"><b>TRL 6</b>Prototype shown in a relevant environment<br><span class="tag">Stretch: day 90</span></div>
+<div><b>TRL 7</b>Runs at a real site<br>After day 90</div>
+<div><b>TRL 8 and 9</b>Qualified, then proven in service<br>Year 2 and later</div>
+</div>
+
+<div id="plan"></div>
+
+<h2>Junior tasks (2 to 4 hours each)</h2>
+<div class="cols" id="juniors"></div>
+
+<h2>Weekly rhythm</h2>
+<div class="cols">
+<div class="card"><h3>Founder time blocks</h3>Two build blocks and one sales block every week. Protect them in your calendar first.</div>
+<div class="card"><h3>Professor check-in</h3>Every 2 weeks, send a one-page update, then ask for one thing: a lab slot, a named grant, or an introduction.</div>
+<div class="card"><h3>Junior check-in</h3>Review deliverables once a week, not daily. Hand out the next task with a due date.</div>
+</div>
+
+<div class="row">
+<label for="start">Start date</label><input type="date" id="start">
+<button class="ghost" id="reset">Reset all progress</button>
+<button class="ghost" id="theme">Switch light or dark</button>
+</div>
+</main>
+<script>
+var PLAN=[
+{ph:"Phase 1: know exactly what you are building",w:[
+{t:"Product and evidence audit",k:["Write down the TRL 4 evidence: tests, data, photos","List what works and what has never run outdoors","Set up one master tracker for tasks and dates","Pick one customer type and one turbine size"],d:"Status and gap report"},
+{t:"Technical design review",k:["Review rotor and blade design","Review generator, controller and storage","Review tower, foundation and braking","Meet the professor with a one-page update"],d:"System architecture and requirements"},
+{t:"Test plan and safety",k:["Set rated power and target wind range","Define how to measure power, RPM, vibration, temperature","Write a risk register: overspeed, braking, lightning, grounding","Read the IEC 61400-2 summary for small turbines"],d:"Prototype testing plan"},
+{t:"Business foundation",k:["Interview 5 possible users","Study 5 competitors and their prices","Build a first cost sheet","List grants and incubators; pick the first to apply to"],d:"Customer discovery report"}]},
+{ph:"Phase 2: build evidence, not just hardware",w:[
+{t:"Design freeze and procurement",k:["Freeze the design after professor review","Confirm the bill of materials","Order long-lead parts first","Submit the first grant application"],d:"Frozen design and orders placed"},
+{t:"Prototype integration",k:["Assemble the mechanical parts","Wire the generator and electronics","Fit controller and protection","Set up a data logger"],d:"Prototype ready for controlled tests"},
+{t:"Lab validation",k:["Measure voltage, current and efficiency","Record RPM against conditions","Check vibration and temperature","Compare results with predictions"],d:"Laboratory test report"},
+{t:"Relevant-environment tests",k:["Run supervised tests under real conditions","Log wind speed against power output","Record every failure and the fix","Check the TRL 5 acceptance criteria"],d:"TRL 5 evidence package"}]},
+{ph:"Phase 3: pilot and startup validation",w:[
+{t:"Field-test preparation",k:["Choose a site with good wind","Check tower and foundation needs","Plan electrical safety and permissions","Interview 5 more users"],d:"Field-test readiness report"},
+{t:"Pilot demonstration",k:["Install the turbine at the site","Start daily data logging","Take weekly photos and video","Ask for a letter of intent from one pilot customer"],d:"Pilot running with data"},
+{t:"Fix and improve",k:["Fix the top three failures","Run the safety checks again","Update the cost sheet with real numbers","Apply to a second grant or incubator"],d:"Improvement report"},
+{t:"Evidence pack",k:["Write the data report: 4 weeks of real output","Draft the user manual","Prepare a short investor and grant deck","Define the TRL 7 plan"],d:"Report, manual and deck"}]},
+{ph:"Final review",w:[
+{t:"Days 85 to 90: review",k:["Score the TRL level against your evidence","List what to stop, keep and start","Set the next 90-day plan"],d:"Decision memo"}]}];
+var JR=[["Competitor research","10 competitor profiles with price and specs"],["CAD documentation","Updated assembly drawings"],["Market research","List of 20 possible customers with contacts"],["Literature research","5 relevant technical papers with 3-line summaries"],["Data logging","Daily data sheet and photos during field tests"]];
+var K="wind90-v1",S={start:"2026-11-04",done:{}};
+try{var r=localStorage.getItem(K);if(r)S=JSON.parse(r)}catch(e){}
+function save(){try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}}
+function dt(i){var d=new Date(S.start+"T00:00:00");d.setDate(d.getDate()+i);return d}
+function fmt(d){return d.toLocaleDateString("en-IN",{day:"numeric",month:"short"})}
+function curWeek(){var n=Math.floor((new Date()-new Date(S.start+"T00:00:00"))/864e5);return n<0?0:Math.min(Math.floor(n/7)+1,13)}
+function render(){
+var cw=curWeek(),h="",wi=0,all=0,dn=0;
+PLAN.forEach(function(p){h+="<h2>"+p.ph+"</h2>";p.w.forEach(function(w){
+var idx=wi,s=idx*7,e=Math.min(s+6,89);
+h+='<details'+((idx+1===cw||(cw===0&&idx===0))?' class="cur" open':'')+'><summary><span class="t">Week '+(idx+1)+': '+w.t+'</span><span class="d">'+fmt(dt(s))+' to '+fmt(dt(e))+'</span></summary><div class="wk">';
+w.k.forEach(function(x,j){var id=idx+"-"+j,c=S.done[id];all++;if(c)dn++;
+h+='<label class="task"><input type="checkbox" data-id="'+id+'"'+(c?' checked':'')+'><span>'+x+'</span></label>'});
+h+='<p class="deliv"><b>Deliverable:</b> '+w.d+'</p></div></details>';wi++})});
+document.getElementById("plan").innerHTML=h;
+var j="";JR.forEach(function(x,i){var id="j-"+i;all++;if(S.done[id])dn++;
+j+='<div class="card"><h3>'+x[0]+'</h3><label class="task"><input type="checkbox" data-id="'+id+'"'+(S.done[id]?' checked':'')+'><span>'+x[1]+'</span></label></div>'});
+document.getElementById("juniors").innerHTML=j;
+var p=all?Math.round(dn/all*100):0;
+document.getElementById("pct").textContent=p+"%";
+document.getElementById("fill").style.width=p+"%";
+document.getElementById("pb").setAttribute("aria-valuenow",p);
+var day=Math.max(1,Math.min(90,Math.floor((new Date()-new Date(S.start+"T00:00:00"))/864e5)+1));
+document.getElementById("day").textContent=day;
+document.getElementById("wk").textContent=Math.max(1,Math.min(cw,13));
+document.getElementById("blades").style.animationDuration=(12-10.8*p/100).toFixed(2)+"s";
+document.getElementById("start").value=S.start}
+document.addEventListener("change",function(e){var t=e.target;
+if(t.dataset&&t.dataset.id){S.done[t.dataset.id]=t.checked;save();var o=[].map.call(document.querySelectorAll("details[open]"),function(d){return d.querySelector(".t").textContent});render();[].forEach.call(document.querySelectorAll("details"),function(d){if(o.indexOf(d.querySelector(".t").textContent)>-1)d.open=true})}
+if(t.id==="start"&&t.value){S.start=t.value;save();render()}});
+document.getElementById("reset").onclick=function(){if(confirm("Clear all ticks and start again?")){S.done={};save();render()}};
+document.getElementById("theme").onclick=function(){var r=document.documentElement,d=r.getAttribute("data-theme")==="dark"||(!r.getAttribute("data-theme")&&matchMedia("(prefers-color-scheme: dark)").matches);r.setAttribute("data-theme",d?"light":"dark")};
+render();
+</script>
+</body>
+</html>

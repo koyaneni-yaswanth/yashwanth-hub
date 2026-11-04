@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Yaswanth Hub</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eaf1f0;--surface:#fff;--ink:#12262b;--muted:#4b6368;--line:#c9d9d8;--accent:#0b6e6e;--accent-ink:#fff;--amber:#b8680f;--red:#b42318;--done:#e3f1ec;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1b1e;--surface:#162a2e;--ink:#e6f0ef;--muted:#9bb4b7;--line:#2a4448;--accent:#4fc3b8;--accent-ink:#06211f;--amber:#f0a24b;--red:#ff8a80;--done:#143a37}}
+:root[data-theme="dark"]{--bg:#0e1b1e;--surface:#162a2e;--ink:#e6f0ef;--muted:#9bb4b7;--line:#2a4448;--accent:#4fc3b8;--accent-ink:#06211f;--amber:#f0a24b;--red:#ff8a80;--done:#143a37}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "IBM Plex Sans",system-ui,sans-serif}
+h1,h2,h3{font-family:"Bricolage Grotesque","IBM Plex Sans",system-ui,sans-serif;line-height:1.15;margin:0}
+main{max-width:900px;margin:0 auto;padding:16px 14px 60px}
+.top{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.top svg{width:44px;height:44px;flex:none}
+.blades{transform-origin:60px 46px;animation:spin 8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.blades{animation:none}}
+h1{font-size:1.5rem}
+.sub{color:var(--muted);font-size:.9rem}
+nav{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:12px}
+nav button{background:var(--surface);color:var(--ink);border:1px solid var(--line);white-space:nowrap}
+nav button[aria-current=page]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+h2{font-size:1.15rem;margin:20px 0 8px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}
+.stat,.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.stat b{display:block;font:700 1.5rem "Bricolage Grotesque",sans-serif}
+.stat span{color:var(--muted);font-size:.85rem}
+form{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:10px}
+form .wide{grid-column:1/-1}
+input,select,textarea,button{font:inherit}
+input:not([type=checkbox]),select,textarea{width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+button{background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:8px 14px;cursor:pointer}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button.x{background:transparent;color:var(--muted);padding:2px 8px;font-size:1.2rem}
+:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+.item{display:flex;gap:10px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:9px 10px;margin:6px 0}
+.item.dn{background:var(--done);color:var(--muted)}
+.item.dn .tx{text-decoration:line-through}
+input[type=checkbox]{width:20px;height:20px;margin-top:2px;accent-color:var(--accent);flex:none}
+.grow{flex:1;min-width:0}
+.tx{overflow-wrap:anywhere}
+small{display:flex;flex-wrap:wrap;gap:4px 12px;color:var(--muted)}
+.tag{color:var(--accent);font-weight:500}
+.od{color:var(--red);font-weight:500}
+.empty{color:var(--muted);padding:8px 2px}
+.bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden;margin:6px 0}
+.bar>i{display:block;height:100%;background:var(--accent)}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
+.note{background:var(--surface);border-left:4px solid var(--amber);padding:10px 12px;border-radius:6px;margin:8px 0}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:20px}
+pre,textarea.bk{width:100%;min-height:70px;font-size:.8rem}
+</style>
+</head>
+<body>
+<main>
+<div class="top">
+<svg viewBox="0 0 120 120" aria-hidden="true"><path d="M56 46h8l5 66H51z" fill="var(--muted)"/><g class="blades"><path d="M60 46 57 6q3-4 6 0z" fill="var(--accent)"/><path d="M60 46 57 6q3-4 6 0z" fill="var(--accent)" transform="rotate(120 60 46)"/><path d="M60 46 57 6q3-4 6 0z" fill="var(--accent)" transform="rotate(240 60 46)"/></g><circle cx="60" cy="46" r="5" fill="var(--amber)"/></svg>
+<div><h1>Yaswanth Hub</h1><div class="sub" id="date"></div></div>
+</div>
+<nav id="nav"></nav>
+<div id="view"></div>
+<div class="row"><button class="ghost" data-a="backup">Backup</button><button class="ghost" data-a="restore">Restore</button><button class="ghost" data-a="theme">Light or dark</button></div>
+<textarea class="bk" id="bk" hidden aria-label="Backup data" placeholder="Paste a backup here, then press Restore"></textarea>
+</main>
+<script>
+var K="yash-hub-v1",S={tasks:[],events:[],notes:[],exp:[],people:[],seeded:false},tab="today",F="All";
+try{var r=localStorage.getItem(K);if(r)S=Object.assign(S,JSON.parse(r))}catch(e){}
+function save(){try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}}
+var AREAS=["PAWAN SHAKTI","MG Automation","IvLabs","Waffle Whizz","Personal"],CATS=["Food","Travel","Business","Parts","Bills","Other"];
+var TABS=[["today","Today"],["tasks","Tasks"],["sched","Schedule"],["notes","Notes"],["money","Expenses"],["people","Contacts"],["plan","Wind plan"]];
+function iso(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+var TD=iso(new Date());
+function fd(s){return new Date(s+"T00:00:00").toLocaleDateString("en-IN",{day:"numeric",month:"short"})}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,5)}
+function opts(a,v){return a.map(function(x){return"<option"+(x===v?" selected":"")+">"+esc(x)+"</option>"}).join("")}
+function inr(n){return"₹"+Math.round(n).toLocaleString("en-IN")}
+function empty(t){return'<div class="empty">'+t+"</div>"}
+function taskRow(t){var od=t.due&&!t.done&&t.due<TD;
+return'<div class="item'+(t.done?" dn":"")+'"><input type="checkbox" data-t="'+t.id+'"'+(t.done?" checked":"")+' aria-label="Mark done"><div class="grow"><div class="tx">'+(t.star?"★ ":"")+esc(t.text)+'</div><small><span class="tag">'+esc(t.area)+"</span>"+(t.due?'<span class="'+(od?"od":"")+'">'+(od?"Overdue, ":"Due ")+fd(t.due)+"</span>":"")+'</small></div><button class="x" data-a="star" data-id="'+t.id+'" aria-label="Star task">☆</button><button class="x" data-a="del" data-l="tasks" data-id="'+t.id+'" aria-label="Delete task">×</button></div>'}
+function taskForm(){return'<form data-f="task"><input class="wide" name="text" placeholder="Add a task" required><select name="area" aria-label="Area">'+opts(AREAS,AREAS[0])+'</select><input type="date" name="due" aria-label="Due date"><button>Add task</button></form>'}
+function sortT(a){return a.slice().sort(function(x,y){return(x.due||"9999").localeCompare(y.due||"9999")||(y.star?1:0)-(x.star?1:0)})}
+function V(){var h="";
+if(tab==="today"){var hr=new Date().getHours(),g=hr<12?"Good morning":hr<17?"Good afternoon":"Good evening";
+var open=S.tasks.filter(function(t){return!t.done}),due=open.filter(function(t){return t.due&&t.due<=TD}),mo=TD.slice(0,7),sp=S.exp.filter(function(e){return e.date.slice(0,7)===mo}).reduce(function(a,e){return a+e.amt},0);
+var up=S.events.filter(function(e){return e.date>=TD&&e.date<=iso(new Date(Date.now()+7*864e5))}).sort(function(a,b){return(a.date+a.time).localeCompare(b.date+b.time)});
+h+="<h2>"+g+", Yaswanth.</h2>"+taskForm()+'<div class="stats"><div class="stat"><b>'+due.length+"</b><span>Due or overdue</span></div><div class=\"stat\"><b>"+open.length+"</b><span>Open tasks</span></div><div class=\"stat\"><b>"+up.length+"</b><span>Events this week</span></div><div class=\"stat\"><b>"+inr(sp)+"</b><span>Spent this month</span></div></div>";
+h+="<h2>Due today and overdue</h2>"+(due.length?sortT(due).map(taskRow).join(""):empty("Nothing due. Pick one task from your list and start it."));
+h+="<h2>Next 7 days</h2>"+(up.length?up.map(evRow).join(""):empty("No events in the next 7 days."));
+var pn=S.notes.filter(function(n){return n.pin});h+="<h2>Pinned notes</h2>"+(pn.length?'<div class="cols">'+pn.map(noteCard).join("")+"</div>":empty("Pin a note and it shows here."))}
+if(tab==="tasks"){h+=taskForm()+'<select data-filter aria-label="Filter by area">'+opts(["All"].concat(AREAS),F)+"</select>";
+var l=S.tasks.filter(function(t){return F==="All"||t.area===F}),o=sortT(l.filter(function(t){return!t.done})),d=l.filter(function(t){return t.done});
+h+="<h2>Open ("+o.length+")</h2>"+(o.length?o.map(taskRow).join(""):empty("No open tasks here."));
+h+="<h2>Done ("+d.length+")</h2>"+d.map(taskRow).join("")+(d.length?'<button class="ghost" data-a="clearDone">Clear done tasks</button>':"")}
+if(tab==="sched"){h+='<form data-f="event"><input class="wide" name="title" placeholder="Meeting, trip or deadline" required><input type="date" name="date" value="'+TD+'" required aria-label="Date"><input type="time" name="time" aria-label="Time"><select name="kind" aria-label="Type">'+opts(["Meeting","Travel","Deadline","Other"],"Meeting")+'</select><input name="place" placeholder="Place or link"><button>Add event</button></form>';
+var e=S.events.slice().sort(function(a,b){return(a.date+a.time).localeCompare(b.date+b.time)});
+h+=e.length?e.map(evRow).join(""):empty("No events yet. Add your next meeting or trip.")}
+if(tab==="notes"){h+='<form data-f="note"><input class="wide" name="title" placeholder="Title" required><textarea class="wide" name="body" rows="3" placeholder="Write the note"></textarea><button>Save note</button></form>'+(S.notes.length?'<div class="cols">'+S.notes.map(noteCard).join("")+"</div>":empty("No notes yet."))}
+if(tab==="money"){h+='<form data-f="exp"><input type="number" name="amt" min="0" step="any" placeholder="Amount in ₹" required><select name="cat" aria-label="Category">'+opts(CATS,"Food")+'</select><input type="date" name="date" value="'+TD+'" required aria-label="Date"><input name="note" placeholder="What for"><button>Add expense</button></form>';
+var mo2=TD.slice(0,7),m=S.exp.filter(function(x){return x.date.slice(0,7)===mo2}),tot=m.reduce(function(a,x){return a+x.amt},0),by={};m.forEach(function(x){by[x.cat]=(by[x.cat]||0)+x.amt});
+h+='<div class="stats"><div class="stat"><b>'+inr(tot)+"</b><span>This month</span></div></div>";
+Object.keys(by).forEach(function(c){h+='<div class="card" style="margin-top:6px">'+esc(c)+": "+inr(by[c])+'<div class="bar"><i style="width:'+Math.round(by[c]/tot*100)+'%"></i></div></div>'});
+h+="<h2>Recent</h2>"+(S.exp.length?S.exp.slice().sort(function(a,b){return b.date.localeCompare(a.date)}).slice(0,20).map(function(x){return'<div class="item"><div class="grow"><div class="tx">'+inr(x.amt)+" "+esc(x.note)+"</div><small><span class=\"tag\">"+esc(x.cat)+"</span><span>"+fd(x.date)+'</span></small></div><button class="x" data-a="del" data-l="exp" data-id="'+x.id+'" aria-label="Delete expense">×</button></div>'}).join(""):empty("No expenses yet."))}
+if(tab==="people"){h+='<form data-f="person"><input name="name" placeholder="Name" required><input name="role" placeholder="Role or company"><input name="contact" placeholder="Phone or email"><input name="note" placeholder="Note"><button>Add contact</button></form>'+(S.people.length?S.people.map(function(p){return'<div class="item"><div class="grow"><div class="tx">'+esc(p.name)+"</div><small><span>"+esc(p.role)+"</span><span>"+esc(p.contact)+"</span><span>"+esc(p.note)+'</span></small></div><button class="x" data-a="del" data-l="people" data-id="'+p.id+'" aria-label="Delete contact">×</button></div>'}).join(""):empty("No contacts yet."))}
+if(tab==="plan"){var pt=S.tasks.filter(function(t){return t.plan}),pd=pt.filter(function(t){return t.done}).length,pc=pt.length?Math.round(pd/pt.length*100):0;
+h+='<div class="note"><b>Realistic target.</b> The TRL scale ends at 9, so there is no TRL 10. In 90 days aim for TRL 5 evidence, a TRL 6 prototype demo and one pilot letter. TRL 7 to 9 needs field data and certification.</div>';
+if(!S.seeded)h+='<p>Add one milestone task for each of the 12 weeks, starting November 4, 2026, under PAWAN SHAKTI.</p><button data-a="seed">Add the 12-week plan to my tasks</button>';
+else h+="<h2>Plan progress: "+pc+'%</h2><div class="bar"><i style="width:'+pc+'%"></i></div>'+sortT(pt).map(taskRow).join("")}
+return h}
+function evRow(e){return'<div class="item"><div class="grow"><div class="tx">'+esc(e.title)+"</div><small><span class=\"tag\">"+esc(e.kind)+"</span><span>"+fd(e.date)+(e.time?" "+esc(e.time):"")+"</span><span>"+esc(e.place)+'</span></small></div><button class="x" data-a="del" data-l="events" data-id="'+e.id+'" aria-label="Delete event">×</button></div>'}
+function noteCard(n){return'<div class="card"><h3>'+esc(n.title)+'</h3><div class="tx" style="white-space:pre-wrap;margin:6px 0">'+esc(n.body)+'</div><button class="ghost" data-a="pin" data-id="'+n.id+'">'+(n.pin?"Unpin":"Pin")+'</button> <button class="ghost" data-a="del" data-l="notes" data-id="'+n.id+'">Delete</button></div>'}
+function render(){document.getElementById("date").textContent=new Date().toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+document.getElementById("nav").innerHTML=TABS.map(function(t){return'<button data-a="tab" data-id="'+t[0]+'"'+(t[0]===tab?' aria-current="page"':"")+">"+t[1]+"</button>"}).join("");
+document.getElementById("view").innerHTML=V()}
+function seed(){var P=[["Product and evidence audit","Status and gap report"],["Technical design review","System architecture and requirements"],["Test plan and safety","Prototype testing plan"],["Business foundation","Customer discovery report"],["Design freeze and procurement","Frozen design, first grant submitted"],["Prototype integration","Prototype ready for controlled tests"],["Lab validation","Laboratory test report"],["Relevant-environment tests","TRL 5 evidence package"],["Field-test preparation","Field-test readiness report"],["Pilot demonstration","Pilot running with data"],["Fix and improve","Improvement report"],["Evidence pack","Report, manual and deck"]],s=new Date("2026-11-04T00:00:00");
+P.forEach(function(p,i){var d=new Date(s);d.setDate(d.getDate()+i*7+6);S.tasks.push({id:uid(),text:"Week "+(i+1)+": "+p[0]+". Deliverable: "+p[1],area:"PAWAN SHAKTI",due:iso(d),done:false,plan:1})});S.seeded=true}
+document.addEventListener("click",function(e){var b=e.target.closest("[data-a]");if(!b)return;var a=b.dataset.a,id=b.dataset.id;
+if(a==="tab"){tab=id}
+else if(a==="del"){var l=S[b.dataset.l];S[b.dataset.l]=l.filter(function(x){return x.id!==id})}
+else if(a==="pin"){S.notes.forEach(function(n){if(n.id===id)n.pin=!n.pin})}
+else if(a==="star"){S.tasks.forEach(function(t){if(t.id===id)t.star=!t.star})}
+else if(a==="clearDone"){S.tasks=S.tasks.filter(function(t){return!t.done})}
+else if(a==="seed"){seed()}
+else if(a==="theme"){var r=document.documentElement,d=r.getAttribute("data-theme")==="dark"||(!r.getAttribute("data-theme")&&matchMedia("(prefers-color-scheme: dark)").matches);r.setAttribute("data-theme",d?"light":"dark");return}
+else if(a==="backup"){var t=document.getElementById("bk");t.hidden=false;t.value=JSON.stringify(S);t.select();return}
+else if(a==="restore"){var t2=document.getElementById("bk");if(t2.hidden||!t2.value.trim()){t2.hidden=false;t2.value="";t2.focus();return}try{S=Object.assign({tasks:[],events:[],notes:[],exp:[],people:[],seeded:false},JSON.parse(t2.value));t2.hidden=true}catch(x){alert("That backup could not be read. Paste the full text from the Backup button.");return}}
+save();render()});
+document.addEventListener("change",function(e){var t=e.target;
+if(t.dataset.t){S.tasks.forEach(function(x){if(x.id===t.dataset.t)x.done=t.checked});save();render()}
+if(t.hasAttribute("data-filter")){F=t.value;render()}});
+document.addEventListener("submit",function(e){e.preventDefault();var f=e.target,k=f.dataset.f,v=Object.fromEntries(new FormData(f)),id=uid();
+if(k==="task")S.tasks.push({id:id,text:v.text,area:v.area,due:v.due,done:false});
+if(k==="event")S.events.push({id:id,title:v.title,date:v.date,time:v.time,kind:v.kind,place:v.place});
+if(k==="note")S.notes.unshift({id:id,title:v.title,body:v.body,pin:false});
+if(k==="exp")S.exp.push({id:id,amt:parseFloat(v.amt)||0,cat:v.cat,date:v.date,note:v.note});
+if(k==="person")S.people.push({id:id,name:v.name,role:v.role,contact:v.contact,note:v.note});
+save();render()});
+render();
+</script>
+</body>
+</html>
