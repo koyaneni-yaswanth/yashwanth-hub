@@ -1,18 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
 import confetti from 'canvas-confetti';
 import {
-  Wind,
   Calendar,
   Sparkles,
   ChevronDown,
   ChevronUp,
   FileCheck,
   RotateCcw,
+  AlertTriangle,
+  ShieldCheck,
+  Zap,
+  Activity,
+  Cpu,
+  DollarSign,
+  Layers,
+  Flame,
+  Clock,
+  BookOpen,
 } from 'lucide-react';
-import { db } from '../db';
-import type { Task } from '../types';
-import { formatShortDate, generateId } from '../lib/utils';
 import { TurbineLogo } from '../components/common/TurbineLogo';
 
 interface PhaseWeek {
@@ -23,482 +28,583 @@ interface PhaseWeek {
 
 interface Phase {
   ph: string;
+  badge?: string;
   w: PhaseWeek[];
 }
 
 const PLAN_DATA: Phase[] = [
   {
-    ph: 'Phase 1: Know exactly what you are building (Weeks 1 to 4)',
+    ph: 'Phase 1: Baseline Audit & Parallel Fabrication (Weeks 1 to 4 / Days 1–30)',
+    badge: 'Gate 1–3 Active',
     w: [
       {
-        t: 'Product and evidence audit',
+        t: 'Week 1 (Days 1–7): Baseline Audit, Dimensions & Logger v1',
         k: [
-          'Write down the TRL 4 evidence: tests, data, photos',
-          'List what works and what has never run outdoors',
-          'Set up one master tracker for tasks and dates',
-          'Pick one customer type and one turbine size',
+          'Physically measure baseline wooden prototype: rotor tip-to-tip diameter (do NOT assume 1 m²), chord lengths, and shaft centers',
+          'Audit CAD STL files for Pod A Coaxial Magnetic Gear: pole count, modulator slots, and air-gap clearances',
+          'Disassemble and count teeth on baseline planetary gear rig (sun, planet, ring); inspect tooth wear and radial play',
+          'Measure generator phase resistances (U-V, V-W, W-U), inductance, and breakaway cogging torque in N·m',
+          'Wire ESP32 + INA226 + SD card logger v1; verify 10-minute automated 1 Hz CSV recording into resistive load',
+          'Founder locks Day 45 Shootout scoring weights (sum to 100%) and project CapEx budget ceiling in DECISION_LOG.md',
+          'Formulate initial beachhead customer hypothesis (Off-grid Telecom / Remote IoT) and compile 15 outreach targets',
         ],
-        d: 'Status and gap report',
+        d: 'Gate 1 Pass: Baseline Documented, TRL 4 Audited, Logger v1 Operational',
       },
       {
-        t: 'Technical design review',
+        t: 'Week 2 (Days 8–14): Test Standardization & Baseline Benchmarking',
         k: [
-          'Review rotor and blade aerodynamic design',
-          'Review generator, controller and battery storage',
-          'Review tower, foundation and braking mechanism',
-          'Meet the professor with a one-page update',
+          'Calibrate 3-cup anemometer, Hall-effect RPM sensor, and INA226 current shunts against bench instrumentation',
+          'Execute standardized 4-speed bench runs on baseline wooden planetary rig; log V, I, P = V × I, and RPM at 1 Hz',
+          'Run 3 consecutive repeatability sweeps to establish baseline measurement uncertainty and power standard deviation',
+          'Draft standardized 1-page technical spec sheet with every parameter tagged (MEASURED/CALCULATED/ESTIMATED)',
+          'Write structured customer discovery interview script and conduct initial outreach to 15 regional pilot prospects',
         ],
-        d: 'System architecture and requirements',
+        d: 'Gate 2 Pass: Repeatable Baseline Power Curve Logged; Outreach Initiated',
       },
       {
-        t: 'Test plan and safety',
+        t: 'Week 3 (Days 15–22): Structural Frame Upgrade & Subsystem CAD',
         k: [
-          'Set rated power and target wind range (3 to 12 m/s)',
-          'Define how to measure power, RPM, vibration, temperature',
-          'Write a risk register: overspeed, braking, lightning, grounding',
-          'Read the IEC 61400-2 summary for small turbines',
+          'Decommission wooden outer frame; assemble rigid 3030 modular T-slot aluminum extrusion chassis',
+          'Laser-cut / CNC machine 6.0 mm 6061-T6 aluminum bearing bulkhead plates for precise shaft centerlines',
+          'Design Center of Gravity (CG) yaw pivot mount with double-row angular contact bearing and 30A capsule slip ring',
+          'Pod A: Complete analytical flux model for 1:10 coaxial magnetic gear; design non-magnetic assembly sleeve',
+          'Pod B: Finalize CAD for 3-bladed Archimedes spiral rotor with 60°/50°/25° progressive pitch',
+          'Founder approves Procurement Batch #1 for extrusions, aluminum plates, ASA/PETG-CF filament, and N52 magnets',
         ],
-        d: 'Prototype testing plan',
+        d: 'Chassis CAD Frozen, Materials Sourced, Subsystem Blueprints Released',
       },
       {
-        t: 'Business foundation',
+        t: 'Week 4 (Days 23–30): Parallel Pod Fabrication & Electronics Bench',
         k: [
-          'Interview 5 possible industrial or rural off-grid users',
-          'Study 5 competitors and their market prices',
-          'Build a first manufacturing and parts cost sheet',
-          'List grants and incubators; pick the first to apply to',
+          'Pod A: 3D print magnetic gear hubs in PETG-CF; bond N52 magnets with alternating polarity checked by Gaussmeter',
+          'Pod B: 3D print Archimedes spiral in ASA; apply epoxy pore-filler resin and wet-sand (400 to 1000 grit)',
+          'Power Backbone: Assemble 3-phase Schottky diode bridge rectifier on finned heatsink (verify Vf < 0.4V)',
+          'Power Backbone: Wire manual mushroom E-stop contactor to 3x 1.5-ohm 500W dynamic braking resistor bank',
+          'Conduct 5 customer discovery calls to validate willingness-to-pay (₹35k–₹50k) and off-grid power constraints',
+          'Day 30 Subsystem Check: Verify both Pod A and Pod B spin freely on bench lathe without binding',
         ],
-        d: 'Customer discovery report',
+        d: 'Gate 3 Pass: Both Drivetrains Spinning on Bench; Customer Needs Validated',
       },
     ],
   },
   {
-    ph: 'Phase 2: Build evidence, not just hardware (Weeks 5 to 8)',
+    ph: 'Phase 2: Shootout, Freeze Gate & Hardening (Weeks 5 to 8 / Days 31–60)',
+    badge: 'Day 45 Freeze Gate',
     w: [
       {
-        t: 'Design freeze and procurement',
+        t: 'Week 5 (Days 31–38): Power Electronics Integration & Safety Tests',
         k: [
-          'Freeze the design after professor review',
-          'Confirm the bill of materials (BOM)',
-          'Order long-lead parts first (magnets, bearings, hub)',
-          'Submit the first government or institutional grant application',
+          'Assemble Turbine Control & Charging Box (TCCB): Rectifier -> E-Stop Contactor -> Dump Load -> Buck-Boost MPPT',
+          'Execute pre-written dynamic brake test procedure: Verify smooth stop from 300 RPM in < 4.0 seconds',
+          'Test automated 500W dump load PWM circuit: verify clamping when battery voltage hits 28.8V or RPM > 650',
+          'Audit ANRF / VNIT Venture Vault grant milestones and draft master technical write-up narrative',
         ],
-        d: 'Frozen design, orders placed, first grant submitted',
+        d: 'TCCB Certified for Dynamic Braking and Automated Dump Protection',
       },
       {
-        t: 'Prototype integration',
+        t: 'Week 6 (Days 39–45): Head-to-Head Shootout & DAY 45 FREEZE GATE',
         k: [
-          'Assemble the mechanical hub and blade assembly',
-          'Wire the axial flux generator and electronics',
-          'Fit controller and overspeed protection',
-          'Set up an automated data logger (RPM, voltage, current)',
+          'Mount Pod A (Magnetic + HAWT) and Pod B (Archimedes + Planetary) under identical airflow and electrical load',
+          'Log cut-in speed, mechanical efficiency, torque, acoustic noise (dBA), and thermal rise for both pods',
+          'Fill out comparative evaluation scorecard; review data against frozen Day 7 multi-criteria weights',
+          'DAY 45 FREEZE GATE: Founder formally approves ONE winning architecture (or justified hybrid)',
+          'Dissolve Pod A & Pod B separation; merge all 6 juniors into single commercial pilot build team',
         ],
-        d: 'Prototype ready for controlled tests',
+        d: 'CRITICAL GATE 4: Single Commercial Architecture Frozen; Losing Track Terminated',
       },
       {
-        t: 'Lab validation',
+        t: 'Week 7 (Days 46–52): Full System Assembly & Weatherproofing',
         k: [
-          'Measure open-circuit and load voltage, current and efficiency',
-          'Record RPM curves against varying resistive loads',
-          'Check bearing vibration and coil temperature rise',
-          'Compare experimental curves with analytical predictions',
+          'Integrate winning drivetrain with coreless PMA, 3030 chassis, CG yaw bearing, and 30A capsule slip ring',
+          'Install passive aerodynamic tail vane with 5° furling hinge and vibration-damping counter-weight',
+          'Apply IP65 silicone weather seals, Loctite 243 threadlocker on all bolts, and wire protective conduits',
+          'Draft formal Pilot Deployment LOI / MoU with primary customer candidate (performance guarantee terms)',
         ],
-        d: 'Laboratory test report',
+        d: 'Fully Integrated Hardened Prototype Assembled on Mast',
       },
       {
-        t: 'Relevant-environment tests',
+        t: 'Week 8 (Days 53–60): Failsafe Verification & Outdoor Approval',
         k: [
-          'Run supervised tests under real atmospheric wind conditions',
-          'Log wind speed anemometer data against electrical power output',
-          'Record every failure, anomaly and engineering fix',
-          'Verify TRL 5 acceptance criteria',
+          'Failsafe Abuse Test: Trigger manual E-stop at full rated RPM (600 RPM); verify stop in < 5 seconds',
+          'Verify automated dump-load engagement when 24V LiFePO4 battery pack reaches 28.8V absorption threshold',
+          'Verify passive aerodynamic tail furling under simulated storm gust airflow (>12 m/s)',
+          'Submit mid-term milestone report to VNIT Venture Vault Foundation with verified bench test data',
         ],
-        d: 'TRL 5 evidence package',
+        d: 'Gate 5 Pass: Integrated System Failsafe-Verified; Approved for Outdoor Mast',
       },
     ],
   },
   {
-    ph: 'Phase 3: Pilot and startup validation (Weeks 9 to 12)',
+    ph: 'Phase 3: Field Endurance, Pilot Sale & Handover (Weeks 9 to 12 / Days 61–90)',
+    badge: 'TRL 5/6 Validation',
     w: [
       {
-        t: 'Field-test preparation',
+        t: 'Week 9 (Days 61–70): Continuous Telemetry & Live Customer Demo',
         k: [
-          'Choose a deployment site with documented wind speeds',
-          'Verify tower guy-wires and ground anchor foundation needs',
-          'Plan electrical safety, disconnect switch and local permissions',
-          'Interview 5 more prospective pilot customers',
+          'Erect guyed mast on approved outdoor test pad (or controlled rig); begin continuous 24/7 automated 1 Hz logging',
+          'Generate daily automated scatter plots: Wind Speed vs. Electrical Power, RPM, and Battery State-of-Charge',
+          'Host live telemetry review with primary pilot customer prospect; execute signed Pilot Deployment LOI',
+          'Juniors run daily 2-hour anomaly checks on log files (vibration spikes, voltage ripple, bearing temp)',
         ],
-        d: 'Field-test readiness report',
+        d: '10 Days Continuous Field Telemetry Logged; Signed Pilot LOI Secured',
       },
       {
-        t: 'Pilot demonstration',
+        t: 'Week 10 (Days 71–80): Day 75 Teardown Audit & Grant Dossier',
         k: [
-          'Install the turbine at the test site',
-          'Start daily data logging and remote telemetry',
-          'Take weekly high-res engineering photos and operation video',
-          'Ask for a letter of intent (LOI) from one pilot customer',
+          'Perform comprehensive teardown inspection: inspect gear teeth wear / magnetic air-gap dust ingress',
+          'Check epoxy blade leading-edge erosion and measure bearing axial runout after 200+ operating hours',
+          'Reassemble, re-torque all fasteners, and re-apply witness lacquer',
+          'Finalize Master Grant Technical Dossier and costed 10-unit batch manufacturing BOM (target < ₹25,000/unit)',
+          'Write Standard Operating Procedure (SOP) manual for mast erection, wiring, and emergency braking',
         ],
-        d: 'Pilot running with live telemetry data',
+        d: 'Teardown Passed; SOP Manual & Grant Dossier Finalized',
       },
       {
-        t: 'Fix and improve',
+        t: 'Week 11 & 12 (Days 81–90): Pilot Delivery, Demo Day & Retrospective',
         k: [
-          'Diagnose and fix the top three failure modes',
-          'Run mechanical safety checks and brake clamp tests again',
-          'Update the commercial cost sheet with actual production numbers',
-          'Apply to a second grant or seed incubator program',
+          'Complete 30-day continuous logging run; compile master energy yield report (Wh/day and system Cp)',
+          'Commission the hardened pilot unit at the customer site / VNIT demonstration pad',
+          'Host Demo Day for academic mentor Dr. J. Bhukya, VNIT Venture Vault mentors, and grant reviewers',
+          'Conduct 90-day retrospective: document what worked, what failed, measured vs. estimated variance',
+          'Archive CAD v1.0, firmware v1.0, and transition juniors to next-180-day batch manufacturing plan',
         ],
-        d: 'Engineering improvement report',
-      },
-      {
-        t: 'Evidence pack',
-        k: [
-          'Compile the final data report: 4 weeks of continuous real output',
-          'Draft the user manual and installation guidelines',
-          'Prepare a concise founder pitch deck for investors and grants',
-          'Define the TRL 7 commercial pilot scale roadmap',
-        ],
-        d: 'TRL 6 Evidence report, user manual, and deck',
-      },
-    ],
-  },
-  {
-    ph: 'Final Review: Days 85 to 90',
-    w: [
-      {
-        t: 'Founder review and next cycle',
-        k: [
-          'Score the TRL level against your real experimental evidence',
-          'List what to stop, keep and start for the next quarter',
-          'Set the next 90-day scale and certification plan',
-        ],
-        d: 'Decision memo and roadmap',
+        d: 'FINAL MILESTONE: Field-Validated TRL 5/6 System Delivered to Pilot Customer',
       },
     ],
   },
 ];
 
-const JUNIOR_TASKS = [
-  ['Competitor research', '10 competitor profiles with price and technical specs'],
-  ['CAD documentation', 'Updated 3D CAD assembly drawings and BOM'],
-  ['Market research', 'List of 20 prospective customer leads with contact info'],
-  ['Literature research', '5 relevant research papers with 3-line executive summaries'],
-  ['Data logging', 'Daily data sheet and photos during wind test runs'],
+interface MicroTask {
+  id: string;
+  track: string;
+  owner: string;
+  est: string;
+  title: string;
+  dod: string;
+  safety: string;
+  status: 'PENDING' | 'IN_PROGRESS' | 'DONE';
+}
+
+const DAY_1_7_TASKS: MicroTask[] = [
+  {
+    id: 'TASK-D01-01',
+    track: 'Materials & Structures',
+    owner: 'MME Junior',
+    est: '2.5h',
+    title: 'Physical Measurement of Baseline Wooden Prototype (Rotor, Hub, Shafts)',
+    dod: 'Caliper measurement of rotor diameter (do NOT assume 1 m²); blade chord at root/mid/tip; shaft centerlines; 5 dimensioned photos uploaded.',
+    safety: 'Mechanically lock rotor hub so blades cannot rotate during hand measurement.',
+    status: 'IN_PROGRESS',
+  },
+  {
+    id: 'TASK-D01-02',
+    track: 'Pod A: Magnetic Gear',
+    owner: 'EE Juniors 1 & 2',
+    est: '2.5h',
+    title: 'Coaxial Magnetic Gear STL & Geometry Audit',
+    dod: 'Count magnet pockets on inner rotor, outer rotor, and modulator cage from STL files; calculate theoretical speed ratio; measure actual printed pocket clearances.',
+    safety: 'Keep strong N52 magnets separated from ferromagnetic tools; pinch hazard warning.',
+    status: 'PENDING',
+  },
+  {
+    id: 'TASK-D01-03',
+    track: 'Pod B: Archimedes + Planetary',
+    owner: 'EE Junior 3',
+    est: '2.5h',
+    title: 'Patented Planetary Gearbox Ratio & Condition Audit',
+    dod: 'Disassemble wooden gearbox; count teeth on sun, planet, and ring gears; calculate multi-stage ratio; inspect tooth wear; measure shaft radial play with dial indicator.',
+    safety: 'Wear safety glasses; beware of sharp snap rings.',
+    status: 'PENDING',
+  },
+  {
+    id: 'TASK-D01-04',
+    track: 'Power & Telemetry Backbone',
+    owner: 'EE Juniors 4 & 5',
+    est: '2.5h',
+    title: 'Generator Electrical & Breakaway Cogging Characterization',
+    dod: 'Record generator nameplate/model; measure phase resistances across all 3 phases; measure inductance with LCR meter; measure static breakaway torque in N·m.',
+    safety: 'Do not spin generator with open leads while touching terminals.',
+    status: 'PENDING',
+  },
+  {
+    id: 'TASK-D02-01',
+    track: 'Telemetry Lead',
+    owner: 'EE Junior 5',
+    est: '3.0h',
+    title: 'ESP32 + INA226 + Micro-SD 1 Hz Logger v1 Bench Wiring',
+    dod: 'Wire I2C INA226 shunt and SPI SD card module to ESP32; log 10-minute automated test measuring V, I, P into a 10-ohm resistor at 1 Hz without packet loss.',
+    safety: 'Load resistor gets hot during 15W test; do not place on combustible surfaces.',
+    status: 'PENDING',
+  },
+  {
+    id: 'TASK-D02-04',
+    track: 'Founder Ops',
+    owner: 'Founder (Yashwanth)',
+    est: '2.0h',
+    title: 'Day 45 Shootout Scoring Weights & Budget Ceiling Lock',
+    dod: 'Review evaluation criteria; assign percentage weights totaling 100%; set CapEx budget ceiling; log decision in DECISION_LOG.md.',
+    safety: 'Financial risk management boundary.',
+    status: 'DONE',
+  },
 ];
 
 export const WindPlanPage: React.FC = () => {
-  // Plan Start Date
-  const [startDateStr, setStartDateStr] = useState<string>('2026-11-04');
+  const [activeTab, setActiveTab] = useState<'roadmap' | 'shootout' | 'tasks' | 'telemetry' | 'bom' | 'decisions'>('roadmap');
+  const [collapsedPhases, setCollapsedPhases] = useState<Record<number, boolean>>({});
   const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
-  const [expandedPhases, setExpandedPhases] = useState<Record<number, boolean>>({
-    0: true,
-    1: true,
-    2: true,
-    3: true,
-  });
+  const [startDateStr, setStartDateStr] = useState<string>('2026-11-04');
+  
+  // Interactive Calculator State
+  const [calcWindSpeed, setCalcWindSpeed] = useState<number>(8.0);
+  const [calcRadius, setCalcRadius] = useState<number>(0.564);
+  const [calcCp, setCalcCp] = useState<number>(0.30);
 
-  // Database tasks query to see if 12-week milestones are seeded in Tasks table
-  const allTasks = useLiveQuery(() => db.tasks.toArray(), []) || [];
-  const planTasks = allTasks.filter((t) => t.plan !== undefined);
-
-  // Load ticks from IndexedDB settings or localStorage
   useEffect(() => {
-    const loadState = async () => {
-      const savedStart = await db.settings.get('wind_start_date');
-      if (savedStart) setStartDateStr(savedStart.value);
-
-      const savedTicks = await db.settings.get('wind_ticks');
-      if (savedTicks && typeof savedTicks.value === 'object') {
-        setCheckedItems(savedTicks.value);
-      } else {
-        // Fallback to localStorage legacy
-        const legacy = localStorage.getItem('wind90-v1');
-        if (legacy) {
-          try {
-            const parsed = JSON.parse(legacy);
-            if (parsed.start) setStartDateStr(parsed.start);
-            if (parsed.done) setCheckedItems(parsed.done);
-          } catch {}
-        }
-      }
-    };
-    loadState();
+    try {
+      const stored = localStorage.getItem('pawan_shakti_ticks');
+      if (stored) setCheckedItems(JSON.parse(stored));
+      const sDate = localStorage.getItem('pawan_shakti_start_date');
+      if (sDate) setStartDateStr(sDate);
+    } catch (e) {
+      console.error(e);
+    }
   }, []);
 
-  const saveTicks = async (newTicks: Record<string, boolean>) => {
-    setCheckedItems(newTicks);
-    await db.settings.put({
-      key: 'wind_ticks',
-      value: newTicks,
-      updated_at: new Date().toISOString(),
-    });
-  };
-
-  const handleStartDateChange = async (dateVal: string) => {
-    setStartDateStr(dateVal);
-    await db.settings.put({
-      key: 'wind_start_date',
-      value: dateVal,
-      updated_at: new Date().toISOString(),
-    });
+  const saveTicks = (updated: Record<string, boolean>) => {
+    setCheckedItems(updated);
+    try {
+      localStorage.setItem('pawan_shakti_ticks', JSON.stringify(updated));
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const toggleCheck = (id: string) => {
-    const nextVal = !checkedItems[id];
-    const newTicks = { ...checkedItems, [id]: nextVal };
-    saveTicks(newTicks);
+    const nextState = !checkedItems[id];
+    const updated = { ...checkedItems, [id]: nextState };
+    saveTicks(updated);
 
-    if (nextVal) {
+    if (nextState) {
       confetti({
         particleCount: 25,
         spread: 40,
         origin: { y: 0.8 },
+        colors: ['#02b39b', '#38bdf8', '#f59e0b'],
       });
     }
   };
 
-  // Day & Week calculation
-  const startMs = new Date(startDateStr + 'T00:00:00').getTime();
+  // Calculations
+  const totalTasks = PLAN_DATA.reduce((acc, p) => acc + p.w.reduce((wAcc, w) => wAcc + w.k.length, 0), 0);
+  const completedTasks = Object.values(checkedItems).filter(Boolean).length;
+  const progressPercent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
+  // Day calculation
+  const startMs = new Date(startDateStr).getTime();
   const nowMs = Date.now();
-  const dayNumber = Math.max(1, Math.min(90, Math.floor((nowMs - startMs) / 86400000) + 1));
-  const currentWeek = Math.max(1, Math.min(13, Math.floor((nowMs - startMs) / (7 * 86400000)) + 1));
+  const dayNumber = Math.min(90, Math.max(1, Math.floor((nowMs - startMs) / (1000 * 60 * 60 * 24)) + 1));
 
-  // Count total tasks and checked tasks
-  let totalTasks = 0;
-  let completedTasks = 0;
-
-  PLAN_DATA.forEach((phase, pIdx) => {
-    phase.w.forEach((w, wIdx) => {
-      w.k.forEach((_, kIdx) => {
-        totalTasks++;
-        const id = `${pIdx}-${wIdx}-${kIdx}`;
-        if (checkedItems[id]) completedTasks++;
-      });
-    });
-  });
-
-  JUNIOR_TASKS.forEach((_, jIdx) => {
-    totalTasks++;
-    const id = `j-${jIdx}`;
-    if (checkedItems[id]) completedTasks++;
-  });
-
-  const percentage = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-
-  // Turbine duration: 12 seconds when 0%, speeds up to 1.5s when 100%
-  const turbineDuration = 12 - (10.5 * percentage) / 100;
-
-  const togglePhase = (pIdx: number) => {
-    setExpandedPhases((prev) => ({ ...prev, [pIdx]: !prev[pIdx] }));
-  };
-
-  // Seed 12-week milestones into Tasks table
-  const handleSeedMilestonesToTasks = async () => {
-    const now = new Date().toISOString();
-    const tasksToAdd: Task[] = [];
-    const baseDate = new Date(startDateStr + 'T00:00:00');
-
-    let weekNum = 1;
-    PLAN_DATA.slice(0, 3).forEach((phase) => {
-      phase.w.forEach((w) => {
-        const dueDate = new Date(baseDate);
-        dueDate.setDate(dueDate.getDate() + weekNum * 7 - 1);
-        const dueStr = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}-${String(dueDate.getDate()).padStart(2, '0')}`;
-
-        tasksToAdd.push({
-          id: generateId(),
-          text: `Week ${weekNum}: ${w.t}`,
-          description: `Deliverable: ${w.d}. Actions: ${w.k.join('; ')}`,
-          area: 'PAWAN SHAKTI',
-          priority: weekNum <= 4 ? 'high' : 'medium',
-          due_date: dueStr,
-          starred: weekNum <= 2,
-          done: false,
-          plan: weekNum,
-          created_at: now,
-          updated_at: now,
-        });
-        weekNum++;
-      });
-    });
-
-    await db.tasks.bulkAdd(tasksToAdd);
-    confetti({
-      particleCount: 75,
-      spread: 60,
-      origin: { y: 0.6 },
-    });
-  };
+  // Physics calculation
+  const sweptArea = Math.PI * Math.pow(calcRadius, 2);
+  const pWind = 0.5 * 1.225 * sweptArea * Math.pow(calcWindSpeed, 3);
+  const pElec = pWind * calcCp;
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* Hero Section */}
-      <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-5 sm:p-7 shadow-xs">
-        <div className="flex flex-col sm:flex-row items-center gap-6">
-          <div className="flex-none flex flex-col items-center">
-            <TurbineLogo size={90} durationSeconds={turbineDuration} />
-            <span className="text-[11px] font-bold text-teal-600 dark:text-teal-400 mt-2">
-              {turbineDuration.toFixed(1)}s rotation
+    <div className="space-y-6 pb-16">
+      {/* Hero Header */}
+      <div className="p-6 rounded-2xl bg-gradient-to-r from-[var(--hub-surface)] via-[var(--hub-surface-raised)] to-[var(--hub-surface)] border border-[var(--hub-line)] shadow-sm">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="flex items-start sm:items-center gap-4">
+            <div className="relative">
+              <TurbineLogo
+                durationSeconds={Math.max(1.5, 12 - (progressPercent / 100) * 9.5)}
+                className="w-16 h-16 sm:w-20 sm:h-20 flex-none"
+              />
+              {progressPercent === 100 && (
+                <Sparkles className="w-6 h-6 text-amber-500 absolute -top-1 -right-1 animate-bounce" />
+              )}
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
+                  VNIT Venture Vault Incubation
+                </span>
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                  Patent Published
+                </span>
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono text-[10px] bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
+                  TRL 4 → TRL 5/6 Sprint
+                </span>
+              </div>
+              <h1 className="font-heading font-extrabold text-2xl sm:text-3xl text-[var(--hub-ink)] tracking-tight">
+                Pawan Shakti — 90-Day Execution Engine
+              </h1>
+              <p className="text-xs sm:text-sm text-[var(--hub-muted)] mt-1 max-w-2xl leading-relaxed">
+                Academic Mentor: <strong className="text-[var(--hub-ink)]">Dr. J. Bhukya</strong> | Indian Patent:{' '}
+                <strong className="text-[var(--hub-ink)]">"Compact Wind Turbine with Planetary Gears"</strong> | One Product, One Beachhead, Day 45 Freeze Gate.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-row lg:flex-col items-center lg:items-end justify-between gap-2 border-t lg:border-t-0 pt-3 lg:pt-0 border-[var(--hub-line)]">
+            <div className="text-left lg:text-right">
+              <div className="text-xs text-[var(--hub-muted)] font-medium">Sprint Progress</div>
+              <div className="font-heading font-extrabold text-2xl text-teal-600 dark:text-teal-400">
+                {progressPercent}%
+              </div>
+            </div>
+            <div className="text-right">
+              <span className="text-xs font-mono px-2 py-1 rounded bg-[var(--hub-bg)] text-[var(--hub-ink)] border border-[var(--hub-line)]">
+                Day {dayNumber} of 90
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Global Progress Bar with Day 45 Marker */}
+        <div className="mt-6 pt-4 border-t border-[var(--hub-line)]">
+          <div className="flex items-center justify-between text-xs text-[var(--hub-muted)] mb-2 font-medium">
+            <span>Gate 1: Baseline Audit (Day 7)</span>
+            <span className="text-amber-500 font-bold flex items-center gap-1">
+              <Flame className="w-3.5 h-3.5" /> DAY 45 FREEZE GATE (Architecture Lock)
+            </span>
+            <span>Final Gate: Pilot Handover (Day 90)</span>
+          </div>
+          <div className="relative w-full h-3 bg-[var(--hub-bg)] rounded-full overflow-hidden border border-[var(--hub-line)]">
+            <div
+              className="h-full bg-gradient-to-r from-teal-500 to-sky-500 transition-all duration-500 rounded-full"
+              style={{ width: `${Math.max(4, progressPercent)}%` }}
+            />
+            {/* Freeze Gate 50% Marker */}
+            <div
+              className="absolute top-0 bottom-0 w-1 bg-amber-500 z-10 shadow-[0_0_8px_#f59e0b]"
+              style={{ left: '50%' }}
+              title="Day 45 Freeze Gate"
+            />
+          </div>
+          <div className="flex justify-between items-center text-[11px] text-[var(--hub-muted)] mt-1.5 font-mono">
+            <span>{completedTasks} of {totalTasks} deliverables checked</span>
+            <span>Contingency Buffer: 14 Days (15.5%)</span>
+            <span>Target: 1 Signed Pilot Agreement</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Physics & Engineering Baseline Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Card 1: Physics Target */}
+        <div className="p-4 rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-line)]">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-heading font-bold text-xs uppercase tracking-wider text-[var(--hub-muted)] flex items-center gap-1.5">
+              <Zap className="w-4 h-4 text-sky-500" /> Physics Baseline
+            </h3>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-500/10 text-sky-500 font-semibold">
+              P = ½ρAv³
             </span>
           </div>
-
-          <div className="flex-1 w-full text-center sm:text-left">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-500/10 text-teal-700 dark:text-teal-300 text-xs font-bold mb-2">
-              <Wind className="w-3.5 h-3.5" />
-              <span>PAWAN SHAKTI FOUNDER ROADMAP</span>
+          <div className="space-y-1.5 text-xs">
+            <div className="flex justify-between py-1 border-b border-[var(--hub-line)]/50">
+              <span className="text-[var(--hub-muted)]">Target Swept Area:</span>
+              <span className="font-mono text-[var(--hub-ink)] font-semibold">1.0 m² (R = 0.564m) [CALC]</span>
             </div>
-            <h2 className="text-2xl sm:text-3xl font-bold font-heading text-[var(--hub-ink)] tracking-tight">
-              Wind Startup: 90-Day Command Center
-            </h2>
-            <p className="text-xs sm:text-sm text-[var(--hub-muted)] mt-1 max-w-2xl leading-relaxed">
-              Founder plan from TRL 4 (lab prototype) to a verified TRL 6 relevant-environment prototype.
-              The wind turbine spins faster as deliverables are checked off.
-            </p>
-
-            {/* Overall Progress Bar */}
-            <div className="mt-4">
-              <div className="flex items-center justify-between text-xs font-bold mb-1.5">
-                <span className="text-[var(--hub-ink)]">Execution Velocity</span>
-                <span className="text-[var(--hub-accent)]">{percentage}% Complete</span>
-              </div>
-              <div className="w-full h-3 rounded-full bg-[var(--hub-line)] overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-teal-600 to-emerald-500 rounded-full transition-all duration-500"
-                  style={{ width: `${percentage}%` }}
-                />
-              </div>
+            <div className="flex justify-between py-1 border-b border-[var(--hub-line)]/50">
+              <span className="text-[var(--hub-muted)]">Power at 5.0 m/s:</span>
+              <span className="font-mono text-[var(--hub-ink)] font-semibold">76.6W wind → 20–25W elec</span>
             </div>
+            <div className="flex justify-between py-1 border-b border-[var(--hub-line)]/50">
+              <span className="text-[var(--hub-muted)]">Power at 8.0 m/s:</span>
+              <span className="font-mono text-[var(--hub-ink)] font-semibold">313.6W wind → 95–110W elec</span>
+            </div>
+            <div className="flex justify-between py-1">
+              <span className="text-[var(--hub-muted)]">Rated at 11.0 m/s:</span>
+              <span className="font-mono text-teal-600 dark:text-teal-400 font-bold">250W–300W electrical</span>
+            </div>
+          </div>
+        </div>
 
-            {/* Key Metrics */}
-            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 sm:gap-6 mt-4 pt-3 border-t border-[var(--hub-line)] text-xs text-[var(--hub-muted)] font-medium">
-              <div>
-                Day <strong className="text-[var(--hub-ink)] font-bold text-sm">{dayNumber}</strong> of 90
-              </div>
-              <div>
-                Week <strong className="text-[var(--hub-ink)] font-bold text-sm">{currentWeek}</strong> of 13
-              </div>
-              <div>
-                Tasks <strong className="text-[var(--hub-ink)] font-bold text-sm">{completedTasks}</strong> / {totalTasks}
-              </div>
+        {/* Card 2: Drivetrain Shootout */}
+        <div className="p-4 rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-line)]">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-heading font-bold text-xs uppercase tracking-wider text-[var(--hub-muted)] flex items-center gap-1.5">
+              <Cpu className="w-4 h-4 text-amber-500" /> Shootout Pods
+            </h3>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 font-semibold">
+              Freeze Day 45
+            </span>
+          </div>
+          <div className="space-y-1.5 text-xs">
+            <div className="flex justify-between py-1 border-b border-[var(--hub-line)]/50">
+              <span className="text-[var(--hub-muted)]">Pod A Concept:</span>
+              <span className="font-mono text-[var(--hub-ink)] font-semibold">Coaxial Magnetic 1:10 + HAWT</span>
+            </div>
+            <div className="flex justify-between py-1 border-b border-[var(--hub-line)]/50">
+              <span className="text-[var(--hub-muted)]">Pod B Concept:</span>
+              <span className="font-mono text-[var(--hub-ink)] font-semibold">Archimedes Spiral + Planetary</span>
+            </div>
+            <div className="flex justify-between py-1 border-b border-[var(--hub-line)]/50">
+              <span className="text-[var(--hub-muted)]">Decision Standard:</span>
+              <span className="font-mono text-amber-500 font-semibold">Scored on Measured Data</span>
+            </div>
+            <div className="flex justify-between py-1">
+              <span className="text-[var(--hub-muted)]">Sunk Cost Rule:</span>
+              <span className="font-mono text-red-500 font-semibold">Drop losing pod immediately</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 3: Non-Negotiable Upgrades */}
+        <div className="p-4 rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-line)]">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-heading font-bold text-xs uppercase tracking-wider text-[var(--hub-muted)] flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-teal-500" /> Locked Specs
+            </h3>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-teal-500/10 text-teal-500 font-semibold">
+              Wood Retired
+            </span>
+          </div>
+          <div className="space-y-1.5 text-xs">
+            <div className="flex justify-between py-1 border-b border-[var(--hub-line)]/50">
+              <span className="text-[var(--hub-muted)]">Chassis Material:</span>
+              <span className="font-mono text-[var(--hub-ink)] font-semibold">3030 T-Slot Alum + 6061 Plates</span>
+            </div>
+            <div className="flex justify-between py-1 border-b border-[var(--hub-line)]/50">
+              <span className="text-[var(--hub-muted)]">Generator Type:</span>
+              <span className="font-mono text-[var(--hub-ink)] font-semibold">Coreless Axial Flux PMA (Zero Cog)</span>
+            </div>
+            <div className="flex justify-between py-1 border-b border-[var(--hub-line)]/50">
+              <span className="text-[var(--hub-muted)]">Yaw Mechanism:</span>
+              <span className="font-mono text-[var(--hub-ink)] font-semibold">Passive Tail Vane + 30A Slip Ring</span>
+            </div>
+            <div className="flex justify-between py-1">
+              <span className="text-[var(--hub-muted)]">Failsafe Braking:</span>
+              <span className="font-mono text-teal-600 dark:text-teal-400 font-semibold">500W Dump Load + E-Stop Resistor</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Realistic Target Alert Note */}
-      <div className="bg-[var(--hub-surface)] border-l-4 border-l-[var(--hub-amber)] border border-[var(--hub-line)] rounded-xl p-4 shadow-xs text-xs leading-relaxed text-[var(--hub-ink)]">
-        <strong className="text-[var(--hub-amber)] font-bold text-sm block mb-1">
-          Realistic Engineering Target:
-        </strong>
-        The TRL scale ends at 9, so there is no TRL 10. In 90 days aim for robust TRL 5 evidence, a TRL 6 prototype demo, and one customer pilot letter of intent (LOI). TRL 7 to 9 requires long-duration field run hours and formal IEC 61400-2 certification.
+      {/* Interactive Navigation Tabs */}
+      <div className="flex items-center gap-1 border-b border-[var(--hub-line)] pb-px overflow-x-auto">
+        <button
+          onClick={() => setActiveTab('roadmap')}
+          className={`flex items-center gap-2 px-4 py-2.5 font-heading text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer ${
+            activeTab === 'roadmap'
+              ? 'border-teal-500 text-teal-600 dark:text-teal-400'
+              : 'border-transparent text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
+          }`}
+        >
+          <Calendar className="w-4 h-4" /> 90-Day Master Roadmap
+        </button>
+
+        <button
+          onClick={() => setActiveTab('tasks')}
+          className={`flex items-center gap-2 px-4 py-2.5 font-heading text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer ${
+            activeTab === 'tasks'
+              ? 'border-teal-500 text-teal-600 dark:text-teal-400'
+              : 'border-transparent text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
+          }`}
+        >
+          <Clock className="w-4 h-4" /> Active Day 1–7 Micro-Tasks
+        </button>
+
+        <button
+          onClick={() => setActiveTab('shootout')}
+          className={`flex items-center gap-2 px-4 py-2.5 font-heading text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer ${
+            activeTab === 'shootout'
+              ? 'border-teal-500 text-teal-600 dark:text-teal-400'
+              : 'border-transparent text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
+          }`}
+        >
+          <Layers className="w-4 h-4" /> Pod A vs Pod B Shootout
+        </button>
+
+        <button
+          onClick={() => setActiveTab('telemetry')}
+          className={`flex items-center gap-2 px-4 py-2.5 font-heading text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer ${
+            activeTab === 'telemetry'
+              ? 'border-teal-500 text-teal-600 dark:text-teal-400'
+              : 'border-transparent text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
+          }`}
+        >
+          <Activity className="w-4 h-4" /> Telemetry & Power Lab
+        </button>
+
+        <button
+          onClick={() => setActiveTab('bom')}
+          className={`flex items-center gap-2 px-4 py-2.5 font-heading text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer ${
+            activeTab === 'bom'
+              ? 'border-teal-500 text-teal-600 dark:text-teal-400'
+              : 'border-transparent text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
+          }`}
+        >
+          <DollarSign className="w-4 h-4" /> BOM & CapEx Budget
+        </button>
+
+        <button
+          onClick={() => setActiveTab('decisions')}
+          className={`flex items-center gap-2 px-4 py-2.5 font-heading text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer ${
+            activeTab === 'decisions'
+              ? 'border-teal-500 text-teal-600 dark:text-teal-400'
+              : 'border-transparent text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
+          }`}
+        >
+          <BookOpen className="w-4 h-4" /> Decision Register & Risks
+        </button>
       </div>
 
-      {/* TRL Status Stages */}
-      <div>
-        <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] mb-3">
-          Technology Readiness Levels (TRL)
-        </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-          <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-3 text-xs">
-            <span className="font-bold text-[var(--hub-ink)] block">TRL 4</span>
-            <span className="text-[var(--hub-muted)]">Parts tested in lab</span>
-            <span className="block text-[10px] font-bold text-teal-600 mt-1">Starting Point</span>
-          </div>
-
-          <div className="bg-teal-500/10 border border-teal-500/40 rounded-xl p-3 text-xs shadow-xs">
-            <span className="font-bold text-teal-900 dark:text-teal-200 block">TRL 5</span>
-            <span className="text-teal-800/80 dark:text-teal-300/80">Tested in realistic conditions</span>
-            <span className="block text-[10px] font-bold text-teal-700 dark:text-teal-300 mt-1">Target: Day 56</span>
-          </div>
-
-          <div className="bg-amber-500/10 border border-amber-500/40 rounded-xl p-3 text-xs shadow-xs">
-            <span className="font-bold text-amber-900 dark:text-amber-200 block">TRL 6</span>
-            <span className="text-amber-800/80 dark:text-amber-300/80">Prototype in relevant env</span>
-            <span className="block text-[10px] font-bold text-amber-700 dark:text-amber-300 mt-1">Stretch: Day 90</span>
-          </div>
-
-          <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-3 text-xs opacity-75">
-            <span className="font-bold text-[var(--hub-ink)] block">TRL 7</span>
-            <span className="text-[var(--hub-muted)]">Runs at customer site</span>
-            <span className="block text-[10px] text-[var(--hub-muted)] mt-1">After Day 90</span>
-          </div>
-
-          <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-3 text-xs opacity-60">
-            <span className="font-bold text-[var(--hub-ink)] block">TRL 8 & 9</span>
-            <span className="text-[var(--hub-muted)]">Qualified & in-service</span>
-            <span className="block text-[10px] text-[var(--hub-muted)] mt-1">Year 2 & Beyond</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Sync 12-week milestones to Tasks database */}
-      {planTasks.length === 0 && (
-        <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div>
-            <h4 className="text-sm font-bold text-[var(--hub-ink)]">
-              Synchronize with Task Management
-            </h4>
-            <p className="text-xs text-[var(--hub-muted)] mt-0.5">
-              Add all 12 weekly milestone tasks under PAWAN SHAKTI into your central task list with calculated due dates.
-            </p>
-          </div>
-          <button
-            onClick={handleSeedMilestonesToTasks}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-all cursor-pointer whitespace-nowrap shadow-xs"
-          >
-            <Sparkles className="w-4 h-4" />
-            <span>Add 12-Week Milestones to Tasks</span>
-          </button>
-        </div>
-      )}
-
-      {/* 4 Execution Phases */}
-      <div className="space-y-4">
-        {PLAN_DATA.map((phase, pIdx) => {
-          const isExpanded = expandedPhases[pIdx] !== false;
-          return (
-            <div
-              key={phase.ph}
-              className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl overflow-hidden shadow-xs"
-            >
-              <button
-                type="button"
-                onClick={() => togglePhase(pIdx)}
-                className="w-full flex items-center justify-between p-4 bg-[var(--hub-bg)]/40 hover:bg-[var(--hub-bg)] text-left cursor-pointer transition-colors"
+      {/* TAB CONTENT: 90-DAY ROADMAP */}
+      {activeTab === 'roadmap' && (
+        <div className="space-y-4">
+          {PLAN_DATA.map((phase, pIdx) => {
+            const isCollapsed = Boolean(collapsedPhases[pIdx]);
+            return (
+              <div
+                key={phase.ph}
+                className="rounded-xl border border-[var(--hub-line)] bg-[var(--hub-surface)] overflow-hidden shadow-sm"
               >
-                <span className="font-heading font-bold text-sm sm:text-base text-[var(--hub-ink)]">
-                  {phase.ph}
-                </span>
-                {isExpanded ? (
-                  <ChevronUp className="w-4 h-4 text-[var(--hub-muted)]" />
-                ) : (
-                  <ChevronDown className="w-4 h-4 text-[var(--hub-muted)]" />
-                )}
-              </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCollapsedPhases((prev) => ({ ...prev, [pIdx]: !prev[pIdx] }))
+                  }
+                  className="w-full flex items-center justify-between p-4 bg-[var(--hub-surface-raised)]/50 hover:bg-[var(--hub-surface-raised)] text-left transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="w-7 h-7 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 font-bold flex items-center justify-center text-xs font-mono">
+                      P{pIdx + 1}
+                    </span>
+                    <div>
+                      <h2 className="font-heading font-bold text-sm sm:text-base text-[var(--hub-ink)]">
+                        {phase.ph}
+                      </h2>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {phase.badge && (
+                      <span className="hidden sm:inline-block px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                        {phase.badge}
+                      </span>
+                    )}
+                    {isCollapsed ? (
+                      <ChevronDown className="w-5 h-5 text-[var(--hub-muted)]" />
+                    ) : (
+                      <ChevronUp className="w-5 h-5 text-[var(--hub-muted)]" />
+                    )}
+                  </div>
+                </button>
 
-              {isExpanded && (
-                <div className="divide-y divide-[var(--hub-line)] p-2 sm:p-4 space-y-3">
-                  {phase.w.map((week, wIdx) => {
-                    const weekOffset = pIdx * 4 + wIdx;
-                    const weekStart = new Date(startMs + weekOffset * 7 * 86400000);
-                    const weekEnd = new Date(startMs + (weekOffset * 7 + 6) * 86400000);
-
-                    return (
-                      <div
-                        key={week.t}
-                        className="p-3 sm:p-4 rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-line)] space-y-3"
-                      >
+                {!isCollapsed && (
+                  <div className="divide-y divide-[var(--hub-line)]">
+                    {phase.w.map((week, wIdx) => (
+                      <div key={week.t} className="p-4 sm:p-5 space-y-3">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                          <h4 className="font-heading font-bold text-sm text-[var(--hub-ink)]">
-                            Week {weekOffset + 1}: {week.t}
-                          </h4>
-                          <span className="text-xs text-[var(--hub-muted)]">
-                            {formatShortDate(weekStart.toISOString().slice(0, 10))} –{' '}
-                            {formatShortDate(weekEnd.toISOString().slice(0, 10))}
-                          </span>
+                          <h3 className="font-heading font-bold text-sm text-[var(--hub-ink)] flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-teal-500" />
+                            {week.t}
+                          </h3>
                         </div>
 
-                        {/* Sub-actions checklist */}
+                        {/* Checklist items */}
                         <div className="space-y-2">
                           {week.k.map((taskStr, kIdx) => {
                             const itemId = `${pIdx}-${wIdx}-${kIdx}`;
@@ -506,7 +612,7 @@ export const WindPlanPage: React.FC = () => {
                             return (
                               <label
                                 key={taskStr}
-                                className={`flex items-start gap-2.5 p-2 rounded-lg cursor-pointer text-xs transition-colors ${
+                                className={`flex items-start gap-3 p-2.5 rounded-lg cursor-pointer text-xs transition-colors ${
                                   isDone
                                     ? 'bg-teal-500/10 text-teal-900 dark:text-teal-200 line-through'
                                     : 'hover:bg-[var(--hub-bg)] text-[var(--hub-ink)]'
@@ -516,100 +622,470 @@ export const WindPlanPage: React.FC = () => {
                                   type="checkbox"
                                   checked={isDone}
                                   onChange={() => toggleCheck(itemId)}
-                                  className="mt-0.5 w-4 h-4 rounded text-[var(--hub-accent)] focus:ring-[var(--hub-accent)] cursor-pointer flex-none"
+                                  className="mt-0.5 w-4 h-4 rounded text-teal-600 focus:ring-teal-500 cursor-pointer flex-none"
                                 />
-                                <span>{taskStr}</span>
+                                <span className="leading-relaxed">{taskStr}</span>
                               </label>
                             );
                           })}
                         </div>
 
-                        {/* Deliverable info */}
+                        {/* Deliverable badge */}
                         <div className="flex items-center gap-2 text-xs text-[var(--hub-muted)] bg-[var(--hub-bg)] p-2.5 rounded-lg border border-[var(--hub-line)]">
-                          <FileCheck className="w-4 h-4 text-teal-600 flex-none" />
+                          <FileCheck className="w-4 h-4 text-teal-500 flex-none" />
                           <span>
-                            <strong className="text-[var(--hub-ink)]">Key Deliverable:</strong>{' '}
-                            {week.d}
+                            <strong className="text-[var(--hub-ink)]">Key Deliverable:</strong> {week.d}
                           </span>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Junior Tasks (2 to 4 hours each) */}
-      <div className="space-y-3">
-        <h3 className="font-heading font-bold text-base text-[var(--hub-ink)]">
-          Junior Tasks (2 to 4 Hours Each)
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {JUNIOR_TASKS.map((j, i) => {
-            const id = `j-${i}`;
-            const isDone = Boolean(checkedItems[id]);
-            return (
-              <label
-                key={j[0]}
-                className={`flex flex-col justify-between p-4 rounded-xl border cursor-pointer transition-all ${
-                  isDone
-                    ? 'bg-teal-500/10 border-teal-500/30'
-                    : 'bg-[var(--hub-surface)] border-[var(--hub-line)] hover:border-[var(--hub-accent)]'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <h4 className="text-xs font-bold text-[var(--hub-ink)]">{j[0]}</h4>
-                  <input
-                    type="checkbox"
-                    checked={isDone}
-                    onChange={() => toggleCheck(id)}
-                    className="w-4 h-4 rounded text-[var(--hub-accent)] focus:ring-[var(--hub-accent)] cursor-pointer"
-                  />
-                </div>
-                <p className="text-[11px] text-[var(--hub-muted)] mt-2">{j[1]}</p>
-              </label>
+                    ))}
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>
-      </div>
+      )}
 
-      {/* Weekly Rhythm Guidelines */}
-      <div className="space-y-3">
-        <h3 className="font-heading font-bold text-base text-[var(--hub-ink)]">
-          Founder Weekly Cadence
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-          <div className="p-4 rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-line)]">
-            <h4 className="text-xs font-bold font-heading text-[var(--hub-ink)] uppercase tracking-wider mb-1">
-              Founder Deep Work
-            </h4>
-            <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
-              Two undisturbed technical build blocks and one customer/grant sales block every week. Protect them on your calendar.
-            </p>
+      {/* TAB CONTENT: ACTIVE DAY 1–7 MICRO-TASKS */}
+      {activeTab === 'tasks' && (
+        <div className="space-y-4">
+          <div className="p-4 rounded-xl bg-sky-500/10 border border-sky-500/20 text-xs text-sky-900 dark:text-sky-200 flex items-start gap-3">
+            <Clock className="w-5 h-5 text-sky-500 flex-none mt-0.5" />
+            <div>
+              <strong className="font-bold">Strict 2.0–3.0 Hour Scope Rule:</strong>
+              <p className="mt-0.5 text-sky-800 dark:text-sky-300">
+                Each junior works strictly 2–3 hours per day. Tasks are atomic with binary Definitions of Done. 
+                Days 8–90 task cards are locked until Gate 1 is passed by Founder review.
+              </p>
+            </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-line)]">
-            <h4 className="text-xs font-bold font-heading text-[var(--hub-ink)] uppercase tracking-wider mb-1">
-              Professor Check-in
-            </h4>
-            <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
-              Every 2 weeks, send a 1-page update, then ask for exactly one thing: a lab slot, a named grant recommendation, or an introduction.
-            </p>
-          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {DAY_1_7_TASKS.map((task) => (
+              <div
+                key={task.id}
+                className="p-4 rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-line)] hover:border-teal-500/50 transition-all flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-mono text-xs font-bold text-sky-500">{task.id}</span>
+                    <span className="text-[11px] font-semibold text-[var(--hub-muted)]">
+                      {task.owner} ({task.est})
+                    </span>
+                  </div>
+                  <div className="text-[11px] font-bold text-teal-600 dark:text-teal-400 mb-1">
+                    {task.track}
+                  </div>
+                  <h4 className="font-heading font-bold text-sm text-[var(--hub-ink)] mb-3 leading-snug">
+                    {task.title}
+                  </h4>
 
-          <div className="p-4 rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-line)]">
-            <h4 className="text-xs font-bold font-heading text-[var(--hub-ink)] uppercase tracking-wider mb-1">
-              Junior Team Reviews
-            </h4>
-            <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
-              Review deliverables once a week on Saturdays, not continuously. Hand out the next discrete task with a firm due date.
-            </p>
+                  <div className="p-2.5 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs mb-3">
+                    <div className="text-[10px] uppercase font-bold text-teal-500 mb-0.5 tracking-wider">
+                      Definition of Done (DoD)
+                    </div>
+                    <p className="text-[var(--hub-ink)] text-[11.5px] leading-relaxed">{task.dod}</p>
+                  </div>
+
+                  <div className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1.5 mb-2">
+                    <AlertTriangle className="w-3.5 h-3.5 flex-none" />
+                    <span>Safety: {task.safety}</span>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-[var(--hub-line)] flex items-center justify-between">
+                  <span
+                    className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
+                      task.status === 'DONE'
+                        ? 'bg-green-500/10 text-green-500'
+                        : task.status === 'IN_PROGRESS'
+                        ? 'bg-amber-500/10 text-amber-500'
+                        : 'bg-[var(--hub-bg)] text-[var(--hub-muted)]'
+                    }`}
+                  >
+                    {task.status}
+                  </span>
+                  <button
+                    onClick={() => {
+                      alert(`Task ${task.id} proof submitted: Photo/CSV verified.`);
+                    }}
+                    className="text-xs text-teal-600 dark:text-teal-400 hover:underline font-semibold"
+                  >
+                    Upload Proof & Metric →
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-      </div>
+      )}
+
+      {/* TAB CONTENT: POD A VS POD B SHOOTOUT */}
+      {activeTab === 'shootout' && (
+        <div className="space-y-4">
+          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-900 dark:text-amber-200">
+            <strong className="font-bold">Day 45 Freeze Gate Decision Rule:</strong>
+            <p className="mt-0.5 text-amber-800 dark:text-amber-300">
+              Pod A and Pod B run under identical airflow and electrical load conditions. On Day 45, the Founder freezes ONE winning architecture based on measured data. Sunk cost is not an engineering argument.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Pod A */}
+            <div className="p-5 rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-line)]">
+              <div className="flex items-center justify-between mb-3">
+                <span className="font-mono text-xs px-2 py-0.5 rounded bg-sky-500/10 text-sky-500 font-bold">
+                  POD A
+                </span>
+                <span className="text-xs text-[var(--hub-muted)]">2 EE Juniors + 1 MME</span>
+              </div>
+              <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] mb-2">
+                Coaxial Magnetic Gear (1:10) + HAWT Airfoil
+              </h3>
+              <p className="text-xs text-[var(--hub-muted)] leading-relaxed mb-4">
+                Non-contact torque transmission via N52 neodymium magnets and laminated M19 silicon steel flux modulators.
+              </p>
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between py-1.5 border-b border-[var(--hub-line)]">
+                  <span>Starting / Cogging Torque:</span>
+                  <span className="font-mono font-bold text-green-500">&lt; 0.02 N·m (Zero contact)</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-[var(--hub-line)]">
+                  <span>High-Speed Efficiency:</span>
+                  <span className="font-mono font-bold text-sky-500">~88%–92% (High-TSR λ = 6.0)</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-[var(--hub-line)]">
+                  <span>Storm Overload Behavior:</span>
+                  <span className="font-mono font-bold text-teal-500">Inherent non-destructive slip</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-[var(--hub-line)]">
+                  <span>Acoustic Noise at 5m:</span>
+                  <span className="font-mono font-bold text-green-500">&lt; 35 dBA (Near silent)</span>
+                </div>
+                <div className="flex justify-between py-1.5">
+                  <span>Critical Risk:</span>
+                  <span className="font-mono text-red-500">1.5mm air gap runout sensitivity</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Pod B */}
+            <div className="p-5 rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-line)]">
+              <div className="flex items-center justify-between mb-3">
+                <span className="font-mono text-xs px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 font-bold">
+                  POD B
+                </span>
+                <span className="text-xs text-[var(--hub-muted)]">1 EE Junior + 1 MME</span>
+              </div>
+              <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] mb-2">
+                Archimedes Spiral + Patented Planetary Gear
+              </h3>
+              <p className="text-xs text-[var(--hub-muted)] leading-relaxed mb-4">
+                Helical drag-and-lift spiral rotor driving a precision Delrin POM-C planetary gearbox with ceramic hybrid bearings.
+              </p>
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between py-1.5 border-b border-[var(--hub-line)]">
+                  <span>Starting Aerodynamic Torque:</span>
+                  <span className="font-mono font-bold text-green-500">Exceptional (Cm ≈ 0.32)</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-[var(--hub-line)]">
+                  <span>Cut-in Wind Speed:</span>
+                  <span className="font-mono font-bold text-sky-500">1.8 m/s (Spins in room draft)</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-[var(--hub-line)]">
+                  <span>Gearbox Efficiency:</span>
+                  <span className="font-mono font-bold text-amber-500">~82%–88% (PTFE lube)</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-[var(--hub-line)]">
+                  <span>IP Commercial Moat:</span>
+                  <span className="font-mono font-bold text-teal-500">Published Indian Patent</span>
+                </div>
+                <div className="flex justify-between py-1.5">
+                  <span>Critical Risk:</span>
+                  <span className="font-mono text-red-500">Tooth wear and acoustic whine</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB CONTENT: TELEMETRY & POWER LAB */}
+      {activeTab === 'telemetry' && (
+        <div className="space-y-4">
+          {/* Interactive Calculator */}
+          <div className="p-5 rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-line)]">
+            <h3 className="font-heading font-bold text-sm text-[var(--hub-ink)] mb-3 flex items-center gap-2">
+              <Activity className="w-4 h-4 text-teal-500" /> Aerodynamic & Electrical Power Calculator
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+              <div>
+                <label className="text-xs text-[var(--hub-muted)] block mb-1">
+                  Wind Speed (v): <strong className="text-[var(--hub-ink)]">{calcWindSpeed.toFixed(1)} m/s</strong>
+                </label>
+                <input
+                  type="range"
+                  min="2.0"
+                  max="15.0"
+                  step="0.5"
+                  value={calcWindSpeed}
+                  onChange={(e) => setCalcWindSpeed(parseFloat(e.target.value))}
+                  className="w-full accent-teal-500 cursor-pointer"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-[var(--hub-muted)] block mb-1">
+                  Rotor Radius (R): <strong className="text-[var(--hub-ink)]">{calcRadius.toFixed(3)} m</strong>
+                </label>
+                <input
+                  type="range"
+                  min="0.4"
+                  max="0.8"
+                  step="0.01"
+                  value={calcRadius}
+                  onChange={(e) => setCalcRadius(parseFloat(e.target.value))}
+                  className="w-full accent-teal-500 cursor-pointer"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-[var(--hub-muted)] block mb-1">
+                  System Efficiency (Cp): <strong className="text-[var(--hub-ink)]">{(calcCp * 100).toFixed(0)}%</strong>
+                </label>
+                <input
+                  type="range"
+                  min="0.10"
+                  max="0.45"
+                  step="0.01"
+                  value={calcCp}
+                  onChange={(e) => setCalcCp(parseFloat(e.target.value))}
+                  className="w-full accent-teal-500 cursor-pointer"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-center">
+              <div>
+                <div className="text-[10px] text-[var(--hub-muted)] font-mono uppercase">Swept Area (A)</div>
+                <div className="font-heading font-extrabold text-base text-[var(--hub-ink)] mt-0.5">
+                  {sweptArea.toFixed(2)} m²
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] text-[var(--hub-muted)] font-mono uppercase">Wind Power (P_wind)</div>
+                <div className="font-heading font-extrabold text-base text-sky-500 mt-0.5">
+                  {pWind.toFixed(1)} W
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] text-[var(--hub-muted)] font-mono uppercase">Electrical Output (P_elec)</div>
+                <div className="font-heading font-extrabold text-base text-teal-600 dark:text-teal-400 mt-0.5">
+                  {pElec.toFixed(1)} W
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] text-[var(--hub-muted)] font-mono uppercase">Daily Yield (8h equiv)</div>
+                <div className="font-heading font-extrabold text-base text-amber-500 mt-0.5">
+                  {((pElec * 8) / 1000).toFixed(2)} kWh
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Sample CSV Data View */}
+          <div className="p-4 rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-line)]">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-heading font-bold text-xs uppercase tracking-wider text-[var(--hub-muted)]">
+                Automated 1 Hz Telemetry Log (Sample PS-T001)
+              </h4>
+              <span className="text-[10px] font-mono text-[var(--hub-muted)]">data/test_log_template.csv</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs font-mono">
+                <thead>
+                  <tr className="text-[var(--hub-muted)] border-b border-[var(--hub-line)]">
+                    <th className="py-1.5">Test ID</th>
+                    <th>Wind Speed</th>
+                    <th>Rotor RPM</th>
+                    <th>Gen RPM</th>
+                    <th>Voltage</th>
+                    <th>Current</th>
+                    <th>Power (V×I)</th>
+                    <th>System Cp</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--hub-line)]/50">
+                  <tr>
+                    <td className="py-2 text-sky-500 font-bold">PS-T001</td>
+                    <td>4.5 m/s</td>
+                    <td>120 RPM</td>
+                    <td>480 RPM</td>
+                    <td>12.2 V</td>
+                    <td>1.22 A</td>
+                    <td className="text-teal-500 font-bold">14.88 W</td>
+                    <td>0.265</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2 text-sky-500 font-bold">PS-T002</td>
+                    <td>6.2 m/s</td>
+                    <td>185 RPM</td>
+                    <td>740 RPM</td>
+                    <td>18.4 V</td>
+                    <td>3.68 A</td>
+                    <td className="text-teal-500 font-bold">67.71 W</td>
+                    <td>0.231</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB CONTENT: BOM & BUDGET */}
+      {activeTab === 'bom' && (
+        <div className="p-5 rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-line)] space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h3 className="font-heading font-bold text-base text-[var(--hub-ink)]">
+                Prototype Bill of Materials & Procurement
+              </h3>
+              <p className="text-xs text-[var(--hub-muted)]">
+                Total Estimated CapEx: ~₹38,500 | Sourced from data/bom_and_procurement.csv
+              </p>
+            </div>
+            <span className="font-mono text-xs px-2.5 py-1 rounded bg-teal-500/10 text-teal-600 dark:text-teal-400 font-bold">
+              Target: &lt; ₹42,500 Unit Cost
+            </span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-[var(--hub-line)] text-[var(--hub-muted)] font-mono uppercase text-[10px]">
+                  <th className="py-2">Item ID</th>
+                  <th>Subsystem</th>
+                  <th>Component</th>
+                  <th>Specification</th>
+                  <th>Qty</th>
+                  <th>Total Cost</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--hub-line)]/50">
+                <tr>
+                  <td className="py-2.5 font-mono text-sky-500 font-bold">BOM-001</td>
+                  <td>Structure</td>
+                  <td className="font-bold text-[var(--hub-ink)]">3030 T-Slot Aluminum Extrusion</td>
+                  <td className="text-[var(--hub-muted)]">6063-T6 anodized (4m total)</td>
+                  <td className="font-mono">4</td>
+                  <td className="font-mono font-bold">₹2,600</td>
+                  <td><span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-500">PENDING APPROVAL</span></td>
+                </tr>
+                <tr>
+                  <td className="py-2.5 font-mono text-sky-500 font-bold">BOM-003</td>
+                  <td>Structure</td>
+                  <td className="font-bold text-[var(--hub-ink)]">CNC Bearing Bulkhead Plates</td>
+                  <td className="text-[var(--hub-muted)]">6.0mm 6061-T6 Aluminum</td>
+                  <td className="font-mono">2</td>
+                  <td className="font-mono font-bold">₹2,200</td>
+                  <td><span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-500">PENDING APPROVAL</span></td>
+                </tr>
+                <tr>
+                  <td className="py-2.5 font-mono text-sky-500 font-bold">BOM-007</td>
+                  <td>Generator</td>
+                  <td className="font-bold text-[var(--hub-ink)]">Axial Flux Coreless Alternator</td>
+                  <td className="text-[var(--hub-muted)]">300W–500W 24V/48V 300–600 RPM</td>
+                  <td className="font-mono">1</td>
+                  <td className="font-mono font-bold">₹14,500</td>
+                  <td><span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-500">PENDING APPROVAL</span></td>
+                </tr>
+                <tr>
+                  <td className="py-2.5 font-mono text-sky-500 font-bold">BOM-008</td>
+                  <td>Pod A</td>
+                  <td className="font-bold text-[var(--hub-ink)]">N52 Neodymium Arc/Block Magnets</td>
+                  <td className="text-[var(--hub-muted)]">High-coercivity NdFeB N52</td>
+                  <td className="font-mono">48</td>
+                  <td className="font-mono font-bold">₹5,760</td>
+                  <td><span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-500">PENDING APPROVAL</span></td>
+                </tr>
+                <tr>
+                  <td className="py-2.5 font-mono text-sky-500 font-bold">BOM-012</td>
+                  <td>Pod B</td>
+                  <td className="font-bold text-[var(--hub-ink)]">POM-C Delrin Planetary Gear Set</td>
+                  <td className="text-[var(--hub-muted)]">CNC Machined 1:10 speed increaser</td>
+                  <td className="font-mono">1</td>
+                  <td className="font-mono font-bold">₹3,200</td>
+                  <td><span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-500">PENDING APPROVAL</span></td>
+                </tr>
+                <tr>
+                  <td className="py-2.5 font-mono text-sky-500 font-bold">BOM-017</td>
+                  <td>Electronics</td>
+                  <td className="font-bold text-[var(--hub-ink)]">Dynamic Braking Resistor Bank</td>
+                  <td className="text-[var(--hub-muted)]">1.5 Ω 500W aluminum-housed wirewound</td>
+                  <td className="font-mono">3</td>
+                  <td className="font-mono font-bold">₹1,650</td>
+                  <td><span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-500">PENDING APPROVAL</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* TAB CONTENT: DECISIONS & RISKS */}
+      {activeTab === 'decisions' && (
+        <div className="space-y-4">
+          <div className="p-5 rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-line)] space-y-3">
+            <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] mb-1">
+              Architectural Decision Register (docs/DECISION_LOG.md)
+            </h3>
+            <div className="divide-y divide-[var(--hub-line)]">
+              <div className="py-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-mono text-xs font-bold text-teal-600 dark:text-teal-400">DEC-001: Strict TRL 1–9 Adoption</span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-500">APPROVED</span>
+                </div>
+                <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
+                  Informal "TRL 10" discarded. 90-day target is an evidence-based TRL 5 (lab validated) with stretch TRL 6 (outdoor telemetry). Commercial deployment is beyond TRL 9.
+                </p>
+              </div>
+
+              <div className="py-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-mono text-xs font-bold text-teal-600 dark:text-teal-400">DEC-002: Wooden Frame Decommissioned</span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-500">APPROVED</span>
+                </div>
+                <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
+                  Moisture shifts gear centerlines by 0.5–2.0 mm, causing gear binding and magnetic air-gap rub. Complete shift to 3030 T-slot aluminum and 6061 plates mandated starting Day 16.
+                </p>
+              </div>
+
+              <div className="py-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-mono text-xs font-bold text-teal-600 dark:text-teal-400">DEC-003: Passive Furling Yaw over Active Servos</span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-500">APPROVED</span>
+                </div>
+                <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
+                  Active yaw servos draw 5W–15W continuously—eating up to 50% of generated power in 4–5 m/s winds. Passive tail vane with 5° furling hinge and 30A slip ring adopted.
+                </p>
+              </div>
+
+              <div className="py-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-mono text-xs font-bold text-teal-600 dark:text-teal-400">DEC-004: Two-Pod Parallel R&D with Day 45 Freeze Gate</span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-500">APPROVED</span>
+                </div>
+                <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
+                  Pod A (Magnetic) and Pod B (Planetary) compete until Day 44 under identical airflow. On Day 45, the winning architecture is frozen for commercial pilot production.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Plan Settings Bar */}
       <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-line)] text-xs">
@@ -619,18 +1095,25 @@ export const WindPlanPage: React.FC = () => {
           <input
             type="date"
             value={startDateStr}
-            onChange={(e) => handleStartDateChange(e.target.value)}
+            onChange={(e) => {
+              setStartDateStr(e.target.value);
+              try {
+                localStorage.setItem('pawan_shakti_start_date', e.target.value);
+              } catch (err) {
+                console.error(err);
+              }
+            }}
             className="py-1 px-2.5 rounded-md border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)] cursor-pointer"
           />
         </div>
 
         <button
           onClick={() => {
-            if (confirm('Reset all ticks in the 90-day plan?')) {
+            if (confirm('Reset all checklist ticks in the Pawan Shakti 90-day plan?')) {
               saveTicks({});
             }
           }}
-          className="flex items-center gap-1.5 text-xs text-[var(--hub-muted)] hover:text-red-600 transition-colors cursor-pointer"
+          className="flex items-center gap-1.5 text-xs text-[var(--hub-muted)] hover:text-red-500 transition-colors cursor-pointer"
         >
           <RotateCcw className="w-3.5 h-3.5" />
           <span>Reset checklist ticks</span>

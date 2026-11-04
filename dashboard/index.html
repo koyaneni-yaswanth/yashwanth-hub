@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pawan Shakti — 90-Day Execution Engine & Founder Command Center</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #091316;
+  --surface: #102126;
+  --surface-raised: #162c33;
+  --ink: #e8f3f2;
+  --muted: #7e9fa3;
+  --line: #223f46;
+  --accent: #02b39b;
+  --accent-ink: #032320;
+  --amber: #f59e0b;
+  --red: #ef4444;
+  --blue: #38bdf8;
+  --green: #10b981;
+  --font-heading: 'Bricolage Grotesque', sans-serif;
+  --font-body: 'IBM Plex Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.5 var(--font-body);
+  padding: 24px 20px 80px;
+}
+.container { max-width: 1200px; margin: 0 auto; }
+header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 24px;
+}
+.brand { display: flex; align-items: center; gap: 14px; }
+.turbine-icon {
+  width: 44px; height: 44px;
+  background: linear-gradient(135deg, #02b39b, #38bdf8);
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 22px; color: #021a18;
+}
+h1 { font-family: var(--font-heading); font-size: 26px; font-weight: 800; letter-spacing: -0.02em; }
+.sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.badges { display: flex; gap: 8px; flex-wrap: wrap; }
+.badge {
+  padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600;
+  border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+}
+.badge.accent { background: rgba(2, 179, 155, 0.15); border-color: rgba(2, 179, 155, 0.4); color: var(--accent); }
+.badge.amber { background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.4); color: var(--amber); }
+
+.grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+.card h2 {
+  font-family: var(--font-heading);
+  font-size: 15px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--accent);
+  margin-bottom: 12px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.metric-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 13px; }
+.metric-row:last-child { border-bottom: none; }
+.tag-measured { color: #10b981; font-family: var(--font-mono); font-size: 10px; font-weight: 600; }
+.tag-calc { color: #38bdf8; font-family: var(--font-mono); font-size: 10px; font-weight: 600; }
+.tag-est { color: #f59e0b; font-family: var(--font-mono); font-size: 10px; font-weight: 600; }
+.tag-hypo { color: #ec4899; font-family: var(--font-mono); font-size: 10px; font-weight: 600; }
+
+.timeline-bar {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 24px;
+}
+.progress-track {
+  height: 10px; background: rgba(255,255,255,0.06); border-radius: 5px;
+  position: relative; overflow: hidden; margin: 12px 0 8px;
+}
+.progress-fill { height: 100%; width: 7.7%; background: var(--accent); border-radius: 5px; }
+.freeze-gate-marker {
+  position: absolute; left: 50%; top: -4px; width: 2px; height: 18px;
+  background: var(--amber); box-shadow: 0 0 8px var(--amber);
+}
+
+.tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--line); margin-bottom: 20px; }
+.tab-btn {
+  background: none; border: none; padding: 10px 16px;
+  color: var(--muted); font: 600 13px var(--font-heading);
+  cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s;
+}
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+.task-list { display: flex; flex-direction: column; gap: 12px; }
+.task-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+  transition: border-color 0.2s;
+}
+.task-card:hover { border-color: var(--accent); }
+.task-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.task-id { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--blue); }
+.task-owner { font-size: 11px; color: var(--muted); }
+.task-obj { font-weight: 600; font-size: 13.5px; margin-bottom: 8px; }
+.task-dod { font-size: 12px; color: var(--muted); background: rgba(0,0,0,0.25); padding: 8px 10px; border-radius: 6px; border-left: 3px solid var(--accent); }
+
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+td.mono { font-family: var(--font-mono); }
+
+.btn {
+  background: var(--accent); color: var(--accent-ink);
+  border: none; padding: 8px 14px; border-radius: 6px;
+  font: 600 12px var(--font-heading); cursor: pointer; transition: opacity 0.2s;
+}
+.btn:hover { opacity: 0.9; }
+.btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="brand">
+      <div class="turbine-icon">⚡</div>
+      <div>
+        <h1>Pawan Shakti — 90-Day Execution Engine</h1>
+        <div class="sub">VNIT Venture Vault Foundation | Academic Mentor: Dr. J. Bhukya | Patent: "Compact Wind Turbine with Planetary Gears"</div>
+      </div>
+    </div>
+    <div class="badges">
+      <span class="badge accent">TRL 4 (Baseline Audit)</span>
+      <span class="badge amber">Target: TRL 5/6 (Day 90)</span>
+      <span class="badge">Day 1 of 90 (Gate 1 Sprint)</span>
+    </div>
+  </header>
+
+  <!-- Progress Bar -->
+  <div class="timeline-bar">
+    <div style="display:flex; justify-content:space-between; font-size:12px;">
+      <span><strong>Gate 1:</strong> Baseline Audit (Days 1–7)</span>
+      <span style="color:var(--amber);"><strong>DAY 45 FREEZE GATE</strong> (Single Architecture Lock)</span>
+      <span><strong>Gate 5:</strong> Pilot Handover (Day 90)</span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill"></div>
+      <div class="freeze-gate-marker" title="Day 45 Freeze Gate"></div>
+    </div>
+    <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--muted);">
+      <span>Current: Day 1 (1.1% elapsed)</span>
+      <span>Contingency Buffer: 14 Days (15.5%)</span>
+      <span>Target: 1 Signed Pilot LOI</span>
+    </div>
+  </div>
+
+  <!-- Physics & Drivetrain Architecture Grid -->
+  <div class="grid-3">
+    <div class="card">
+      <h2>Physics Baseline <span class="badge">P = ½ρAv³</span></h2>
+      <div class="metric-row">
+        <span>Target Swept Area (A)</span>
+        <span class="mono">~1.0 m² (R ≈ 0.564m) <span class="tag-calc">[CALC]</span></span>
+      </div>
+      <div class="metric-row">
+        <span>Air Density (ρ standard)</span>
+        <span class="mono">1.225 kg/m³ <span class="tag-calc">[CALC]</span></span>
+      </div>
+      <div class="metric-row">
+        <span>Power at 5.0 m/s (20–25W target)</span>
+        <span class="mono">76.6W avail → 22W elec <span class="tag-calc">[CALC]</span></span>
+      </div>
+      <div class="metric-row">
+        <span>Power at 8.0 m/s (95–110W target)</span>
+        <span class="mono">313.6W avail → 102W elec <span class="tag-calc">[CALC]</span></span>
+      </div>
+      <div class="metric-row">
+        <span>Power at 11.0 m/s (Rated output)</span>
+        <span class="mono">815.3W avail → 275W elec <span class="tag-calc">[CALC]</span></span>
+      </div>
+      <div class="metric-row">
+        <span>Max Theoretical Cp (Betz Limit)</span>
+        <span class="mono">0.593 (System ~0.28–0.32) <span class="tag-calc">[CALC]</span></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Drivetrain Shootout <span class="badge amber">Day 45 Freeze</span></h2>
+      <div class="metric-row">
+        <span><strong>Pod A:</strong> Magnetic Gear + HAWT</span>
+        <span class="mono">Ratio 1:10, N52 magnets <span class="tag-hypo">[HYPO]</span></span>
+      </div>
+      <div class="metric-row">
+        <span>Starting / Cogging Torque</span>
+        <span class="mono">&lt; 0.02 N·m (Zero contact) <span class="tag-est">[EST]</span></span>
+      </div>
+      <div class="metric-row">
+        <span><strong>Pod B:</strong> Archimedes + Planetary</span>
+        <span class="mono">Patented 3/4-stage <span class="tag-measured">[MEASURED]</span></span>
+      </div>
+      <div class="metric-row">
+        <span>Starting / Cogging Torque</span>
+        <span class="mono">~0.06 N·m (Delrin + PTFE) <span class="tag-est">[EST]</span></span>
+      </div>
+      <div class="metric-row">
+        <span>Drivetrain Freeze Rule</span>
+        <span style="color:var(--amber); font-weight:600;">Lock 1 Winner on Day 45</span>
+      </div>
+      <div class="metric-row">
+        <span>Academic Patent Asset</span>
+        <span class="mono">Published Indian Patent</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Subsystem Upgrades <span class="badge">Hardware Specs</span></h2>
+      <div class="metric-row">
+        <span>Structural Chassis</span>
+        <span class="mono">3030 Aluminum (Wood retired) <span class="tag-est">[EST]</span></span>
+      </div>
+      <div class="metric-row">
+        <span>Generator Architecture</span>
+        <span class="mono">Axial Flux Coreless PMA 400W <span class="tag-hypo">[HYPO]</span></span>
+      </div>
+      <div class="metric-row">
+        <span>Blade Material & Finish</span>
+        <span class="mono">ASA/PETG-CF + Epoxy Sanding <span class="tag-est">[EST]</span></span>
+      </div>
+      <div class="metric-row">
+        <span>Yaw & Cable Management</span>
+        <span class="mono">Passive Vane + 30A Slip Ring <span class="tag-est">[EST]</span></span>
+      </div>
+      <div class="metric-row">
+        <span>Power Electronics (TCCB)</span>
+        <span class="mono">500W Dump Load + MPPT <span class="tag-est">[EST]</span></span>
+      </div>
+      <div class="metric-row">
+        <span>Battery Chemistry Target</span>
+        <span class="mono">24V 50Ah LiFePO4 (28.8V max) <span class="tag-est">[EST]</span></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Navigation Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('tasks')">Day 1–7 Micro-Tasks</button>
+    <button class="tab-btn" onclick="switchTab('telemetry')">Telemetry & Power Curves</button>
+    <button class="tab-btn" onclick="switchTab('bom')">BOM & Procurement</button>
+    <button class="tab-btn" onclick="switchTab('decision')">Decision Log & Strategy</button>
+  </div>
+
+  <!-- TAB: Daily Tasks (Days 1 to 7) -->
+  <div id="tab-tasks">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <h3 style="font-family:var(--font-heading); font-size:16px;">Active Sprint: Gate 1 Baseline & Calibration (Days 1–7)</h3>
+      <div style="font-size:12px; color:var(--muted);">Rule: Scoped strictly to 2.0–3.0 hours per junior | Asynchronous Daily Reports</div>
+    </div>
+
+    <div class="task-list">
+      <div class="task-card">
+        <div class="task-header">
+          <span class="task-id">[TASK-D01-01] Track 1: Materials & Structures</span>
+          <span class="task-owner">Owner: MME Junior | Est: 2.5h</span>
+        </div>
+        <div class="task-obj">Physical Measurement of Baseline Wooden Prototype (Rotor, Hub, Shafts)</div>
+        <div class="task-dod">
+          <strong>Definition of Done:</strong> Caliper measurement of rotor tip-to-tip diameter (do NOT assume 1 m²); blade chord lengths at root/mid/tip; shaft centerlines; 5 dimensioned photos uploaded.
+        </div>
+      </div>
+
+      <div class="task-card">
+        <div class="task-header">
+          <span class="task-id">[TASK-D01-02] Track 1: Pod A (Magnetic Gear)</span>
+          <span class="task-owner">Owner: EE Juniors 1 & 2 | Est: 2.5h</span>
+        </div>
+        <div class="task-obj">Coaxial Magnetic Gear STL & Geometry Audit</div>
+        <div class="task-dod">
+          <strong>Definition of Done:</strong> Count magnet pockets on inner rotor, outer rotor, and modulator cage from STL files; calculate theoretical speed ratio; measure actual printed pocket clearances.
+        </div>
+      </div>
+
+      <div class="task-card">
+        <div class="task-header">
+          <span class="task-id">[TASK-D01-03] Track 1: Pod B (Archimedes + Planetary)</span>
+          <span class="task-owner">Owner: EE Junior 3 | Est: 2.5h</span>
+        </div>
+        <div class="task-obj">Patented Planetary Gearbox Ratio & Condition Audit</div>
+        <div class="task-dod">
+          <strong>Definition of Done:</strong> Disassemble wooden gearbox; count teeth on sun, planet, and ring gears; calculate multi-stage ratio; inspect tooth wear; measure shaft radial play with dial indicator.
+        </div>
+      </div>
+
+      <div class="task-card">
+        <div class="task-header">
+          <span class="task-id">[TASK-D01-04] Track 1: Power & Telemetry Backbone</span>
+          <span class="task-owner">Owner: EE Juniors 4 & 5 | Est: 2.5h</span>
+        </div>
+        <div class="task-obj">Generator Electrical & Breakaway Cogging Characterization</div>
+        <div class="task-dod">
+          <strong>Definition of Done:</strong> Record generator nameplate/model; measure phase resistances across all 3 phases; measure inductance with LCR meter; measure static breakaway torque in N·m.
+        </div>
+      </div>
+
+      <div class="task-card">
+        <div class="task-header">
+          <span class="task-id">[TASK-D02-01] Track 1: Telemetry Lead</span>
+          <span class="task-owner">Owner: EE Junior 5 | Est: 3.0h</span>
+        </div>
+        <div class="task-obj">ESP32 + INA226 + Micro-SD 1 Hz Logger v1 Bench Wiring</div>
+        <div class="task-dod">
+          <strong>Definition of Done:</strong> Wire I2C INA226 shunt and SPI SD card module to ESP32; log 10-minute automated test measuring V, I, P into a 10-ohm resistor at 1 Hz without packet loss.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: Telemetry -->
+  <div id="tab-telemetry" style="display:none;">
+    <div class="card" style="margin-bottom:16px;">
+      <h2>Baseline Test Telemetry Log (Sample Record PS-T001)</h2>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Test ID</th>
+              <th>Wind Speed</th>
+              <th>Rotor RPM</th>
+              <th>Gen RPM</th>
+              <th>Voltage</th>
+              <th>Current</th>
+              <th>Power (V×I)</th>
+              <th>System Cp</th>
+              <th>Load</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="mono">PS-T001</td>
+              <td class="mono">4.5 m/s</td>
+              <td class="mono">120 RPM</td>
+              <td class="mono">480 RPM</td>
+              <td class="mono">12.2 V</td>
+              <td class="mono">1.22 A</td>
+              <td class="mono" style="color:var(--accent); font-weight:700;">14.88 W</td>
+              <td class="mono">0.265</td>
+              <td class="mono">10.0 Ω</td>
+              <td><span class="badge">Baseline Wooden Rig</span></td>
+            </tr>
+            <tr>
+              <td class="mono">PS-T002</td>
+              <td class="mono">6.2 m/s</td>
+              <td class="mono">185 RPM</td>
+              <td class="mono">740 RPM</td>
+              <td class="mono">18.4 V</td>
+              <td class="mono">3.68 A</td>
+              <td class="mono" style="color:var(--accent); font-weight:700;">67.71 W</td>
+              <td class="mono">0.231</td>
+              <td class="mono">5.0 Ω</td>
+              <td><span class="badge amber">Gear Binding Noted</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: BOM -->
+  <div id="tab-bom" style="display:none;">
+    <div class="card">
+      <h2>Prototype Bill of Materials (Estimated CapEx: ~₹38,500)</h2>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Item ID</th>
+              <th>Subsystem</th>
+              <th>Component</th>
+              <th>Spec / Material</th>
+              <th>Qty</th>
+              <th>Total Cost</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="mono">BOM-001</td>
+              <td>Structure</td>
+              <td>3030 T-Slot Aluminum Extrusion</td>
+              <td>6063-T6 Aluminum (4m total)</td>
+              <td>4</td>
+              <td class="mono">₹2,600</td>
+              <td><span class="badge amber">Pending Approval</span></td>
+            </tr>
+            <tr>
+              <td class="mono">BOM-003</td>
+              <td>Structure</td>
+              <td>CNC Bearing Bulkhead Plates</td>
+              <td>6.0mm 6061-T6 Aluminum</td>
+              <td>2</td>
+              <td class="mono">₹2,200</td>
+              <td><span class="badge amber">Pending Approval</span></td>
+            </tr>
+            <tr>
+              <td class="mono">BOM-007</td>
+              <td>Generator</td>
+              <td>Axial Flux Coreless Alternator</td>
+              <td>300W–500W 24V/48V 300–600 RPM</td>
+              <td>1</td>
+              <td class="mono">₹14,500</td>
+              <td><span class="badge amber">Pending Approval</span></td>
+            </tr>
+            <tr>
+              <td class="mono">BOM-008</td>
+              <td>Drivetrain A</td>
+              <td>N52 Neodymium Magnets</td>
+              <td>High-coercivity NdFeB N52</td>
+              <td>48</td>
+              <td class="mono">₹5,760</td>
+              <td><span class="badge amber">Pending Approval</span></td>
+            </tr>
+            <tr>
+              <td class="mono">BOM-012</td>
+              <td>Drivetrain B</td>
+              <td>POM-C Delrin Planetary Gear Set</td>
+              <td>CNC Machined 1:10 Ratio</td>
+              <td>1</td>
+              <td class="mono">₹3,200</td>
+              <td><span class="badge amber">Pending Approval</span></td>
+            </tr>
+            <tr>
+              <td class="mono">BOM-017</td>
+              <td>Electronics</td>
+              <td>Dynamic Braking Resistors</td>
+              <td>1.5 Ω 500W Aluminum-Housed</td>
+              <td>3</td>
+              <td class="mono">₹1,650</td>
+              <td><span class="badge amber">Pending Approval</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: Decision Log -->
+  <div id="tab-decision" style="display:none;">
+    <div class="card">
+      <h2>Architectural Decision Register</h2>
+      <div style="display:flex; flex-direction:column; gap:12px; margin-top:10px;">
+        <div style="padding:10px 12px; background:var(--surface-raised); border-radius:8px;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+            <strong style="color:var(--accent);">DEC-001: Strict Adoption of Standard TRL 1–9 Framework</strong>
+            <span class="badge accent">Approved</span>
+          </div>
+          <p style="font-size:12px; color:var(--muted);">Informal "TRL 10" discarded. 90-day target is an evidence-based TRL 5 (lab validated) with stretch TRL 6 (outdoor telemetry). Commercial deployment is beyond TRL 9.</p>
+        </div>
+        <div style="padding:10px 12px; background:var(--surface-raised); border-radius:8px;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+            <strong style="color:var(--accent);">DEC-002: Wooden Structural Frames Decommissioned</strong>
+            <span class="badge accent">Approved</span>
+          </div>
+          <p style="font-size:12px; color:var(--muted);">Moisture shifts centerlines by 0.5–2.0 mm, causing gear binding and magnetic air-gap rub. Complete shift to 3030 T-slot aluminum and 6061 plates mandated starting Day 16.</p>
+        </div>
+        <div style="padding:10px 12px; background:var(--surface-raised); border-radius:8px;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+            <strong style="color:var(--accent);">DEC-004: Two-Pod Parallel R&D with Day 45 Freeze Gate</strong>
+            <span class="badge accent">Approved</span>
+          </div>
+          <p style="font-size:12px; color:var(--muted);">Pod A (Magnetic) and Pod B (Planetary) compete until Day 44 under identical airflow. On Day 45, the winning architecture is frozen for commercial pilot production.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function switchTab(tabId) {
+  const tabs = ['tasks', 'telemetry', 'bom', 'decision'];
+  tabs.forEach(t => {
+    const el = document.getElementById('tab-' + t);
+    if (el) el.style.display = (t === tabId) ? 'block' : 'none';
+  });
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.remove('active');
+  });
+  event.target.classList.add('active');
+}
+</script>
+</body>
+</html>
