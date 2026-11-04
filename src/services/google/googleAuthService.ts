@@ -46,8 +46,8 @@ export class GoogleAuthService {
       const stored = localStorage.getItem(this.CLIENT_ID_KEY);
       if (stored && stored.trim()) return stored.trim();
     }
-    const envId = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID;
-    return typeof envId === 'string' ? envId.trim() : '';
+    const envId = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || '236257519636-q6kb0ika36uqleovphts0s526er75ms6.apps.googleusercontent.com';
+    return typeof envId === 'string' ? envId.trim() : '236257519636-q6kb0ika36uqleovphts0s526er75ms6.apps.googleusercontent.com';
   }
 
   public static saveClientId(clientId: string): void {

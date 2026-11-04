@@ -163,8 +163,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         />
         <StatCard
           label="Spent This Month"
-          value={formatINR(monthExpenses)}
-          subtext={`Current cycle (${today.slice(0, 7)})`}
+          value={monthExpenses === 0 ? '₹0' : formatINR(monthExpenses)}
+          subtext={monthExpenses === 0 ? 'No expenses logged yet • Manually entered only' : `Current cycle (${today.slice(0, 7)})`}
           icon={<IndianRupee className="w-5 h-5 text-amber-600" />}
           onClick={() => onNavigate('expenses')}
         />

@@ -110,8 +110,8 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
         />
         <StatCard
           label="Month Burn Rate"
-          value={formatINR(currentMonthSpend)}
-          subtext={`Cycle: ${currentMonth}`}
+          value={currentMonthSpend === 0 ? '₹0' : formatINR(currentMonthSpend)}
+          subtext={currentMonthSpend === 0 ? 'No expenses logged • Manually entered only' : `Cycle: ${currentMonth}`}
           icon={<IndianRupee className="w-5 h-5 text-amber-600" />}
         />
         <StatCard

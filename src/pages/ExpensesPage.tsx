@@ -9,9 +9,15 @@ import {
   Trash2,
   Edit2,
   TrendingDown,
+  ShieldCheck,
+  ShieldAlert,
+  ChevronDown,
+  ChevronUp,
+  CreditCard,
+  FileText,
 } from 'lucide-react';
 import { db } from '../db';
-import type { Expense, ExpenseCategory, Area } from '../types';
+import type { Expense, ExpenseCategory, Area, PaymentMethod } from '../types';
 import { formatINR, formatShortDate, getTodayISO, generateId } from '../lib/utils';
 import { Badge } from '../components/common/Badge';
 import { StatCard } from '../components/common/StatCard';
@@ -27,28 +33,42 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ currentArea, areas }
   const today = getTodayISO();
   const currentMonth = today.slice(0, 7);
 
-  // State
+  // Filter & Search State
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [selectedAreaFilter, setSelectedAreaFilter] = useState(currentArea);
+
+  // Collapsible Quarantine view
+  const [showQuarantine, setShowQuarantine] = useState(false);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [expenseToDelete, setExpenseToDelete] = useState<string | null>(null);
 
-  // Form Fields
+  // Form Fields (Protocol v2 & Section 5 compliance)
   const [formAmount, setFormAmount] = useState<number | ''>('');
   const [formCategory, setFormCategory] = useState<ExpenseCategory>('Parts');
   const [formArea, setFormArea] = useState(currentArea !== 'All' ? currentArea : 'PAWAN SHAKTI');
   const [formDate, setFormDate] = useState(today);
   const [formNote, setFormNote] = useState('');
+  const [formPaymentMethod, setFormPaymentMethod] = useState<PaymentMethod>('UPI');
+  const [formReceiptDoc, setFormReceiptDoc] = useState('');
+  const [formLinkedTask, setFormLinkedTask] = useState('');
 
-  // Live Query
+  // Live Queries from Dexie
   const allExpenses = useLiveQuery(() => db.expenses.toArray(), []) || [];
+  const quarantinedExpenses = useLiveQuery(
+    () => db.quarantine.filter((q) => q.entity_type === 'expense').toArray(),
+    []
+  ) || [];
+  const auditLogs = useLiveQuery(
+    () => db.data_audit_logs.filter((a) => a.entity_type === 'expense').reverse().toArray(),
+    []
+  ) || [];
 
-  // Filter
+  // Filter expenses strictly
   const filteredExpenses = allExpenses.filter((e) => {
     if (selectedMonth && !e.date.startsWith(selectedMonth)) return false;
     if (selectedAreaFilter !== 'All' && e.area !== selectedAreaFilter) return false;
@@ -71,12 +91,6 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ currentArea, areas }
     categoryTotals[e.category] = (categoryTotals[e.category] || 0) + e.amount;
   });
 
-  // Area breakdown
-  const areaTotals: Record<string, number> = {};
-  filteredExpenses.forEach((e) => {
-    areaTotals[e.area] = (areaTotals[e.area] || 0) + e.amount;
-  });
-
   const openCreateModal = () => {
     setEditingExpense(null);
     setFormAmount('');
@@ -84,6 +98,9 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ currentArea, areas }
     setFormArea(selectedAreaFilter !== 'All' ? selectedAreaFilter : 'PAWAN SHAKTI');
     setFormDate(today);
     setFormNote('');
+    setFormPaymentMethod('UPI');
+    setFormReceiptDoc('');
+    setFormLinkedTask('');
     setIsModalOpen(true);
   };
 
@@ -94,12 +111,15 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ currentArea, areas }
     setFormArea(expense.area);
     setFormDate(expense.date);
     setFormNote(expense.note);
+    setFormPaymentMethod(expense.payment_method || 'UPI');
+    setFormReceiptDoc(expense.receipt_doc_id || '');
+    setFormLinkedTask(expense.linked_task_id || '');
     setIsModalOpen(true);
   };
 
   const handleSaveExpense = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (formAmount === '' || Number(formAmount) <= 0) return;
+    if (formAmount === '' || Number(formAmount) <= 0 || !formNote.trim()) return;
 
     const now = new Date().toISOString();
 
@@ -109,21 +129,52 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ currentArea, areas }
         category: formCategory,
         area: formArea,
         date: formDate,
+        payment_method: formPaymentMethod,
         note: formNote.trim(),
+        receipt_doc_id: formReceiptDoc.trim() || undefined,
+        linked_task_id: formLinkedTask.trim() || undefined,
         updated_at: now,
       });
-    } else {
-      const newExpense: Expense = {
+
+      await db.data_audit_logs.add({
         id: generateId(),
+        timestamp: now,
+        action: 'manual_entry',
+        entity_type: 'expense',
+        record_id: editingExpense.id,
+        details: `Updated expense: ₹${formAmount} (${formCategory}, ${formArea}, ${formPaymentMethod})`,
+        performed_by: 'Yaswanth (Founder)',
+      });
+    } else {
+      const newId = generateId();
+      const newExpense: Expense = {
+        id: newId,
         amount: Number(formAmount),
         category: formCategory,
         area: formArea,
         date: formDate,
+        payment_method: formPaymentMethod,
         note: formNote.trim(),
+        receipt_doc_id: formReceiptDoc.trim() || undefined,
+        linked_task_id: formLinkedTask.trim() || undefined,
+        source: 'USER_ENTERED',
+        created_by: 'Yaswanth (Founder)',
+        last_verified_at: now,
+        status: 'active',
         created_at: now,
         updated_at: now,
       };
       await db.expenses.add(newExpense);
+
+      await db.data_audit_logs.add({
+        id: generateId(),
+        timestamp: now,
+        action: 'manual_entry',
+        entity_type: 'expense',
+        record_id: newId,
+        details: `Manual entry: ₹${formAmount} (${formCategory}, ${formArea}, ${formPaymentMethod})`,
+        performed_by: 'Yaswanth (Founder)',
+      });
     }
 
     setIsModalOpen(false);
@@ -131,23 +182,44 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ currentArea, areas }
 
   const handleConfirmDelete = async () => {
     if (expenseToDelete) {
+      const exp = await db.expenses.get(expenseToDelete);
+      const now = new Date().toISOString();
+      if (exp) {
+        await db.data_audit_logs.add({
+          id: generateId(),
+          timestamp: now,
+          action: 'delete',
+          entity_type: 'expense',
+          record_id: expenseToDelete,
+          details: `Manual deletion by founder: ₹${exp.amount} (${exp.note || exp.category})`,
+          performed_by: 'Yaswanth (Founder)',
+        });
+      }
       await db.expenses.delete(expenseToDelete);
       setExpenseToDelete(null);
     }
   };
 
   const categories: ExpenseCategory[] = ['Food', 'Travel', 'Business', 'Parts', 'Bills', 'Equipment', 'Other'];
+  const paymentMethods: PaymentMethod[] = ['UPI', 'Card', 'NetBanking', 'Cash', 'Reimbursement', 'Other'];
 
   return (
     <div className="space-y-6 pb-12">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold font-heading text-[var(--hub-ink)] tracking-tight">
-            Expenses & Financials
-          </h2>
-          <p className="text-sm text-[var(--hub-muted)] mt-0.5">
-            Founder burn rate, hardware parts procurement, travel, and operational expenditure
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-2xl font-bold font-heading text-[var(--hub-ink)] tracking-tight">
+              Expenses & Financials
+            </h2>
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>Zero Auto-Logging Enforced</span>
+            </span>
+          </div>
+          <p className="text-sm font-medium text-amber-800 dark:text-amber-200 mt-1 flex items-center gap-1.5">
+            <span>Expenses: manually entered only</span>
+            <span className="text-[var(--hub-muted)] font-normal">• Founder burn rate, hardware parts procurement, and verified capital</span>
           </p>
         </div>
         <button
@@ -159,12 +231,12 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ currentArea, areas }
         </button>
       </div>
 
-      {/* Monthly Summary Cards */}
+      {/* Monthly Summary Cards (Protocol v2 compliant) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
         <StatCard
           label="Total Spend (Filtered)"
-          value={formatINR(totalAmount)}
-          subtext={`Cycle: ${selectedMonth}`}
+          value={totalAmount === 0 ? '₹0' : formatINR(totalAmount)}
+          subtext={`Cycle: ${selectedMonth} • Verified`}
           icon={<IndianRupee className="w-5 h-5 text-amber-600" />}
         />
         <StatCard
@@ -175,18 +247,25 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ currentArea, areas }
         />
         <StatCard
           label="Average Ticket"
-          value={filteredExpenses.length > 0 ? formatINR(Math.round(totalAmount / filteredExpenses.length)) : '₹ 0'}
+          value={filteredExpenses.length > 0 ? formatINR(Math.round(totalAmount / filteredExpenses.length)) : '—'}
           subtext="Per expense average"
           icon={<TrendingDown className="w-5 h-5 text-blue-600" />}
         />
       </div>
 
-      {/* Category Breakdown Progress Bars (Matching authentic Yashwanth Hub prototype!) */}
-      {totalAmount > 0 && (
-        <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs">
-          <h3 className="text-sm font-bold font-heading text-[var(--hub-ink)] uppercase tracking-wider mb-4">
+      {/* Category Breakdown (Protocol v2: Show 'No expenses logged yet' when empty) */}
+      <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-bold font-heading text-[var(--hub-ink)] uppercase tracking-wider">
             Category Breakdown ({selectedMonth})
           </h3>
+          <span className="text-xs text-[var(--hub-muted)]">Verified real data</span>
+        </div>
+        {filteredExpenses.length === 0 ? (
+          <p className="text-sm text-[var(--hub-muted)] py-2 italic">
+            No expenses logged yet
+          </p>
+        ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {Object.keys(categoryTotals).map((cat) => {
               const amount = categoryTotals[cat];
@@ -210,8 +289,8 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ currentArea, areas }
               );
             })}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Filter and Search Bar */}
       <div className="flex flex-col sm:flex-row items-center gap-3 bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-3 shadow-xs">
@@ -271,7 +350,9 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ currentArea, areas }
           <div className="p-12 text-center text-sm text-[var(--hub-muted)]">
             <IndianRupee className="w-10 h-10 mx-auto text-amber-500 mb-3 opacity-60" />
             <h3 className="text-base font-bold text-[var(--hub-ink)]">No expenses found</h3>
-            <p className="text-xs mt-1">Record purchases, supplier invoices, or personal bills.</p>
+            <p className="text-xs mt-1 text-[var(--hub-muted)]">
+              Expenses: manually entered only. Zero auto-logged entries.
+            </p>
           </div>
         ) : (
           sortedExpenses.map((expense) => (
@@ -286,15 +367,33 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ currentArea, areas }
                   </span>
                   <Badge variant="amber">{expense.category}</Badge>
                   <Badge variant="teal">{expense.area}</Badge>
+                  {expense.payment_method && (
+                    <span className="text-[11px] px-2 py-0.5 rounded-md bg-[var(--hub-bg)] text-[var(--hub-muted)] border border-[var(--hub-line)] font-medium">
+                      {expense.payment_method}
+                    </span>
+                  )}
                 </div>
 
-                <p className="text-xs text-[var(--hub-muted)] mt-1 truncate">
+                <p className="text-xs text-[var(--hub-ink)] mt-1 truncate font-medium">
                   {expense.note || 'No description provided'}
                 </p>
 
-                <div className="flex items-center gap-1.5 text-[11px] text-[var(--hub-muted)] mt-1">
-                  <Calendar className="w-3 h-3" />
-                  <span>{formatShortDate(expense.date)}</span>
+                <div className="flex items-center gap-3 text-[11px] text-[var(--hub-muted)] mt-1">
+                  <span className="flex items-center gap-1">
+                    <Calendar className="w-3 h-3" />
+                    <span>{formatShortDate(expense.date)}</span>
+                  </span>
+                  {expense.source && (
+                    <span className="text-[10px] uppercase font-bold text-teal-600 dark:text-teal-400">
+                      [{expense.source}]
+                    </span>
+                  )}
+                  {expense.receipt_doc_id && (
+                    <span className="flex items-center gap-0.5 text-blue-600 dark:text-blue-400">
+                      <FileText className="w-3 h-3" />
+                      <span>{expense.receipt_doc_id}</span>
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -319,11 +418,91 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ currentArea, areas }
         )}
       </div>
 
-      {/* Modal */}
+      {/* Collapsible Quarantine & Audit Log View */}
+      <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl overflow-hidden shadow-xs">
+        <button
+          onClick={() => setShowQuarantine(!showQuarantine)}
+          className="w-full flex items-center justify-between p-4 text-left hover:bg-[var(--hub-bg)]/50 transition-colors cursor-pointer"
+        >
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            <h3 className="text-sm font-bold font-heading text-[var(--hub-ink)]">
+              Quarantine & Data Audit Log ({quarantinedExpenses.length} Quarantined, {auditLogs.length} Logged)
+            </h3>
+          </div>
+          {showQuarantine ? <ChevronUp className="w-4 h-4 text-[var(--hub-muted)]" /> : <ChevronDown className="w-4 h-4 text-[var(--hub-muted)]" />}
+        </button>
+
+        {showQuarantine && (
+          <div className="p-4 border-t border-[var(--hub-line)] space-y-4">
+            <div>
+              <h4 className="text-xs font-bold text-[var(--hub-ink)] uppercase tracking-wider mb-2">
+                Quarantined Records (Excluded from All Totals)
+              </h4>
+              {quarantinedExpenses.length === 0 ? (
+                <p className="text-xs text-[var(--hub-muted)]">No records currently in quarantine.</p>
+              ) : (
+                <div className="space-y-2">
+                  {quarantinedExpenses.map((q) => (
+                    <div
+                      key={q.id}
+                      className="p-3 rounded-lg bg-red-500/5 border border-red-500/20 text-xs text-[var(--hub-ink)] space-y-1"
+                    >
+                      <div className="flex items-center justify-between font-semibold">
+                        <span>Original ID: {q.original_id}</span>
+                        <span className="text-red-600 dark:text-red-400 font-bold">QUARANTINED</span>
+                      </div>
+                      <div className="text-[var(--hub-muted)]">
+                        Reason: <span className="text-red-600 dark:text-red-400 font-medium">{q.reason}</span>
+                      </div>
+                      <div className="text-[var(--hub-muted)]">
+                        Source: {q.source} • Created by: {q.created_by} • At: {new Date(q.quarantined_at).toLocaleString()}
+                      </div>
+                      {q.original_data && (
+                        <div className="mt-1 font-mono text-[11px] bg-[var(--hub-bg)] p-2 rounded border border-[var(--hub-line)]">
+                          ₹{q.original_data.amount} — {q.original_data.note} ({q.original_data.category}, {q.original_data.area})
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <h4 className="text-xs font-bold text-[var(--hub-ink)] uppercase tracking-wider mb-2">
+                Recent Data Audit Log Entries
+              </h4>
+              {auditLogs.length === 0 ? (
+                <p className="text-xs text-[var(--hub-muted)]">No audit entries recorded yet.</p>
+              ) : (
+                <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  {auditLogs.map((log) => (
+                    <div
+                      key={log.id}
+                      className="p-2 rounded bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs flex items-start justify-between gap-2"
+                    >
+                      <div>
+                        <span className="font-semibold text-[var(--hub-ink)]">[{log.action.toUpperCase()}]</span>{' '}
+                        <span className="text-[var(--hub-muted)]">{log.details}</span>
+                      </div>
+                      <span className="text-[11px] text-[var(--hub-muted)] flex-none">
+                        {new Date(log.timestamp).toLocaleTimeString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Modal for Adding / Editing Expense */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={editingExpense ? 'Edit Expense' : 'Log Expense'}
+        title={editingExpense ? 'Edit Expense' : 'Log Expense (Manual Entry Only)'}
       >
         <form onSubmit={handleSaveExpense} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -344,7 +523,7 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ currentArea, areas }
             </div>
             <div>
               <label className="block text-xs font-bold text-[var(--hub-ink)] uppercase tracking-wider mb-1">
-                Category
+                Category *
               </label>
               <select
                 value={formCategory}
@@ -363,7 +542,7 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ currentArea, areas }
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-[var(--hub-ink)] uppercase tracking-wider mb-1">
-                Workspace Area
+                Workspace Area *
               </label>
               <select
                 value={formArea}
@@ -393,7 +572,7 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ currentArea, areas }
 
           <div>
             <label className="block text-xs font-bold text-[var(--hub-ink)] uppercase tracking-wider mb-1">
-              Description / What For
+              Description / What For *
             </label>
             <input
               type="text"
@@ -401,6 +580,51 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ currentArea, areas }
               onChange={(e) => setFormNote(e.target.value)}
               placeholder="e.g. Laser cut stator core laminations"
               className="w-full px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--hub-accent)]"
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-[var(--hub-ink)] uppercase tracking-wider mb-1">
+                Payment Method *
+              </label>
+              <select
+                value={formPaymentMethod}
+                onChange={(e) => setFormPaymentMethod(e.target.value as PaymentMethod)}
+                className="w-full py-2 px-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)] text-sm"
+              >
+                {paymentMethods.map((pm) => (
+                  <option key={pm} value={pm}>
+                    {pm}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-[var(--hub-ink)] uppercase tracking-wider mb-1">
+                Receipt File / Document (Optional)
+              </label>
+              <input
+                type="text"
+                value={formReceiptDoc}
+                onChange={(e) => setFormReceiptDoc(e.target.value)}
+                placeholder="e.g. receipt_invoice_102.pdf"
+                className="w-full px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)] text-sm"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-[var(--hub-ink)] uppercase tracking-wider mb-1">
+              Linked Project / Task ID (Optional)
+            </label>
+            <input
+              type="text"
+              value={formLinkedTask}
+              onChange={(e) => setFormLinkedTask(e.target.value)}
+              placeholder="e.g. task_neodymium_magnets"
+              className="w-full px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)] text-sm"
             />
           </div>
 

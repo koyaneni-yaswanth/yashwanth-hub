@@ -27,6 +27,8 @@ import type {
   MeetingSummaryRecord,
   SyncJobRecord,
   IntegrationEventRecord,
+  QuarantinedRecord,
+  DataAuditLog,
 } from '../types';
 import { generateId, getTodayISO } from '../lib/utils';
 
@@ -58,6 +60,8 @@ export class YashwanthHubDatabase extends Dexie {
   meeting_summaries!: Table<MeetingSummaryRecord, string>;
   sync_jobs!: Table<SyncJobRecord, string>;
   integration_events!: Table<IntegrationEventRecord, string>;
+  quarantine!: Table<QuarantinedRecord, string>;
+  data_audit_logs!: Table<DataAuditLog, string>;
 
   constructor() {
     super('YashwanthHubDB');
@@ -101,6 +105,11 @@ export class YashwanthHubDatabase extends Dexie {
       meeting_summaries: 'id, meeting_id, source_memory_id, created_at',
       sync_jobs: 'id, service, status, started_at',
       integration_events: 'id, integration_id, event_type, status, created_at',
+    });
+
+    this.version(6).stores({
+      quarantine: 'id, entity_type, original_id, source, quarantined_at',
+      data_audit_logs: 'id, timestamp, action, entity_type, record_id',
     });
   }
 }
@@ -239,6 +248,39 @@ export async function initializeDatabase() {
       const taskCount = await db.tasks.count();
       if (taskCount === 0) {
         await seedStarterData();
+      }
+    }
+
+    // Founder Directive & Protocol v2: Clean up fake/unverified seed expenses and quarantine them
+    const fakeExpenseNotes = [
+      'Laser cut electrical steel laminations for stator core',
+      'Digital tachometer and vibration sensor probe',
+      'Team sprint lunch and refreshments',
+    ];
+    const existingExpenses = await db.expenses.toArray();
+    for (const exp of existingExpenses) {
+      if (fakeExpenseNotes.some((n) => exp.note.includes(n))) {
+        const now = new Date().toISOString();
+        await db.quarantine.put({
+          id: generateId(),
+          entity_type: 'expense',
+          original_id: exp.id,
+          original_data: exp,
+          reason: 'Founder confirms not real — not entered by founder',
+          source: 'SEED_DATA',
+          created_by: 'seedStarterData()',
+          quarantined_at: now,
+        });
+        await db.data_audit_logs.put({
+          id: generateId(),
+          timestamp: now,
+          action: 'quarantine',
+          entity_type: 'expense',
+          record_id: exp.id,
+          details: `Moved to quarantine: Founder confirms not real — not entered by founder (${exp.note}, ₹${exp.amount})`,
+          performed_by: 'Founder Directive Clean-up',
+        });
+        await db.expenses.delete(exp.id);
       }
     }
   } catch (error) {
@@ -522,40 +564,8 @@ export async function seedStarterData() {
   ];
   await db.notes.bulkAdd(sampleNotes);
 
-  // Expenses
-  const sampleExpenses: Expense[] = [
-    {
-      id: generateId(),
-      amount: 8500,
-      category: 'Parts',
-      area: 'PAWAN SHAKTI',
-      note: 'Laser cut electrical steel laminations for stator core',
-      date: today,
-      created_at: now,
-      updated_at: now,
-    },
-    {
-      id: generateId(),
-      amount: 3200,
-      category: 'Equipment',
-      area: 'IvLabs',
-      note: 'Digital tachometer and vibration sensor probe',
-      date: today,
-      created_at: now,
-      updated_at: now,
-    },
-    {
-      id: generateId(),
-      amount: 1450,
-      category: 'Food',
-      area: 'Personal',
-      note: 'Team sprint lunch and refreshments',
-      date: today,
-      created_at: now,
-      updated_at: now,
-    },
-  ];
-  await db.expenses.bulkAdd(sampleExpenses);
+  // Expenses: Protocol v2 strictly forbids seeding sample expenses.
+  // Expenses are strictly manually entered only by the founder. Zero seeding allowed.
 
   // Contacts
   const sampleContacts: Contact[] = [

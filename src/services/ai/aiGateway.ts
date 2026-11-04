@@ -369,7 +369,7 @@ ${openTasks
     if (mode === 'startup' || lower.includes('grant') || lower.includes('burn') || lower.includes('trl')) {
       return `### 🌪️ Startup & Venture Health
 
-• **Monthly Hardware/Operational Spend:** ₹ ${totalMonthSpend.toLocaleString('en-IN')} across ${monthExpenses.length} transactions.
+• **Monthly Hardware/Operational Spend:** ${totalMonthSpend === 0 ? '₹0' : `₹ ${totalMonthSpend.toLocaleString('en-IN')}`} across ${monthExpenses.length} transaction(s) (manually entered only).
 • **90-Day Wind Roadmap Status:** TRL 5 validation underway.
 • **Top Deliverable:** Customer pilot letter of intent (LOI) & DST grant review.`;
     }

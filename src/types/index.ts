@@ -110,6 +110,8 @@ export interface Note {
 
 export type ExpenseCategory = 'Food' | 'Travel' | 'Business' | 'Parts' | 'Bills' | 'Equipment' | 'Other';
 
+export type PaymentMethod = 'UPI' | 'Card' | 'NetBanking' | 'Cash' | 'Reimbursement' | 'Other';
+
 export interface Expense {
   id: string;
   amount: number;
@@ -117,8 +119,15 @@ export interface Expense {
   area: string;
   note: string;
   date: string; // YYYY-MM-DD
+  payment_method?: PaymentMethod;
   receipt_doc_id?: string;
+  receipt_url?: string;
+  linked_task_id?: string;
   project_id?: string;
+  source?: 'USER_ENTERED' | 'MANUAL_IMPORT' | 'QUARANTINE';
+  created_by?: string;
+  last_verified_at?: string;
+  status?: 'active' | 'quarantined' | 'archived';
   created_at: string;
   updated_at: string;
 }
@@ -573,5 +582,26 @@ export interface IntegrationEventRecord {
   payload_summary: string;
   status: 'processed' | 'ignored' | 'failed';
   created_at: string;
+}
+
+export interface QuarantinedRecord {
+  id: string;
+  entity_type: 'expense' | 'task' | 'meeting' | 'event' | 'note' | 'contact' | 'project' | 'other';
+  original_id: string;
+  original_data: any;
+  reason: string;
+  source: string;
+  created_by: string;
+  quarantined_at: string;
+}
+
+export interface DataAuditLog {
+  id: string;
+  timestamp: string;
+  action: 'quarantine' | 'delete' | 'merge' | 'verify' | 'import' | 'manual_entry';
+  entity_type: string;
+  record_id: string;
+  details: string;
+  performed_by: string;
 }
 
