@@ -1,0 +1,414 @@
+import Dexie, { type Table } from 'dexie';
+import type {
+  Task,
+  EventItem,
+  Meeting,
+  TravelRecord,
+  Note,
+  Expense,
+  Contact,
+  DocumentItem,
+  Area,
+  AppSetting,
+  SyncQueueItem,
+} from '../types';
+import { generateId, getTodayISO } from '../lib/utils';
+
+export class YashwanthHubDatabase extends Dexie {
+  tasks!: Table<Task, string>;
+  events!: Table<EventItem, string>;
+  meetings!: Table<Meeting, string>;
+  travel!: Table<TravelRecord, string>;
+  notes!: Table<Note, string>;
+  expenses!: Table<Expense, string>;
+  contacts!: Table<Contact, string>;
+  documents!: Table<DocumentItem, string>;
+  areas!: Table<Area, string>;
+  settings!: Table<AppSetting, string>;
+  sync_queue!: Table<SyncQueueItem, string>;
+
+  constructor() {
+    super('YashwanthHubDB');
+    this.version(1).stores({
+      tasks: 'id, text, area, priority, due_date, starred, done, created_at',
+      events: 'id, title, date, kind, area, created_at',
+      meetings: 'id, title, date, area, status, created_at',
+      travel: 'id, destination, start_date, end_date, area, status, created_at',
+      notes: 'id, title, pinned, area, created_at',
+      expenses: 'id, amount, category, area, date, created_at',
+      contacts: 'id, name, company, area, created_at',
+      documents: 'id, title, file_name, area, created_at',
+      areas: 'id, name, created_at',
+      settings: 'key, updated_at',
+      sync_queue: 'id, table_name, record_id, created_at',
+    });
+  }
+}
+
+export const db = new YashwanthHubDatabase();
+
+export const DEFAULT_AREAS = [
+  { name: 'PAWAN SHAKTI', color: '#0b6e6e', description: 'Small wind turbine innovation & TRL development' },
+  { name: 'MG Automation', color: '#2563eb', description: 'Industrial automation & motion engineering' },
+  { name: 'IvLabs', color: '#7c3aed', description: 'Robotics & autonomous systems research' },
+  { name: 'Waffle Whizz', color: '#d97706', description: 'Retail food enterprise operations' },
+  { name: 'Personal', color: '#059669', description: 'Health, personal development & finances' },
+];
+
+export async function initializeDatabase() {
+  try {
+    const areaCount = await db.areas.count();
+    if (areaCount === 0) {
+      const now = new Date().toISOString();
+      const areasToInsert: Area[] = DEFAULT_AREAS.map((a) => ({
+        id: generateId(),
+        name: a.name,
+        color: a.color,
+        description: a.description,
+        created_at: now,
+        updated_at: now,
+      }));
+      await db.areas.bulkAdd(areasToInsert);
+    }
+
+    // Check for legacy localStorage migration from "yash-hub-v1"
+    const legacyKey = 'yash-hub-v1';
+    const legacyRaw = typeof window !== 'undefined' ? localStorage.getItem(legacyKey) : null;
+    const migrationDone = await db.settings.get('legacy_migrated');
+
+    if (legacyRaw && !migrationDone) {
+      try {
+        const legacy = JSON.parse(legacyRaw);
+        const now = new Date().toISOString();
+
+        if (Array.isArray(legacy.tasks) && legacy.tasks.length > 0) {
+          const importedTasks: Task[] = legacy.tasks.map((t: any) => ({
+            id: t.id || generateId(),
+            text: t.text || 'Untitled Task',
+            area: t.area || 'Personal',
+            priority: t.star ? 'high' : 'medium',
+            due_date: t.due || undefined,
+            starred: Boolean(t.star),
+            done: Boolean(t.done),
+            plan: t.plan || undefined,
+            created_at: now,
+            updated_at: now,
+          }));
+          await db.tasks.bulkPut(importedTasks);
+        }
+
+        if (Array.isArray(legacy.events) && legacy.events.length > 0) {
+          const importedEvents: EventItem[] = legacy.events.map((e: any) => ({
+            id: e.id || generateId(),
+            title: e.title || 'Untitled Event',
+            date: e.date || getTodayISO(),
+            start_time: e.time || undefined,
+            kind: e.kind || 'Meeting',
+            place: e.place || undefined,
+            area: 'Personal',
+            created_at: now,
+            updated_at: now,
+          }));
+          await db.events.bulkPut(importedEvents);
+        }
+
+        if (Array.isArray(legacy.notes) && legacy.notes.length > 0) {
+          const importedNotes: Note[] = legacy.notes.map((n: any) => ({
+            id: n.id || generateId(),
+            title: n.title || 'Note',
+            body: n.body || '',
+            pinned: Boolean(n.pin),
+            area: 'PAWAN SHAKTI',
+            created_at: now,
+            updated_at: now,
+          }));
+          await db.notes.bulkPut(importedNotes);
+        }
+
+        if (Array.isArray(legacy.exp) && legacy.exp.length > 0) {
+          const importedExpenses: Expense[] = legacy.exp.map((x: any) => ({
+            id: x.id || generateId(),
+            amount: Number(x.amt) || 0,
+            category: x.cat || 'Business',
+            area: 'PAWAN SHAKTI',
+            note: x.note || '',
+            date: x.date || getTodayISO(),
+            created_at: now,
+            updated_at: now,
+          }));
+          await db.expenses.bulkPut(importedExpenses);
+        }
+
+        if (Array.isArray(legacy.people) && legacy.people.length > 0) {
+          const importedContacts: Contact[] = legacy.people.map((p: any) => ({
+            id: p.id || generateId(),
+            name: p.name || '',
+            role: p.role || '',
+            phone: p.contact?.includes('@') ? undefined : p.contact,
+            email: p.contact?.includes('@') ? p.contact : undefined,
+            area: 'PAWAN SHAKTI',
+            note: p.note || '',
+            created_at: now,
+            updated_at: now,
+          }));
+          await db.contacts.bulkPut(importedContacts);
+        }
+
+        await db.settings.put({
+          key: 'legacy_migrated',
+          value: true,
+          updated_at: now,
+        });
+      } catch (err) {
+        console.error('Failed to migrate legacy localStorage data:', err);
+      }
+    } else {
+      // Seed initial sample data if tasks table is completely empty
+      const taskCount = await db.tasks.count();
+      if (taskCount === 0) {
+        await seedStarterData();
+      }
+    }
+  } catch (error) {
+    console.error('Database initialization error:', error);
+  }
+}
+
+export async function seedStarterData() {
+  const now = new Date().toISOString();
+  const today = getTodayISO();
+
+  // Tasks
+  const sampleTasks: Task[] = [
+    {
+      id: generateId(),
+      text: 'Finalize IEC 61400-2 safety risk register for wind rotor braking system',
+      description: 'Review overspeed protection, mechanical calipers, and emergency resistive dump load.',
+      area: 'PAWAN SHAKTI',
+      priority: 'high',
+      due_date: today,
+      starred: true,
+      done: false,
+      notes: 'Prepare 1-page summary for professor meeting.',
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: generateId(),
+      text: 'Inspect PLC control cabinet wiring schematics and emergency stop relays',
+      description: 'Check 24V DC bus distribution and signal isolation.',
+      area: 'MG Automation',
+      priority: 'medium',
+      due_date: today,
+      starred: false,
+      done: false,
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: generateId(),
+      text: 'Calibrate OAK-D stereo camera rig and test visual odometry package in ROS 2',
+      area: 'IvLabs',
+      priority: 'medium',
+      due_date: today,
+      starred: true,
+      done: false,
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: generateId(),
+      text: 'Audit weekly ingredient procurement invoices and supplier margins',
+      area: 'Waffle Whizz',
+      priority: 'low',
+      due_date: today,
+      starred: false,
+      done: true,
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: generateId(),
+      text: 'Order custom neodymium N52 arc magnets for axial flux PM generator',
+      area: 'PAWAN SHAKTI',
+      priority: 'urgent',
+      due_date: today,
+      starred: true,
+      done: false,
+      created_at: now,
+      updated_at: now,
+    },
+  ];
+
+  await db.tasks.bulkAdd(sampleTasks);
+
+  // Events
+  const sampleEvents: EventItem[] = [
+    {
+      id: generateId(),
+      title: 'Professor Lab Review — TRL 4 to 5 Testing Protocol',
+      date: today,
+      start_time: '14:30',
+      end_time: '15:30',
+      kind: 'Meeting',
+      place: 'IvLabs Conference Room / Online',
+      area: 'PAWAN SHAKTI',
+      notes: 'Bring 1-page gap report and power curve data.',
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: generateId(),
+      title: 'MG Automation On-site Client Commissioning',
+      date: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+      start_time: '10:00',
+      end_time: '13:00',
+      kind: 'Meeting',
+      place: 'Industrial Zone Phase 2',
+      area: 'MG Automation',
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: generateId(),
+      title: 'DST Startup Grant First Round Application Deadline',
+      date: new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10),
+      start_time: '17:00',
+      kind: 'Deadline',
+      place: 'National Portal',
+      area: 'PAWAN SHAKTI',
+      created_at: now,
+      updated_at: now,
+    },
+  ];
+  await db.events.bulkAdd(sampleEvents);
+
+  // Meetings
+  const sampleMeetings: Meeting[] = [
+    {
+      id: generateId(),
+      title: 'Wind Turbine Aerodynamic Blade Pitch Sync',
+      date: today,
+      start_time: '11:00',
+      end_time: '12:00',
+      attendees: 'Dr. Rao, Design Engineer, Yaswanth',
+      location_or_link: 'https://meet.google.com/pwn-shkt-hub',
+      area: 'PAWAN SHAKTI',
+      agenda_and_notes: 'Discuss NACA 4412 airfoil lift-to-drag ratios at low Reynolds numbers (3-5 m/s wind speeds).',
+      action_items: 'Run 3D CFD simulation in Ansys Fluent by Friday.',
+      status: 'scheduled',
+      created_at: now,
+      updated_at: now,
+    },
+  ];
+  await db.meetings.bulkAdd(sampleMeetings);
+
+  // Travel
+  const sampleTravel: TravelRecord[] = [
+    {
+      id: generateId(),
+      destination: 'Pune / Mumbai Industrial Corridor',
+      purpose: 'Vendor evaluation for precision CNC rotor hubs & generator stator laser laminations',
+      start_date: new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10),
+      end_date: new Date(Date.now() + 12 * 86400000).toISOString().slice(0, 10),
+      mode: 'Flight',
+      booking_reference: '6E-4521',
+      area: 'PAWAN SHAKTI',
+      cost_estimate: 14500,
+      notes_and_itinerary: 'Day 1: Precision stamping vendor. Day 2: Coil winding facility.',
+      status: 'booked',
+      created_at: now,
+      updated_at: now,
+    },
+  ];
+  await db.travel.bulkAdd(sampleTravel);
+
+  // Notes
+  const sampleNotes: Note[] = [
+    {
+      id: generateId(),
+      title: '90-Day Wind Startup Target',
+      body: 'The TRL scale ends at 9, so there is no TRL 10. In 90 days aim for TRL 5 evidence, a TRL 6 prototype demo and one pilot letter. TRL 7 to 9 needs field data and formal certification.',
+      area: 'PAWAN SHAKTI',
+      pinned: true,
+      tags: ['TRL', 'Roadmap', 'PawanShakti'],
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: generateId(),
+      title: 'Generator Testing Bench Architecture',
+      body: 'Dual-rotor axial flux permanent magnet generator. Measure open-circuit voltage at 100-500 RPM. Use 3-phase rectifier and variable resistor load bank to plot IV curves.',
+      area: 'PAWAN SHAKTI',
+      pinned: true,
+      tags: ['Hardware', 'R&D'],
+      created_at: now,
+      updated_at: now,
+    },
+  ];
+  await db.notes.bulkAdd(sampleNotes);
+
+  // Expenses
+  const sampleExpenses: Expense[] = [
+    {
+      id: generateId(),
+      amount: 8500,
+      category: 'Parts',
+      area: 'PAWAN SHAKTI',
+      note: 'Laser cut electrical steel laminations for stator core',
+      date: today,
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: generateId(),
+      amount: 3200,
+      category: 'Equipment',
+      area: 'IvLabs',
+      note: 'Digital tachometer and vibration sensor probe',
+      date: today,
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: generateId(),
+      amount: 1450,
+      category: 'Food',
+      area: 'Personal',
+      note: 'Team sprint lunch and refreshments',
+      date: today,
+      created_at: now,
+      updated_at: now,
+    },
+  ];
+  await db.expenses.bulkAdd(sampleExpenses);
+
+  // Contacts
+  const sampleContacts: Contact[] = [
+    {
+      id: generateId(),
+      name: 'Dr. K. S. Sharma',
+      role: 'Principal Research Advisor',
+      company: 'Renewable Energy Lab, VNIT',
+      email: 'advisor@vnit.ac.in',
+      phone: '+91 98220 12345',
+      area: 'PAWAN SHAKTI',
+      note: 'Monthly review on aerodynamic rotor efficiency and grant recommendations.',
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: generateId(),
+      name: 'Vikram Joshi',
+      role: 'Managing Director',
+      company: 'Precision Wind Parts Ltd',
+      email: 'vikram@precisionwind.in',
+      phone: '+91 98234 56789',
+      area: 'PAWAN SHAKTI',
+      note: 'Supplier for rotor shaft forgings and dual-row bearings.',
+      created_at: now,
+      updated_at: now,
+    },
+  ];
+  await db.contacts.bulkAdd(sampleContacts);
+}
