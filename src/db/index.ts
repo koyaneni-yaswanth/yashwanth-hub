@@ -14,6 +14,11 @@ import type {
   Project,
   AppNotification,
   AIUsageLog,
+  GmailFollowUpItem,
+  GooglePhotoItem,
+  SyncHistoryRecord,
+  DeviceSession,
+  GoogleTaskItem,
 } from '../types';
 import { generateId, getTodayISO } from '../lib/utils';
 
@@ -32,6 +37,11 @@ export class YashwanthHubDatabase extends Dexie {
   projects!: Table<Project, string>;
   notifications!: Table<AppNotification, string>;
   ai_logs!: Table<AIUsageLog, string>;
+  gmail_messages!: Table<GmailFollowUpItem, string>;
+  photos_media!: Table<GooglePhotoItem, string>;
+  sync_history!: Table<SyncHistoryRecord, string>;
+  device_sessions!: Table<DeviceSession, string>;
+  google_tasks!: Table<GoogleTaskItem, string>;
 
   constructor() {
     super('YashwanthHubDB');
@@ -53,6 +63,14 @@ export class YashwanthHubDatabase extends Dexie {
       projects: 'id, title, area, status, priority, target_date, created_at',
       notifications: 'id, type, priority, read, created_at',
       ai_logs: 'id, provider, modelId, timestamp',
+    });
+
+    this.version(3).stores({
+      gmail_messages: 'id, threadId, from, subject, date, status',
+      photos_media: 'id, mediaItemId, filename, mimeType, project_id, selectedAt',
+      sync_history: 'id, service, status, timestamp',
+      device_sessions: 'id, deviceName, platform, isCurrent, lastActive',
+      google_tasks: 'id, title, status, due, listId, hubTaskId, updated',
     });
   }
 }

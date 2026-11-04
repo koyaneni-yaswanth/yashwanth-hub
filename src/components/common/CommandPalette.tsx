@@ -15,6 +15,10 @@ import {
   Bell,
   Sun,
   ArrowRight,
+  Mail,
+  FolderArchive,
+  Cloud,
+  Users,
 } from 'lucide-react';
 import { db } from '../../db';
 import type { NavigationTab, Area } from '../../types';
@@ -62,8 +66,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     { label: 'Go to Tasks', tab: 'tasks' as NavigationTab, icon: CheckSquare, category: 'Navigation' },
     { label: 'Go to Calendar', tab: 'calendar' as NavigationTab, icon: Calendar, category: 'Navigation' },
     { label: 'Go to Meetings', tab: 'meetings' as NavigationTab, icon: Video, category: 'Navigation' },
+    { label: 'Go to Files & Photos Vault', tab: 'files' as NavigationTab, icon: FolderArchive, category: 'Navigation' },
+    { label: 'Go to Gmail Intelligence', tab: 'gmail' as NavigationTab, icon: Mail, category: 'Navigation' },
+    { label: 'Go to Contacts', tab: 'contacts' as NavigationTab, icon: Users, category: 'Navigation' },
+    { label: 'Go to Notes', tab: 'notes' as NavigationTab, icon: FileText, category: 'Navigation' },
     { label: 'Go to Wind Plan (90-Day TRL)', tab: 'wind-plan' as NavigationTab, icon: Wind, category: 'Navigation' },
     { label: 'Go to AI Copilot', tab: 'ai-assistant' as NavigationTab, icon: Sparkles, category: 'Navigation' },
+    { label: 'Go to Google & AI Integrations', tab: 'integrations' as NavigationTab, icon: Cloud, category: 'Navigation' },
     { label: 'Go to Notifications', tab: 'notifications' as NavigationTab, icon: Bell, category: 'Navigation' },
     { label: 'Go to Expenses', tab: 'expenses' as NavigationTab, icon: IndianRupee, category: 'Navigation' },
     { label: 'Go to Settings', tab: 'settings' as NavigationTab, icon: Settings, category: 'Navigation' },

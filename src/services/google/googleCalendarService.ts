@@ -161,4 +161,79 @@ export class GoogleCalendarService {
       meetLink,
     };
   }
+
+  // Push local Yashwanth Hub event to Google Calendar
+  public static async pushToGoogle(event: EventItem): Promise<string> {
+    const token = GoogleAuthService.getAccessToken();
+    if (!token) throw new Error('Google Workspace is not connected.');
+
+    const startDateTime = event.start_time ? `${event.date}T${event.start_time}:00` : `${event.date}T09:00:00`;
+    const endDateTime = event.end_time ? `${event.date}T${event.end_time}:00` : `${event.date}T10:00:00`;
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata';
+
+    const payload = {
+      summary: event.title,
+      description: event.notes || `Created via Yashwanth Hub [${event.area || 'Personal'}]`,
+      location: event.place || '',
+      start: { dateTime: startDateTime, timeZone },
+      end: { dateTime: endDateTime, timeZone },
+    };
+
+    const url = `${this.BASE_URL}/calendars/primary/events`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `Failed to push event to Google: ${res.status}`);
+    }
+
+    const created = await res.json();
+    await db.events.update(event.id, {
+      google_event_id: created.id,
+      updated_at: new Date().toISOString(),
+    });
+
+    return created.id;
+  }
+
+  // Two-way synchronization between Yashwanth Hub events and Google Calendar
+  public static async syncTwoWay(localEvents?: EventItem[]): Promise<{
+    syncedCount: number;
+    conflicts: (EventItem | Meeting)[];
+    imported: number;
+    updated: number;
+  }> {
+    // 1. Pull events from Google Calendar
+    const { imported, updated } = await this.syncFromGoogle();
+
+    // 2. Scan for scheduling conflicts across all events/meetings
+    const events = localEvents || (await db.events.toArray());
+    const conflicts: (EventItem | Meeting)[] = [];
+
+    for (const ev of events) {
+      if (ev.start_time) {
+        const detected = await this.detectConflicts(ev.date, ev.start_time, ev.end_time, ev.id);
+        if (detected.length > 0) {
+          conflicts.push(...detected);
+        }
+      }
+    }
+
+    // Deduplicate conflicts by id
+    const uniqueConflicts = Array.from(new Map(conflicts.map((c) => [c.id, c])).values());
+
+    return {
+      syncedCount: imported + updated,
+      conflicts: uniqueConflicts,
+      imported,
+      updated,
+    };
+  }
 }

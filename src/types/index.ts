@@ -12,6 +12,7 @@ export interface Task {
   notes?: string;
   plan?: number; // week index if part of the 90-day founder plan
   project_id?: string; // Linked project
+  google_task_id?: string; // Mapped Google Task ID
   created_at: string;
   updated_at: string;
   synced?: boolean;
@@ -194,15 +195,35 @@ export interface AppNotification {
 }
 
 // Google Workspace Integration Models
+export type GoogleServiceKey =
+  | 'calendar'
+  | 'gmail'
+  | 'drive'
+  | 'photos'
+  | 'tasks'
+  | 'contacts'
+  | 'docs';
+
+export interface GoogleServiceStatus {
+  enabled: boolean;
+  authorized: boolean;
+  lastSync?: string;
+  error?: string;
+}
+
 export interface GoogleWorkspaceConfig {
   connected: boolean;
   email?: string;
+  name?: string;
+  picture?: string;
   accessToken?: string;
   refreshToken?: string;
   expiresAt?: number;
-  calendarSyncEnabled: boolean;
-  driveSyncEnabled: boolean;
-  gmailSyncEnabled: boolean;
+  services?: Record<GoogleServiceKey, GoogleServiceStatus>;
+  // Backward compatibility flags
+  calendarSyncEnabled?: boolean;
+  driveSyncEnabled?: boolean;
+  gmailSyncEnabled?: boolean;
   lastCalendarSync?: string;
   lastDriveSync?: string;
   lastGmailSync?: string;
@@ -218,6 +239,30 @@ export interface GoogleDriveFile {
   modifiedTime?: string;
 }
 
+export interface GoogleTaskItem {
+  id: string;
+  title: string;
+  notes?: string;
+  status: 'needsAction' | 'completed';
+  due?: string;
+  updated?: string;
+  listId?: string;
+  hubTaskId?: string;
+}
+
+export interface GooglePhotoItem {
+  id: string;
+  mediaItemId: string;
+  filename: string;
+  mimeType: string;
+  baseUrl: string;
+  productUrl?: string;
+  description?: string;
+  selectedAt: string;
+  project_id?: string;
+  area?: string;
+}
+
 export interface GmailFollowUpItem {
   id: string;
   threadId: string;
@@ -228,6 +273,38 @@ export interface GmailFollowUpItem {
   detectedDeadline?: string;
   suggestedAction?: string;
   status: 'pending' | 'addressed' | 'dismissed';
+}
+
+// Unified Synchronization Engine Models
+export type SyncEngineState = 'synced' | 'syncing' | 'offline' | 'expired' | 'permission_required' | 'failed';
+
+export interface SyncEngineStatus {
+  state: SyncEngineState;
+  lastSuccessTimestamp?: string;
+  activeService?: string;
+  pendingQueueCount: number;
+  failedCount: number;
+  message: string;
+}
+
+export interface SyncHistoryRecord {
+  id: string;
+  service: string;
+  action: string;
+  status: 'success' | 'warning' | 'error';
+  itemCount: number;
+  timestamp: string;
+  details?: string;
+}
+
+export interface DeviceSession {
+  id: string;
+  deviceName: string;
+  platform: 'windows' | 'android' | 'ios' | 'mac' | 'linux' | 'browser';
+  browser: string;
+  isCurrent: boolean;
+  lastActive: string;
+  ipAddress?: string;
 }
 
 // NeoSapien Device Integration Models
@@ -308,10 +385,13 @@ export type NavigationTab =
   | 'travel'
   | 'notes'
   | 'documents'
+  | 'files'
+  | 'gmail'
   | 'expenses'
   | 'contacts'
   | 'wind-plan'
   | 'ai-assistant'
   | 'notifications'
   | 'analytics'
+  | 'integrations'
   | 'settings';

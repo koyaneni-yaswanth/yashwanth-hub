@@ -19,7 +19,9 @@ import { CalendarPage } from './pages/CalendarPage';
 import { MeetingsPage } from './pages/MeetingsPage';
 import { TravelPage } from './pages/TravelPage';
 import { NotesPage } from './pages/NotesPage';
-import { DocumentsPage } from './pages/DocumentsPage';
+import { FilesAndPhotosPage } from './pages/FilesAndPhotosPage';
+import { GmailPage } from './pages/GmailPage';
+import { IntegrationsPage } from './pages/IntegrationsPage';
 import { ExpensesPage } from './pages/ExpensesPage';
 import { ContactsPage } from './pages/ContactsPage';
 import { WindPlanPage } from './pages/WindPlanPage';
@@ -60,6 +62,17 @@ function HubMain() {
           driveSyncEnabled: true,
           gmailSyncEnabled: true,
         });
+        GoogleAuthService.fetchUserProfile(token).then((profile) => {
+          if (profile) {
+            GoogleAuthService.saveConfig({
+              ...GoogleAuthService.getConfig(),
+              email: profile.email,
+              name: profile.name,
+              picture: profile.picture,
+            });
+          }
+        });
+        setCurrentTab('integrations');
         window.history.replaceState(null, '', window.location.pathname);
       }
     }
@@ -131,7 +144,10 @@ function HubMain() {
       case 'notes':
         return <NotesPage currentArea={currentArea} areas={areas} />;
       case 'documents':
-        return <DocumentsPage currentArea={currentArea} areas={areas} />;
+      case 'files':
+        return <FilesAndPhotosPage currentArea={currentArea} areas={areas} />;
+      case 'gmail':
+        return <GmailPage onNavigateToTasks={() => setCurrentTab('tasks')} />;
       case 'expenses':
         return <ExpensesPage currentArea={currentArea} areas={areas} />;
       case 'contacts':
@@ -146,6 +162,8 @@ function HubMain() {
             onNavigate={(tab) => setCurrentTab(tab)}
           />
         );
+      case 'integrations':
+        return <IntegrationsPage />;
       case 'notifications':
         return <NotificationsPage onNavigate={(tab) => setCurrentTab(tab)} />;
       case 'analytics':
