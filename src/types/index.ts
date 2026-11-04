@@ -392,6 +392,8 @@ export interface NeoMcpConfig {
   readOnly: boolean;
   status: 'disconnected' | 'connecting' | 'connected' | 'error';
   lastPing?: string;
+  lastSyncAt?: string;
+  lastError?: string;
   errorMessage?: string;
 }
 
@@ -402,6 +404,8 @@ export interface NeoSyncAuditRecord {
   status: 'success' | 'warning' | 'error';
   memoriesImported: number;
   memoriesUpdated: number;
+  importedCount?: number;
+  updatedCount?: number;
   duplicatesSkipped: number;
   failedCount: number;
   details?: string;

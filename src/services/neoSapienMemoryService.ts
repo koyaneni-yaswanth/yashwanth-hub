@@ -301,6 +301,8 @@ export class NeoSapienMemoryService {
       status: failedCount > 0 ? 'warning' : 'success',
       memoriesImported: importedCount,
       memoriesUpdated: updatedCount,
+      importedCount,
+      updatedCount,
       duplicatesSkipped,
       failedCount,
       details: `Imported ${importedCount}, Updated ${updatedCount}, Failed ${failedCount}`,
@@ -599,5 +601,81 @@ export class NeoSapienMemoryService {
   private static timeToMinutes(timeStr: string): number {
     const [h, m] = timeStr.split(':').map((n) => parseInt(n, 10));
     return (h || 0) * 60 + (m || 0);
+  }
+
+  /**
+   * Synchronizes memories from an authorized NeoSapien MCP / Cloud Server endpoint.
+   */
+  public static async syncViaMCP(): Promise<{ success: boolean; imported: number; message: string }> {
+    const config = this.getConfig();
+    if (!config.mcpConfig?.enabled || !config.mcpConfig.serverUrl) {
+      return { success: false, imported: 0, message: 'MCP Endpoint is not configured or disabled.' };
+    }
+
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (config.mcpConfig.authToken) {
+        headers['Authorization'] = `Bearer ${config.mcpConfig.authToken}`;
+      }
+
+      const res = await fetch(config.mcpConfig.serverUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: generateId(),
+          method: 'tools/call',
+          params: {
+            name: 'get_memories',
+            arguments: { limit: 50 },
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`MCP Endpoint returned HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      const rawMemories = data?.result?.content?.[0]?.text
+        ? JSON.parse(data.result.content[0].text)
+        : data?.memories || [];
+
+      if (Array.isArray(rawMemories) && rawMemories.length > 0) {
+        const audit = await this.importMemories(rawMemories, 'mcp');
+        config.mcpConfig.status = 'connected';
+        config.mcpConfig.lastSyncAt = new Date().toISOString();
+        delete config.mcpConfig.lastError;
+        this.saveConfig(config);
+        return {
+          success: true,
+          imported: audit.memoriesImported + audit.memoriesUpdated,
+          message: `Synchronized ${audit.memoriesImported} new memories from NeoSapien MCP.`,
+        };
+      }
+
+      config.mcpConfig.status = 'connected';
+      config.mcpConfig.lastSyncAt = new Date().toISOString();
+      this.saveConfig(config);
+      return { success: true, imported: 0, message: 'Connected to NeoSapien MCP. Zero new memories available.' };
+    } catch (err: any) {
+      config.mcpConfig.status = 'error';
+      config.mcpConfig.lastError = err.message || 'Connection failed to NeoSapien MCP endpoint';
+      this.saveConfig(config);
+      return { success: false, imported: 0, message: err.message || 'MCP sync error' };
+    }
+  }
+
+  /**
+   * Disconnects the NeoSapien MCP integration.
+   */
+  public static disconnectMCP(): void {
+    const config = this.getConfig();
+    if (config.mcpConfig) {
+      config.mcpConfig.enabled = false;
+      config.mcpConfig.status = 'disconnected';
+      delete config.mcpConfig.lastError;
+    }
+    this.saveConfig(config);
   }
 }

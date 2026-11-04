@@ -287,4 +287,48 @@ export class DeviceFleetService {
       }
     }
   }
+
+  /**
+   * Removes a device registration from local display and cloud registry (without revoking credentials).
+   */
+  public static async removeDeviceRegistration(deviceId: string): Promise<void> {
+    await db.device_sessions.delete(deviceId);
+
+    if (isSupabaseConfigured()) {
+      try {
+        const client = getSupabaseClient();
+        if (client) {
+          await client.from('connected_devices').delete().eq('hardware_id', deviceId);
+        }
+      } catch (e) {
+        console.warn('Could not remove device registration from Supabase:', e);
+      }
+    }
+  }
+
+  /**
+   * Signs out the current device and resets session state.
+   */
+  public static async signOutCurrentDevice(): Promise<void> {
+    const currentId = this.getInstallationId();
+    await this.revokeDeviceSession(currentId);
+  }
+
+  /**
+   * Signs out / revokes all other registered devices in the fleet.
+   */
+  public static async signOutAllOtherDevices(): Promise<{ revokedCount: number }> {
+    const currentId = this.getInstallationId();
+    const all = await db.device_sessions.toArray();
+    let revokedCount = 0;
+
+    for (const dev of all) {
+      if (dev.id !== currentId && dev.status !== 'revoked') {
+        await this.revokeDeviceSession(dev.id);
+        revokedCount++;
+      }
+    }
+
+    return { revokedCount };
+  }
 }

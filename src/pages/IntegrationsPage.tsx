@@ -21,12 +21,20 @@ import {
   HelpCircle,
   Copy,
   Check,
+  Edit2,
+  Trash2,
+  Brain,
+  Battery,
+  Radio,
+  FileText,
+  Upload,
 } from 'lucide-react';
 import { db } from '../db';
 import type { GoogleServiceKey } from '../types';
 import { GoogleAuthService } from '../services/google/googleAuthService';
 import { UnifiedSyncEngine } from '../services/sync/unifiedSyncEngine';
 import { NeoSapienService } from '../services/neoSapienService';
+import { NeoSapienMemoryService } from '../services/neoSapienMemoryService';
 import { DeviceFleetService } from '../services/deviceFleetService';
 import { Badge } from '../components/common/Badge';
 
@@ -42,14 +50,28 @@ export const IntegrationsPage: React.FC = () => {
   const [copiedOrigin, setCopiedOrigin] = useState(false);
 
   // NeoSapien State
-  const [neoConfig, setNeoConfig] = useState(() => NeoSapienService.getConfig());
+  const [neoConfig, setNeoConfig] = useState(() => NeoSapienMemoryService.getConfig());
   const [isScanningBLE, setIsScanningBLE] = useState(false);
+  const [isSyncingMCP, setIsSyncingMCP] = useState(false);
+  const [showMcpConfig, setShowMcpConfig] = useState(false);
+  const [mcpUrl, setMcpUrl] = useState(() => neoConfig.mcpConfig?.serverUrl || 'http://localhost:3000/sse');
+  const [mcpToken, setMcpToken] = useState(() => neoConfig.mcpConfig?.authToken || '');
+  const [mcpFeedback, setMcpFeedback] = useState<string | null>(null);
+
+  // Device Fleet State
+  const [renamingDeviceId, setRenamingDeviceId] = useState<string | null>(null);
+  const [renamingDeviceName, setRenamingDeviceName] = useState('');
+  const [isConfirmingSignOutAllOthers, setIsConfirmingSignOutAllOthers] = useState(false);
 
   // Sync History
   const historyLogs = useLiveQuery(() => db.sync_history.orderBy('timestamp').reverse().limit(15).toArray(), []) || [];
 
   // Live Authenticated Device Fleet
   const deviceFleet = useLiveQuery(() => db.device_sessions.toArray(), []) || [];
+
+  // Live Neo Memories & Offline Sync Queue
+  const latestMemory = useLiveQuery(() => db.neo_memories.orderBy('capturedAt').reverse().first(), []);
+  const pendingQueueCount = useLiveQuery(() => db.sync_queue.count(), []) || 0;
 
   useEffect(() => {
     DeviceFleetService.registerCurrentDevice().catch(() => {});
@@ -61,6 +83,66 @@ export const IntegrationsPage: React.FC = () => {
     });
     return unsubscribe;
   }, []);
+
+  const handleSaveMcpConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    const updated = {
+      ...neoConfig,
+      mcpConfig: {
+        enabled: true,
+        serverUrl: mcpUrl.trim(),
+        authToken: mcpToken.trim(),
+        authType: mcpToken.trim() ? ('bearer' as const) : ('none' as const),
+        readOnly: true,
+        status: 'disconnected' as const,
+      },
+    };
+    NeoSapienMemoryService.saveConfig(updated);
+    setNeoConfig(updated);
+    setShowMcpConfig(false);
+    setMcpFeedback('NeoSapien MCP configuration saved. Ready to synchronize.');
+  };
+
+  const handleSyncMcpNow = async () => {
+    setIsSyncingMCP(true);
+    setMcpFeedback(null);
+    try {
+      const res = await NeoSapienMemoryService.syncViaMCP();
+      setNeoConfig(NeoSapienMemoryService.getConfig());
+      setMcpFeedback(res.message);
+    } catch (err: any) {
+      setMcpFeedback(`MCP Sync Error: ${err.message}`);
+    } finally {
+      setIsSyncingMCP(false);
+    }
+  };
+
+  const handleDisconnectMcp = () => {
+    NeoSapienMemoryService.disconnectMCP();
+    setNeoConfig(NeoSapienMemoryService.getConfig());
+    setMcpFeedback('NeoSapien MCP connection disconnected.');
+  };
+
+  const handleImportJsonFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const items = Array.isArray(parsed) ? parsed : parsed.memories || [parsed];
+      const audit = await NeoSapienMemoryService.importMemories(items, 'json_export');
+      setMcpFeedback(`Imported ${audit.importedCount} memories, updated ${audit.updatedCount} existing records.`);
+    } catch (err: any) {
+      setMcpFeedback(`JSON Import Error: ${err.message}`);
+    }
+  };
+
+  const handleSignOutAllOthers = async () => {
+    const res = await DeviceFleetService.signOutAllOtherDevices();
+    setIsConfirmingSignOutAllOthers(false);
+    setSyncFeedback(`Revoked sessions for ${res.revokedCount} other device(s).`);
+  };
 
   const handleSaveClientId = () => {
     GoogleAuthService.saveClientId(googleClientId);
@@ -483,14 +565,25 @@ export const IntegrationsPage: React.FC = () => {
 
       {/* 3. Multi-Device & Hardware Hub (Windows, Android, NeoSapien) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Device Sessions */}
+        {/* Device Fleet Management */}
         <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-3">
-          <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
-            <Smartphone className="w-4 h-4 text-purple-600" />
-            <span>Authenticated Device Fleet</span>
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
+              <Smartphone className="w-4 h-4 text-purple-600" />
+              <span>Authenticated Device Fleet</span>
+            </h3>
+            {deviceFleet.filter((d) => !d.isCurrent && d.status !== 'revoked').length > 0 && (
+              <button
+                onClick={() => setIsConfirmingSignOutAllOthers(true)}
+                className="text-[11px] px-2.5 py-1 rounded-md bg-red-500/10 text-red-700 dark:text-red-300 border border-red-500/20 hover:bg-red-500/20 font-medium cursor-pointer transition-colors"
+                title="Revoke session on all other devices"
+              >
+                Sign Out All Others
+              </button>
+            )}
+          </div>
           <p className="text-xs text-[var(--hub-muted)]">
-            Active sessions synchronized via Supabase Realtime & IndexedDB
+            Active sessions synchronized via Supabase Realtime & IndexedDB. Pending local mutations: {pendingQueueCount}.
           </p>
 
           <div className="space-y-2">
@@ -512,7 +605,7 @@ export const IntegrationsPage: React.FC = () => {
                       dev.isCurrent ? 'border-teal-500/40 bg-teal-500/5' : 'border-[var(--hub-line)]'
                     } flex items-center justify-between text-xs`}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       {dev.deviceType === 'tablet' ? (
                         <Tablet className="w-4 h-4 text-purple-600 flex-none" />
                       ) : dev.deviceType === 'mobile' ? (
@@ -522,9 +615,43 @@ export const IntegrationsPage: React.FC = () => {
                       ) : (
                         <Monitor className="w-4 h-4 text-blue-600 flex-none" />
                       )}
-                      <div className="min-w-0 truncate">
+                      <div className="min-w-0 truncate flex-1">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-semibold text-[var(--hub-ink)] truncate">{dev.deviceName}</span>
+                          {renamingDeviceId === dev.id ? (
+                            <form
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                DeviceFleetService.renameDevice(dev.id, renamingDeviceName);
+                                setRenamingDeviceId(null);
+                              }}
+                              className="flex items-center gap-1"
+                            >
+                              <input
+                                type="text"
+                                value={renamingDeviceName}
+                                onChange={(e) => setRenamingDeviceName(e.target.value)}
+                                className="px-1.5 py-0.5 rounded border border-[var(--hub-accent)] text-xs bg-[var(--hub-surface)] text-[var(--hub-ink)]"
+                                autoFocus
+                              />
+                              <button type="submit" className="text-xs text-teal-600 font-semibold hover:underline">Save</button>
+                              <button type="button" onClick={() => setRenamingDeviceId(null)} className="text-xs text-[var(--hub-muted)] hover:underline">Cancel</button>
+                            </form>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              <span className="font-semibold text-[var(--hub-ink)] truncate">{dev.deviceName}</span>
+                              <button
+                                onClick={() => {
+                                  setRenamingDeviceId(dev.id);
+                                  setRenamingDeviceName(dev.deviceName);
+                                }}
+                                className="text-[var(--hub-muted)] hover:text-[var(--hub-ink)] p-0.5"
+                                title="Rename device"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
+
                           {dev.isCurrent && (
                             <span className="text-[10px] px-1.5 py-0.2 rounded bg-teal-500/10 text-teal-700 dark:text-teal-300 font-bold border border-teal-500/20">
                               Current Device
@@ -536,20 +663,37 @@ export const IntegrationsPage: React.FC = () => {
                             </span>
                           )}
                         </div>
-                        <span className="text-[10px] text-[var(--hub-muted)] block truncate">
-                          {dev.browser} • {dev.platform.toUpperCase()} • Active {new Date(dev.lastActive).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        <span className="text-[10px] text-[var(--hub-muted)] block truncate mt-0.5">
+                          {dev.browser} • {dev.platform.toUpperCase()} • Active {new Date(dev.lastActive).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • Sync: {dev.syncStatus || 'synced'}
                         </span>
                       </div>
                     </div>
+
                     <div className="flex items-center gap-2 flex-none ml-2">
                       <Badge variant={badgeVariant}>{statusLabel}</Badge>
-                      {!dev.isCurrent && !isRevoked && (
+                      {dev.isCurrent ? (
+                        <button
+                          onClick={() => DeviceFleetService.signOutCurrentDevice()}
+                          className="text-[10px] text-red-600 dark:text-red-400 hover:underline cursor-pointer font-medium"
+                          title="Sign out current device"
+                        >
+                          Sign Out
+                        </button>
+                      ) : !isRevoked ? (
                         <button
                           onClick={() => DeviceFleetService.revokeDeviceSession(dev.id)}
                           className="text-[10px] text-red-600 dark:text-red-400 hover:underline cursor-pointer font-medium"
                           title="Revoke device session"
                         >
                           Revoke
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => DeviceFleetService.removeDeviceRegistration(dev.id)}
+                          className="text-[10px] text-[var(--hub-muted)] hover:text-red-600 cursor-pointer font-medium"
+                          title="Remove registration from display"
+                        >
+                          <Trash2 className="w-3 h-3" />
                         </button>
                       )}
                     </div>
@@ -560,33 +704,222 @@ export const IntegrationsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* NeoSapien BLE Hardware Hub */}
+        {/* NeoSapien Cloud / MCP Integration */}
         <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
-              <Bluetooth className="w-4 h-4 text-blue-500" />
-              <span>NeoSapien Neo 1 Hardware</span>
+              <Brain className="w-4 h-4 text-purple-600" />
+              <span>NeoSapien Account & Cloud</span>
             </h3>
-            <Badge variant={neoConfig.status === 'connected' ? 'emerald' : 'gray'}>
-              {neoConfig.status.toUpperCase()}
+            <Badge variant={neoConfig.mcpConfig?.status === 'connected' ? 'emerald' : neoConfig.mcpConfig?.status === 'error' ? 'red' : 'gray'}>
+              {neoConfig.mcpConfig?.status === 'connected' ? 'Connected' : neoConfig.mcpConfig?.status === 'error' ? 'Error' : 'Not Configured'}
             </Badge>
           </div>
           <p className="text-xs text-[var(--hub-muted)]">
-            Connect via Web Bluetooth LE or import ambient audio transcripts
+            Synchronize ambient audio memories, meeting summaries, and commitments via official MCP / OAuth
           </p>
 
-          <div className="pt-2">
+          {/* Status Details */}
+          <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] space-y-1.5 text-xs">
+            <div className="flex justify-between">
+              <span className="text-[var(--hub-muted)]">Authorization Status:</span>
+              <span className="font-medium text-[var(--hub-ink)]">
+                {neoConfig.mcpConfig?.enabled ? 'Authorized (MCP / OAuth)' : 'Pending Setup'}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[var(--hub-muted)]">Last Cloud Sync:</span>
+              <span className="font-medium text-[var(--hub-ink)]">
+                {neoConfig.mcpConfig?.lastSyncAt ? new Date(neoConfig.mcpConfig.lastSyncAt).toLocaleString() : 'Never'}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[var(--hub-muted)]">Latest Imported Memory:</span>
+              <span className="font-medium text-[var(--hub-ink)] truncate max-w-[200px]">
+                {latestMemory ? latestMemory.title : 'None yet'}
+              </span>
+            </div>
+          </div>
+
+          {neoConfig.mcpConfig?.lastError && (
+            <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-600 dark:text-red-400">
+              {neoConfig.mcpConfig.lastError}
+            </div>
+          )}
+
+          {mcpFeedback && (
+            <div className="p-2.5 rounded-lg bg-teal-500/10 border border-teal-500/20 text-xs text-teal-700 dark:text-teal-300 font-medium">
+              {mcpFeedback}
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2 pt-1 flex-wrap">
+            <button
+              onClick={() => setShowMcpConfig(true)}
+              className="px-3 py-1.5 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer"
+            >
+              Configure MCP
+            </button>
+
+            {neoConfig.mcpConfig?.enabled && (
+              <>
+                <button
+                  onClick={handleSyncMcpNow}
+                  disabled={isSyncingMCP}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3 h-3 ${isSyncingMCP ? 'animate-spin' : ''}`} />
+                  <span>{isSyncingMCP ? 'Syncing...' : 'Sync Now'}</span>
+                </button>
+                <button
+                  onClick={handleDisconnectMcp}
+                  className="px-2.5 py-1.5 rounded-lg text-xs text-red-600 hover:underline cursor-pointer"
+                >
+                  Disconnect
+                </button>
+              </>
+            )}
+
+            <label className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs font-medium text-[var(--hub-muted)] hover:text-[var(--hub-ink)] cursor-pointer">
+              <Upload className="w-3 h-3" />
+              <span>Import JSON</span>
+              <input type="file" accept=".json" onChange={handleImportJsonFile} className="hidden" />
+            </label>
+          </div>
+        </div>
+
+        {/* Neo 1 Physical Device Hub */}
+        <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-3 lg:col-span-2">
+          <div className="flex items-center justify-between">
+            <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
+              <Radio className="w-4 h-4 text-blue-500" />
+              <span>Neo 1 Physical Device</span>
+            </h3>
+            <Badge variant={neoConfig.status === 'connected' ? 'emerald' : 'gray'}>
+              {neoConfig.status === 'connected' ? 'Connected (BLE)' : 'Disconnected'}
+            </Badge>
+          </div>
+
+          {/* Mandatory Zero-Fabrication Disclaimer */}
+          <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-800 dark:text-amber-300">
+            <p className="font-medium">
+              Neo 1 physical device status is available in the official NeoSapien mobile application. Live wearable telemetry is not exposed through the connected integration.
+            </p>
+          </div>
+
+          {neoConfig.status === 'connected' && neoConfig.batteryLevel !== undefined && (
+            <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <Battery className="w-4 h-4 text-emerald-600" />
+                <span className="font-medium text-[var(--hub-ink)]">Battery Level: {neoConfig.batteryLevel}%</span>
+              </div>
+              <span className="text-[10px] text-[var(--hub-muted)]">Web Bluetooth GATT Link Active</span>
+            </div>
+          )}
+
+          <div className="pt-1 flex items-center gap-2">
             <button
               onClick={handleConnectNeoSapienBLE}
               disabled={isScanningBLE}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer"
             >
               <Bluetooth className="w-4 h-4 text-blue-500" />
-              <span>{isScanningBLE ? 'Scanning for Neo 1...' : 'Scan & Pair Device'}</span>
+              <span>{isScanningBLE ? 'Scanning for Neo 1...' : 'Scan & Pair Device (Web BLE)'}</span>
             </button>
           </div>
         </div>
       </div>
+
+      {/* MCP Configuration Modal */}
+      {showMcpConfig && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 max-w-md w-full shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[var(--hub-line)] pb-3">
+              <h4 className="font-bold text-sm text-[var(--hub-ink)] flex items-center gap-2">
+                <Brain className="w-4 h-4 text-purple-600" />
+                <span>NeoSapien MCP Server Settings</span>
+              </h4>
+              <button
+                onClick={() => setShowMcpConfig(false)}
+                className="text-xs text-[var(--hub-muted)] hover:text-[var(--hub-ink)]"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveMcpConfig} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[var(--hub-muted)] mb-1 font-medium">MCP Server Endpoint (SSE / JSON-RPC)</label>
+                <input
+                  type="text"
+                  value={mcpUrl}
+                  onChange={(e) => setMcpUrl(e.target.value)}
+                  placeholder="http://localhost:3000/sse"
+                  required
+                  className="w-full px-3 py-2 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-[var(--hub-ink)] focus:border-[var(--hub-accent)] outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[var(--hub-muted)] mb-1 font-medium">Bearer Authorization Token (Optional)</label>
+                <input
+                  type="password"
+                  value={mcpToken}
+                  onChange={(e) => setMcpToken(e.target.value)}
+                  placeholder="neo_token_..."
+                  className="w-full px-3 py-2 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-[var(--hub-ink)] focus:border-[var(--hub-accent)] outline-none font-mono"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowMcpConfig(false)}
+                  className="px-3 py-1.5 rounded-lg border border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white font-semibold hover:bg-[var(--hub-accent-hover)]"
+                >
+                  Save Configuration
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Sign Out All Others */}
+      {isConfirmingSignOutAllOthers && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 max-w-sm w-full shadow-xl space-y-3">
+            <h4 className="font-bold text-sm text-[var(--hub-ink)] flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-500" />
+              <span>Revoke All Other Sessions?</span>
+            </h4>
+            <p className="text-xs text-[var(--hub-muted)]">
+              This will immediately invalidate the session tokens and disconnect all other registered laptops, tablets, and phones from your account.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setIsConfirmingSignOutAllOthers(false)}
+                className="px-3 py-1.5 rounded-lg border border-[var(--hub-line)] text-xs text-[var(--hub-muted)] hover:text-[var(--hub-ink)]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSignOutAllOthers}
+                className="px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700"
+              >
+                Confirm Revocation
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

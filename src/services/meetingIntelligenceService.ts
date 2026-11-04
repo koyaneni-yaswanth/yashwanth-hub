@@ -14,6 +14,7 @@ import type {
 import { GoogleCalendarService } from './google/googleCalendarService';
 import { AIGateway } from './ai/aiGateway';
 import { generateId, getTodayISO } from '../lib/utils';
+import { SyncQueueService } from './sync/syncQueueService';
 
 export interface MeetingBrief {
   meetingId: string;
@@ -209,7 +210,7 @@ Yashwanth`;
       const existing = await db.tasks.where('text').equals(item.text).first();
       if (!existing) {
         const newTaskId = generateId();
-        await db.tasks.add({
+        const newTask = {
           id: newTaskId,
           text: item.text,
           area: area as any,
@@ -220,7 +221,9 @@ Yashwanth`;
           notes: `Auto-extracted from meeting memory. Assignee: ${item.assigneeName || 'Self'}`,
           created_at: now,
           updated_at: now,
-        });
+        };
+        await db.tasks.add(newTask);
+        SyncQueueService.enqueueChange('tasks', newTaskId, 'INSERT', newTask);
 
         item.status = 'synced_to_hub';
         item.hubTaskId = newTaskId;
@@ -259,6 +262,7 @@ Yashwanth`;
     };
 
     await db.meetings.add(newMeeting);
+    SyncQueueService.enqueueChange('meetings', newMeeting.id, 'INSERT', newMeeting);
 
     // Sync to Supabase if configured
     const client = getSupabaseClient();
