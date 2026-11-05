@@ -462,6 +462,29 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
         </div>
       )}
 
+      {/* Suggested NeoSapien Memory Intelligence Prompt Chips */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px] text-[var(--hub-muted)] flex-none">
+        <span className="font-semibold text-purple-600 dark:text-purple-400 flex items-center gap-1 shrink-0">
+          <Sparkles className="w-3 h-3" /> Neo Memories:
+        </span>
+        {[
+          'Summarize what I discussed today',
+          'What follow-ups did I promise?',
+          'What decisions did I make about PAWAN SHAKTI?',
+          'Find details about PiPER robot discussion',
+          'What was discussed in my last meeting?',
+        ].map((chip) => (
+          <button
+            key={chip}
+            type="button"
+            onClick={() => setInputMessage(chip)}
+            className="px-2.5 py-1 rounded-full bg-[var(--hub-surface)] border border-[var(--hub-line)] hover:border-purple-500 hover:text-[var(--hub-ink)] shrink-0 transition-colors cursor-pointer"
+          >
+            {chip}
+          </button>
+        ))}
+      </div>
+
       {/* Input Message Form */}
       <form onSubmit={handleSendMessage} className="flex gap-2 flex-none">
         <input

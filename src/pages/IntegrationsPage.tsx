@@ -26,11 +26,9 @@ import {
   Brain,
   Battery,
   Radio,
-  FileText,
   Upload,
   Wrench,
   Key,
-  ExternalLink,
 } from 'lucide-react';
 import { db } from '../db';
 import type { GoogleServiceKey } from '../types';

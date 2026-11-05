@@ -1,6 +1,5 @@
 // NeoSapien Integration: Unified Client Interface
 import { NeoConnectionMonitor } from './connection';
-import { NeoMemoryService } from './memory-service';
 import { NeoSearchService } from './search-service';
 import { NeoReminderReconciliationEngine } from './reminder-service';
 import { NeoSyncService } from './sync-service';

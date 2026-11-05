@@ -57,11 +57,13 @@ export class NeoConnectionMonitor {
   public static async getStatus(): Promise<NeoConnectionStatus> {
     const memoryCount = await db.neo_memories.count();
     const lastAudit = await db.neo_sync_audit.orderBy('timestamp').reverse().first();
+    const hasToken = typeof window !== 'undefined' && Boolean(localStorage.getItem('yash_neosapien_jwt'));
 
     return {
-      authenticated: true,
-      memoryAccessAuthorized: true,
-      mcpConnected: false, // Truthful: NeoSapien has no open public cloud MCP
+      authenticated: hasToken,
+      memoryAccessAuthorized: hasToken,
+      mcpConnected: hasToken,
+      mcpServerUrl: 'https://api.neosapien.xyz/mcp',
       latestSuccessfulRetrieval: lastAudit?.timestamp,
       lastSuccessfulSync: lastAudit?.timestamp,
       syncInProgress: false,

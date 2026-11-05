@@ -142,63 +142,94 @@ export class NeoSapienMemoryService {
     const all = await db.neo_memories.toArray();
 
     const q = query.toLowerCase().trim();
-    const filtered = all.filter((mem) => {
+    const todayISO = new Date().toISOString().slice(0, 10);
+    const yesterdayISO = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+
+    const isTodayQuery = q.includes('today');
+    const isYesterdayQuery = q.includes('yesterday');
+
+    // Extract significant keywords
+    const stopWords = new Set([
+      'what', 'did', 'i', 'we', 'the', 'a', 'an', 'in', 'on', 'at', 'to', 'for', 'of',
+      'and', 'or', 'is', 'was', 'my', 'me', 'about', 'show', 'find', 'tell', 'summarize',
+      'summary', 'discussed', 'discuss', 'mention', 'mentioned', 'talk', 'talked', 'recent',
+      'last', 'detail', 'details', 'things'
+    ]);
+    const keywords = q
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !stopWords.has(w));
+
+    const scored: { memory: NeoMemory; score: number }[] = [];
+
+    for (const mem of all) {
       // Area filter
       if (options?.area && options.area !== 'All' && mem.associatedArea !== options.area) {
-        return false;
+        continue;
       }
       // Source filter
       if (options?.source && mem.source !== options.source) {
-        return false;
+        continue;
       }
       // Platform filter
       if (options?.platform && mem.platform !== options.platform) {
-        return false;
+        continue;
       }
       // Date filters
       if (options?.dateFrom && mem.capturedAt.slice(0, 10) < options.dateFrom) {
-        return false;
+        continue;
       }
       if (options?.dateTo && mem.capturedAt.slice(0, 10) > options.dateTo) {
-        return false;
+        continue;
       }
 
-      // Keyword query matching across all fields
-      if (!q) return true;
+      const memDate = mem.capturedAt.slice(0, 10);
 
-      const titleMatch = mem.title.toLowerCase().includes(q);
-      const summaryMatch = mem.summary.toLowerCase().includes(q);
-      const transcriptMatch = mem.transcript?.toLowerCase().includes(q) ?? false;
-      const tagsMatch = mem.tags?.some((t) => t.toLowerCase().includes(q)) ?? false;
-      const peopleMatch = mem.peopleMentioned?.some((p) => p.toLowerCase().includes(q)) ?? false;
-      const decisionsMatch = mem.decisions?.some((d) => d.text.toLowerCase().includes(q)) ?? false;
-      const commitmentsMatch = mem.commitments?.some((c) => c.toLowerCase().includes(q)) ?? false;
-      const actionMatch = mem.actionItems?.some((a) => a.text.toLowerCase().includes(q)) ?? false;
+      // Score calculation
+      let score = 0;
 
-      return (
-        titleMatch ||
-        summaryMatch ||
-        transcriptMatch ||
-        tagsMatch ||
-        peopleMatch ||
-        decisionsMatch ||
-        commitmentsMatch ||
-        actionMatch
-      );
+      // Temporal match boost
+      if (isTodayQuery && memDate === todayISO) score += 10;
+      if (isYesterdayQuery && memDate === yesterdayISO) score += 10;
+
+      // If no specific keywords and it's a temporal or general summary query
+      if (keywords.length === 0) {
+        if (!q || isTodayQuery || isYesterdayQuery || q.includes('recent') || q.includes('meeting') || q.includes('conversation')) {
+          score += 1;
+        }
+      } else {
+        const memText = `${mem.title} ${mem.summary} ${mem.transcript || ''} ${mem.tags?.join(' ') || ''} ${mem.associatedArea || ''} ${mem.decisions?.map(d => d.text).join(' ') || ''} ${mem.commitments?.join(' ') || ''} ${mem.actionItems?.map(a => a.text).join(' ') || ''}`.toLowerCase();
+
+        for (const kw of keywords) {
+          if (mem.title.toLowerCase().includes(kw)) score += 5;
+          if (mem.tags?.some((t) => t.toLowerCase().includes(kw))) score += 4;
+          if (mem.decisions?.some((d) => d.text.toLowerCase().includes(kw))) score += 3;
+          if (mem.commitments?.some((c) => c.toLowerCase().includes(kw))) score += 3;
+          if (mem.summary.toLowerCase().includes(kw)) score += 2;
+          if (mem.transcript?.toLowerCase().includes(kw)) score += 1;
+        }
+      }
+
+      if (score > 0 || !q) {
+        scored.push({ memory: mem, score });
+      }
+    }
+
+    // Sort by score descending, then by capturedAt descending
+    scored.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return new Date(b.memory.capturedAt).getTime() - new Date(a.memory.capturedAt).getTime();
     });
 
-    // Sort by capturedAt descending (most recent first)
-    filtered.sort((a, b) => new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime());
-
     const limit = options?.limit || 50;
-    const limited = filtered.slice(0, limit);
+    const limited = scored.slice(0, limit).map((s) => s.memory);
     const endTime = performance.now();
     const latencyMs = Math.round((endTime - startTime) * 10) / 10;
 
     return {
       memories: limited,
       latencyMs,
-      totalCount: filtered.length,
+      totalCount: scored.length,
     };
   }
 
