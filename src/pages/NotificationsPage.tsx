@@ -18,15 +18,21 @@ import { formatShortDate } from '../lib/utils';
 import { ReminderEngine } from '../services/reminderEngine';
 import { Badge } from '../components/common/Badge';
 
+import { CapacitorService } from '../services/native/capacitorService';
+
 interface NotificationsPageProps {
   onNavigate: (tab: NavigationTab) => void;
 }
 
 export const NotificationsPage: React.FC<NotificationsPageProps> = ({ onNavigate }) => {
   const [filterType, setFilterType] = useState<string>('all');
-  const [permissionGranted, setPermissionGranted] = useState(() => {
-    return typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted';
-  });
+  const [permissionGranted, setPermissionGranted] = useState(false);
+
+  React.useEffect(() => {
+    CapacitorService.checkNotificationPermissions().then((granted) => {
+      setPermissionGranted(granted);
+    });
+  }, []);
 
   // Live Query
   const allNotifications = useLiveQuery(() => db.notifications.toArray(), []) || [];

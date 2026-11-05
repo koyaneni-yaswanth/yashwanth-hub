@@ -39,6 +39,7 @@ import {
 import { GoogleAuthService } from '../services/google/googleAuthService';
 import { GoogleCalendarService } from '../services/google/googleCalendarService';
 import { NeoSapienService } from '../services/neoSapienService';
+import { CapacitorService } from '../services/native/capacitorService';
 import { generateId } from '../lib/utils';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
@@ -162,6 +163,33 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
       return;
     }
     GoogleAuthService.saveClientId(trimmedId);
+
+    // If running in native mobile app (Android / iOS):
+    if (CapacitorService.isNative()) {
+      const client = getSupabaseClient();
+      if (client) {
+        try {
+          const { data } = await client.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+              redirectTo: 'com.yaswanth.hub://auth/callback',
+              skipBrowserRedirect: true,
+            },
+          });
+          if (data?.url) {
+            window.open(data.url, '_system');
+            return;
+          }
+        } catch (e) {
+          console.warn('Supabase OAuth attempt failed, falling back to direct auth URL:', e);
+        }
+      }
+
+      // Fallback direct Google OAuth opened via system browser to avoid webview 403
+      const nativeAuthUrl = GoogleAuthService.getAuthUrl(trimmedId, 'com.yaswanth.hub://auth/callback');
+      window.open(nativeAuthUrl, '_system');
+      return;
+    }
 
     try {
       const res = await GoogleAuthService.requestGisToken(trimmedId);

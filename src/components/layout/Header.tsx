@@ -123,7 +123,7 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-[var(--hub-surface)] border-b border-[var(--hub-line)] backdrop-blur-md px-4 sm:px-6 py-2.5 transition-colors">
+    <header className="sticky top-0 z-30 bg-[var(--hub-surface)] border-b border-[var(--hub-line)] backdrop-blur-md px-4 sm:px-6 py-2.5 safe-area-header transition-colors">
       <div className="flex items-center justify-between gap-3 max-w-7xl mx-auto">
         {/* Left: Mobile Toggle & Brand */}
         <div className="flex items-center gap-3">

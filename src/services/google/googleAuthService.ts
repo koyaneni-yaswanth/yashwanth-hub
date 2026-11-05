@@ -1,5 +1,6 @@
 import type { GoogleWorkspaceConfig, GoogleServiceKey, GoogleServiceStatus } from '../../types';
 import { generateId } from '../../lib/utils';
+import { Capacitor } from '@capacitor/core';
 
 export const SERVICE_SCOPES: Record<GoogleServiceKey | 'identity', string> = {
   identity: 'openid email profile',
@@ -66,6 +67,9 @@ export class GoogleAuthService {
   // Get standardized redirect URI (matches exactly what must be registered in Google Cloud Console)
   public static getRedirectUri(): string {
     if (typeof window === 'undefined') return 'http://localhost:5173';
+    if (Capacitor.isNativePlatform()) {
+      return 'com.yaswanth.hub://auth/callback';
+    }
     return window.location.origin;
   }
 

@@ -2,6 +2,8 @@ import { db } from '../db';
 import type { AppNotification } from '../types';
 import { generateId, getTodayISO, isOverdue } from '../lib/utils';
 
+import { CapacitorService } from './native/capacitorService';
+
 export class ReminderEngine {
   private static STORAGE_QUIET_HOURS = 'yash_quiet_hours';
 
@@ -17,13 +19,16 @@ export class ReminderEngine {
   }
 
   public static async requestBrowserPermission(): Promise<boolean> {
+    if (CapacitorService.isNative()) {
+      return await CapacitorService.requestNotificationPermissions();
+    }
     if (typeof window === 'undefined' || !('Notification' in window)) return false;
     if (Notification.permission === 'granted') return true;
     const res = await Notification.requestPermission();
     return res === 'granted';
   }
 
-  // Deliver a notification to database and trigger browser alert if permitted
+  // Deliver a notification to database and trigger alert (native or browser) if permitted
   public static async deliverNotification(
     title: string,
     message: string,
@@ -44,20 +49,24 @@ export class ReminderEngine {
 
     await db.notifications.add(notif);
 
-    // Browser Web Notification (if granted and outside quiet hours)
-    if (
-      typeof window !== 'undefined' &&
-      'Notification' in window &&
-      Notification.permission === 'granted' &&
-      !this.isQuietHours()
-    ) {
-      try {
-        new Notification(title, {
-          body: message,
-          icon: '/favicon.svg',
-        });
-      } catch (e) {
-        console.warn('Browser notification failed:', e);
+    // Deliver alert if outside quiet hours
+    if (!this.isQuietHours()) {
+      if (CapacitorService.isNative()) {
+        // Native Capacitor Local Notifications
+        CapacitorService.scheduleNotification(title, message, undefined, undefined, actionLink);
+      } else if (
+        typeof window !== 'undefined' &&
+        'Notification' in window &&
+        Notification.permission === 'granted'
+      ) {
+        try {
+          new Notification(title, {
+            body: message,
+            icon: '/favicon.svg',
+          });
+        } catch (e) {
+          console.warn('Browser notification failed:', e);
+        }
       }
     }
 
@@ -118,6 +127,16 @@ export class ReminderEngine {
             countDelivered++;
           }
         }
+      }
+    }
+
+    // 3. Sync Native Capacitor Scheduled Alarms (for tasks due and events)
+    if (CapacitorService.isNative()) {
+      try {
+        const events = await db.events.toArray();
+        await CapacitorService.syncUpcomingNativeReminders(tasks, events);
+      } catch (err) {
+        console.warn('Native reminder sync warning:', err);
       }
     }
 

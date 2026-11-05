@@ -1,0 +1,41 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Turbine Mast / Tower -->
+    <path
+        android:fillColor="#EAF1F0"
+        android:pathData="M 51.5,46 L 56.5,46 L 60,86 L 48,86 Z" />
+
+    <!-- Turbine Blade 1 (Vertical) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 54,46 L 51.5,16 Q 54,13 56.5,16 Z" />
+
+    <!-- Turbine Blade 2 (Rotated 120 deg) -->
+    <group
+        android:pivotX="54"
+        android:pivotY="46"
+        android:rotation="120">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M 54,46 L 51.5,16 Q 54,13 56.5,16 Z" />
+    </group>
+
+    <!-- Turbine Blade 3 (Rotated 240 deg) -->
+    <group
+        android:pivotX="54"
+        android:pivotY="46"
+        android:rotation="240">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M 54,46 L 51.5,16 Q 54,13 56.5,16 Z" />
+    </group>
+
+    <!-- Central Turbine Nacelle / Hub -->
+    <path
+        android:fillColor="#F0A24B"
+        android:pathData="M 54,41 A 5,5 0 1,0 54,51 A 5,5 0 1,0 54,41 Z" />
+</vector>

@@ -87,3 +87,24 @@
 ::-webkit-scrollbar-thumb:hover {
   background: var(--hub-muted);
 }
+
+/* Mobile Safe Area Insets for Notches, Dynamic Island & Navigation Bars */
+:root {
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+}
+
+.safe-area-header {
+  padding-top: max(0.625rem, env(safe-area-inset-top, 0px));
+}
+
+.safe-area-bottom-nav {
+  padding-bottom: max(0.375rem, env(safe-area-inset-bottom, 0px));
+}
+
+.safe-area-content-pb {
+  padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+}
+

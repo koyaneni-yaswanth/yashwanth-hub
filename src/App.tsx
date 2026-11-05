@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, initializeDatabase } from './db';
 import type { NavigationTab } from './types';
-import { ThemeProvider } from './context/ThemeContext';
+import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { SyncProvider } from './context/SyncContext';
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
@@ -14,6 +14,7 @@ import { ReminderEngine } from './services/reminderEngine';
 import { GoogleAuthService } from './services/google/googleAuthService';
 import { DeviceFleetService } from './services/deviceFleetService';
 import { RealtimeSyncManager } from './services/sync/realtimeSyncManager';
+import { CapacitorService } from './services/native/capacitorService';
 
 // Pages
 import { DashboardPage } from './pages/DashboardPage';
@@ -37,6 +38,7 @@ import { AnalyticsPage } from './pages/AnalyticsPage';
 import { SettingsPage } from './pages/SettingsPage';
 
 function HubMain() {
+  const { isDark } = useTheme();
   const [currentTab, setCurrentTab] = useState<NavigationTab>('dashboard');
   const [currentArea, setCurrentArea] = useState<string>('All');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -46,6 +48,12 @@ function HubMain() {
 
   // Initialize IndexedDB, Fleet Identity, Realtime and Reminder Engine
   useEffect(() => {
+    // Initialize native Capacitor integrations
+    CapacitorService.init().catch(() => {});
+    CapacitorService.setOAuthCallbackHandler(() => {
+      setCurrentTab('integrations');
+    });
+
     initializeDatabase().then(() => {
       setIsDbReady(true);
       // Register current device in fleet and start heartbeat
@@ -117,6 +125,25 @@ function HubMain() {
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
+
+  // Sync status bar color and style with theme
+  useEffect(() => {
+    CapacitorService.updateStatusBar(isDark).catch(() => {});
+  }, [isDark]);
+
+  // Update hardware & gesture back button context for modal and navigation hierarchy
+  useEffect(() => {
+    CapacitorService.setBackButtonContext({
+      isCommandPaletteOpen,
+      closeCommandPalette: () => setIsCommandPaletteOpen(false),
+      isMobileMenuOpen,
+      closeMobileMenu: () => setIsMobileMenuOpen(false),
+      isModalOpen: Boolean(oauthError),
+      closeModal: () => setOauthError(null),
+      currentTab,
+      navigateTab: (tab) => setCurrentTab(tab as NavigationTab),
+    });
+  }, [isCommandPaletteOpen, isMobileMenuOpen, oauthError, currentTab]);
 
   // Live queries
   const areas = useLiveQuery(() => db.areas.toArray(), []) || [];
@@ -252,7 +279,7 @@ function HubMain() {
         />
 
         {/* Dynamic Page Content */}
-        <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 overflow-x-hidden">
+        <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 overflow-x-hidden pb-24 lg:pb-8 safe-area-content-pb">
           {!isDbReady ? (
             <div className="flex items-center justify-center min-h-[50vh]">
               <div className="text-center space-y-3">

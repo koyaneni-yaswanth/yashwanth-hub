@@ -21,7 +21,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
   ];
 
   return (
-    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[var(--hub-surface)] border-t border-[var(--hub-line)] px-2 py-1.5 flex items-center justify-around backdrop-blur-lg">
+    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[var(--hub-surface)] border-t border-[var(--hub-line)] px-2 py-1.5 safe-area-bottom-nav flex items-center justify-around backdrop-blur-lg">
       {quickItems.map((item) => {
         const Icon = item.icon;
         const isActive = currentTab === item.id;

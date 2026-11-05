@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Yashwanth Hub</string>
+    <string name="title_activity_main">Yashwanth Hub</string>
+    <string name="package_name">com.yaswanth.hub</string>
+    <string name="custom_url_scheme">com.yaswanth.hub</string>
+</resources>
