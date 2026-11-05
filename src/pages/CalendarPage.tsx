@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   Calendar as CalendarIcon,
@@ -10,6 +10,7 @@ import {
   Trash2,
   Edit2,
   CalendarDays,
+  RefreshCw,
 } from 'lucide-react';
 import { db } from '../db';
 import type { EventItem, EventKind, Area } from '../types';
@@ -18,6 +19,9 @@ import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { SyncQueueService } from '../services/sync/syncQueueService';
+import { getSupabaseClient } from '../lib/supabase';
+import { GoogleAuthService } from '../services/google/googleAuthService';
+import { GoogleCalendarService } from '../services/google/googleCalendarService';
 
 interface CalendarPageProps {
   currentArea: string;
@@ -30,6 +34,12 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
   // Calendar View State: Month | Week | Day
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
+
+  // Sync & Loading State
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSyncingGoogle, setIsSyncingGoogle] = useState(false);
+  const [syncStatusMsg, setSyncStatusMsg] = useState<{ text: string; success: boolean } | null>(null);
+  const [isGoogleConnected, setIsGoogleConnected] = useState(() => GoogleAuthService.isConnected());
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -48,7 +58,63 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
   // Delete State
   const [eventToDelete, setEventToDelete] = useState<string | null>(null);
 
-  // Live Query
+  // Purge legacy mock data & load live Supabase events on mount
+  useEffect(() => {
+    const purgeMockEvents = async () => {
+      const mockTitles = [
+        'Professor Lab Review',
+        'MG Automation On-site Client Commissioning',
+        'DST Startup Grant',
+      ];
+      const localEvents = await db.events.toArray();
+      for (const ev of localEvents) {
+        if (mockTitles.some((t) => ev.title.includes(t))) {
+          await db.events.delete(ev.id);
+        }
+      }
+    };
+    purgeMockEvents();
+
+    const loadRemoteEvents = async () => {
+      setIsLoading(true);
+      try {
+        const client = getSupabaseClient();
+        if (client) {
+          const { data, error } = await client
+            .from('events')
+            .select('*')
+            .order('start_time', { ascending: true });
+
+          if (!error && Array.isArray(data)) {
+            for (const ev of data) {
+              await db.events.put({
+                id: ev.id,
+                title: ev.title,
+                date: ev.date,
+                start_time: ev.start_time || undefined,
+                end_time: ev.end_time || undefined,
+                kind: ev.kind || 'Other',
+                place: ev.place || undefined,
+                area: ev.area || 'PAWAN SHAKTI',
+                notes: ev.notes || undefined,
+                google_event_id: ev.google_event_id || undefined,
+                created_at: ev.created_at || new Date().toISOString(),
+                updated_at: ev.updated_at || new Date().toISOString(),
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[CalendarPage] Remote event sync notice:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadRemoteEvents();
+  }, []);
+
+  // Live Query from IndexedDB (Dexie) - Clean local-first reactive source
   const allEvents = useLiveQuery(() => db.events.toArray(), []) || [];
   const events = currentArea === 'All' ? allEvents : allEvents.filter((e) => e.area === currentArea);
 
@@ -156,6 +222,26 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
       await db.events.delete(eventToDelete);
       SyncQueueService.enqueueChange('events', eventToDelete, 'DELETE', { id: eventToDelete });
       setEventToDelete(null);
+    }
+  };
+
+  const handleSyncGoogleCalendar = async () => {
+    setIsSyncingGoogle(true);
+    setSyncStatusMsg(null);
+    try {
+      const res = await GoogleCalendarService.syncFromGoogle();
+      setSyncStatusMsg({
+        text: `Calendar synced: ${res.imported} new events imported, ${res.updated} updated from Google Calendar.`,
+        success: true,
+      });
+    } catch (err: any) {
+      setSyncStatusMsg({
+        text: `Calendar sync: ${err.message || 'Requires Google Workspace connection in Settings.'}`,
+        success: false,
+      });
+    } finally {
+      setIsSyncingGoogle(false);
+      setTimeout(() => setSyncStatusMsg(null), 5000);
     }
   };
 
@@ -272,14 +358,41 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
       </div>
 
       {/* Google Calendar Cloud Sync Status Notice */}
-      <div className="bg-[var(--hub-surface)] border border-dashed border-[var(--hub-line)] rounded-xl p-3 flex items-center justify-between gap-3 text-xs">
+      <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xs">
         <div className="flex items-center gap-2 text-[var(--hub-muted)]">
-          <CalendarDays className="w-4 h-4 text-blue-500" />
+          <CalendarDays className="w-4 h-4 text-blue-500 flex-none" />
           <span>
-            Google Calendar Sync: <strong className="text-[var(--hub-ink)]">Local-First Ready</strong> (Connect in Settings when deploying live)
+            Google Calendar Sync:{' '}
+            <strong className={isGoogleConnected ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-[var(--hub-ink)] font-semibold'}>
+              {isGoogleConnected ? 'Connected' : 'Ready to Connect'}
+            </strong>{' '}
+            ({isGoogleConnected ? 'Two-way sync active with Google Calendar' : 'Connect Google Workspace in Settings to enable two-way sync'})
           </span>
         </div>
+        {isGoogleConnected && (
+          <button
+            onClick={handleSyncGoogleCalendar}
+            disabled={isSyncingGoogle}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors cursor-pointer disabled:opacity-50 self-start sm:self-auto"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncingGoogle ? 'animate-spin' : ''}`} />
+            <span>{isSyncingGoogle ? 'Syncing...' : 'Sync Calendar'}</span>
+          </button>
+        )}
       </div>
+
+      {syncStatusMsg && (
+        <div className={`p-3 rounded-xl border text-xs font-semibold flex items-center justify-between ${
+          syncStatusMsg.success
+            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300'
+            : 'bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-300'
+        }`}>
+          <span>{syncStatusMsg.text}</span>
+          <button onClick={() => setSyncStatusMsg(null)} className="text-xs opacity-70 hover:opacity-100 cursor-pointer">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Month View Grid */}
       {viewMode === 'month' && (
@@ -365,6 +478,14 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
               );
             })}
           </div>
+
+          {events.length === 0 && (
+            <div className="p-8 text-center border-t border-[var(--hub-line)] bg-[var(--hub-bg)]/30">
+              <CalendarIcon className="w-8 h-8 mx-auto text-[var(--hub-muted)] mb-2 opacity-50" />
+              <p className="text-sm font-semibold text-[var(--hub-ink)]">No events scheduled for this month</p>
+              <p className="text-xs text-[var(--hub-muted)] mt-0.5">Click any date block or "Schedule Event" above to schedule an event or meeting.</p>
+            </div>
+          )}
         </div>
       )}
 

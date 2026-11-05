@@ -283,6 +283,26 @@ export async function initializeDatabase() {
         await db.expenses.delete(exp.id);
       }
     }
+
+    // Founder Directive: Clean up fake/mock seed events and unverified review notifications
+    const fakeEventTitles = [
+      'Professor Lab Review',
+      'MG Automation On-site Client Commissioning',
+      'DST Startup Grant',
+    ];
+    const existingEvents = await db.events.toArray();
+    for (const ev of existingEvents) {
+      if (fakeEventTitles.some((t) => ev.title.includes(t))) {
+        await db.events.delete(ev.id);
+      }
+    }
+
+    const existingNotifs = await db.notifications.toArray();
+    for (const notif of existingNotifs) {
+      if (notif.title.includes('Professor') || notif.message.includes('Professor')) {
+        await db.notifications.delete(notif.id);
+      }
+    }
   } catch (error) {
     console.error('Database initialization error:', error);
   }
@@ -358,15 +378,6 @@ async function seedProjects() {
 async function seedNotifications() {
   const now = new Date().toISOString();
   const sampleNotifications: AppNotification[] = [
-    {
-      id: generateId(),
-      title: 'Upcoming Professor Review Meeting',
-      message: 'Professor Lab Review is scheduled today at 14:30. Ensure your power curves and 1-page gap report are prepared.',
-      type: 'meeting',
-      priority: 'high',
-      read: false,
-      created_at: now,
-    },
     {
       id: generateId(),
       title: 'IEC 61400-2 Safety Register Action Required',
@@ -458,46 +469,7 @@ export async function seedStarterData() {
 
   await db.tasks.bulkAdd(sampleTasks);
 
-  // Events
-  const sampleEvents: EventItem[] = [
-    {
-      id: generateId(),
-      title: 'Professor Lab Review — TRL 4 to 5 Testing Protocol',
-      date: today,
-      start_time: '14:30',
-      end_time: '15:30',
-      kind: 'Meeting',
-      place: 'IvLabs Conference Room / Online',
-      area: 'PAWAN SHAKTI',
-      notes: 'Bring 1-page gap report and power curve data.',
-      created_at: now,
-      updated_at: now,
-    },
-    {
-      id: generateId(),
-      title: 'MG Automation On-site Client Commissioning',
-      date: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
-      start_time: '10:00',
-      end_time: '13:00',
-      kind: 'Meeting',
-      place: 'Industrial Zone Phase 2',
-      area: 'MG Automation',
-      created_at: now,
-      updated_at: now,
-    },
-    {
-      id: generateId(),
-      title: 'DST Startup Grant First Round Application Deadline',
-      date: new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10),
-      start_time: '17:00',
-      kind: 'Deadline',
-      place: 'National Portal',
-      area: 'PAWAN SHAKTI',
-      created_at: now,
-      updated_at: now,
-    },
-  ];
-  await db.events.bulkAdd(sampleEvents);
+  // Events: Kept strictly empty by default. Real events are loaded directly from Supabase / Google Calendar.
 
   // Meetings
   const sampleMeetings: Meeting[] = [
