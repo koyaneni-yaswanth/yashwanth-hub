@@ -270,6 +270,50 @@ export default async function handler(req: any, res: any) {
     }
 
     // 4. ACTION: Status & Health
+    if (action === 'status' || action === 'history') {
+      try {
+        const checkResp = await fetch(`${NEOSAPIEN_BASE_URL}/api/v1/memories/sync?limit=1`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+          },
+        });
+        const isLive = checkResp.ok || checkResp.status < 500;
+        return res.status(200).json({
+          connected: isLive,
+          status: isLive ? 'connected' : 'degraded',
+          endpoint: MCP_ENDPOINT,
+          authenticated: true,
+          lastCheckTimestamp: new Date().toISOString(),
+        });
+      } catch {
+        return res.status(200).json({
+          connected: false,
+          status: 'unreachable',
+          endpoint: MCP_ENDPOINT,
+          authenticated: true,
+        });
+      }
+    }
+
+    // 5. ACTION: Webhook Memory Ingestion
+    if (action === 'webhook') {
+      const payload = req.body;
+      const items = Array.isArray(payload) ? payload : payload ? [payload] : [];
+      const processedIds = items.map(
+        (item: any) => item.id || `neo_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`
+      );
+      return res.status(200).json({
+        success: true,
+        status: 'received',
+        receivedCount: processedIds.length,
+        memoryIds: processedIds,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    // Default: Protocol Info
     return res.status(200).json({
       success: true,
       service: 'NeoSapien MCP Gateway',

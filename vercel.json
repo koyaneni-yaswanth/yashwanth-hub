@@ -44,7 +44,23 @@
     },
     {
       "source": "/api/neosapien/history",
-      "destination": "/api/neosapien/status"
+      "destination": "/api/neosapien/mcp?action=status"
+    },
+    {
+      "source": "/api/neosapien/status",
+      "destination": "/api/neosapien/mcp?action=status"
+    },
+    {
+      "source": "/api/neosapien/sync",
+      "destination": "/api/neosapien/mcp?action=sync"
+    },
+    {
+      "source": "/api/neosapien-webhook",
+      "destination": "/api/neosapien/mcp?action=webhook"
+    },
+    {
+      "source": "/api/neosapien/webhook",
+      "destination": "/api/neosapien/mcp?action=webhook"
     },
     {
       "source": "/((?!api/|sw\\.js|manifest\\.webmanifest|registerSW\\.js).*)",
