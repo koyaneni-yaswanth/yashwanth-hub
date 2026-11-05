@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   Moon,
@@ -21,6 +21,9 @@ import {
   CalendarDays,
   CheckCircle2,
   AlertTriangle,
+  Smartphone,
+  Laptop,
+  Tablet,
 } from 'lucide-react';
 import { db } from '../db';
 import type { Area } from '../types';
@@ -69,6 +72,57 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
   const [isScanningBLE, setIsScanningBLE] = useState(false);
   const [neoTranscriptInput, setNeoTranscriptInput] = useState('');
   const [neoIngestResult, setNeoIngestResult] = useState<string | null>(null);
+
+  // PWA & Multi-Device State
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [installStatus, setInstallStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    const checkStandalone = () => {
+      const isStandaloneMode =
+        window.matchMedia('(display-mode: standalone)').matches ||
+        (window.navigator as unknown as { standalone?: boolean }).standalone === true ||
+        document.referrer.includes('android-app://');
+      setIsStandalone(Boolean(isStandaloneMode));
+    };
+    checkStandalone();
+
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    const handleAppInstalled = () => {
+      setDeferredPrompt(null);
+      setIsStandalone(true);
+      setInstallStatus('Yashwanth Hub was successfully installed!');
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (!deferredPrompt) return;
+    try {
+      await deferredPrompt.prompt();
+      const choiceResult = await deferredPrompt.userChoice;
+      if (choiceResult.outcome === 'accepted') {
+        setInstallStatus('Installation accepted. Yashwanth Hub is now installed!');
+        setDeferredPrompt(null);
+      } else {
+        setInstallStatus('Installation dismissed.');
+      }
+    } catch (err) {
+      console.error('Error triggering PWA prompt:', err);
+    }
+  };
 
   // Backup & Restore State
   const [backupText, setBackupText] = useState('');
@@ -358,6 +412,111 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
         <p className="text-sm text-[var(--hub-muted)] mt-0.5">
           Configure Google Workspace, NeoSapien hardware, themes, and cloud backup
         </p>
+      </div>
+
+      {/* 0. PWA & Multi-Device Installation */}
+      <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
+            <Smartphone className="w-4 h-4 text-emerald-500" />
+            <span>Install App & Multi-Device Access (PWA)</span>
+          </h3>
+          <Badge variant={isStandalone ? 'emerald' : 'blue'}>
+            {isStandalone ? 'Installed (Standalone App)' : 'Installable PWA'}
+          </Badge>
+        </div>
+
+        <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
+          Yashwanth Hub is engineered as an offline-first Progressive Web App (PWA) with instant Dexie storage and real-time cloud sync. Installing gives you a distraction-free full-screen window, custom home screen icon, instant start-up, and zero app-store friction across your Android phone, Android tablet, and Windows laptop.
+        </p>
+
+        {isStandalone ? (
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-800 dark:text-emerald-300">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-none" />
+            <span>Running in native standalone app mode on this device. Offline cache and background sync are active.</span>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)]">
+            <div>
+              <span className="font-bold text-xs text-[var(--hub-ink)] block">
+                {deferredPrompt ? 'Ready for One-Click Install' : 'Browser Mode Detected'}
+              </span>
+              <span className="text-[11px] text-[var(--hub-muted)]">
+                {deferredPrompt
+                  ? 'Click Install to add Yashwanth Hub to your system or home screen directly.'
+                  : 'Follow the device-specific instructions below to install via Chrome, Edge, or Safari.'}
+              </span>
+            </div>
+            {deferredPrompt && (
+              <button
+                onClick={handleInstallApp}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 cursor-pointer shadow-xs"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Install Yashwanth Hub</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {installStatus && (
+          <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+            {installStatus}
+          </p>
+        )}
+
+        {/* Multi-Device Installation Guides */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+          {/* Android */}
+          <div className="p-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)]/50 space-y-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-[var(--hub-ink)]">
+              <Smartphone className="w-4 h-4 text-emerald-600" />
+              <span>Android Phone & Tablet</span>
+            </div>
+            <ol className="text-[11px] text-[var(--hub-muted)] space-y-1 list-decimal list-inside leading-relaxed">
+              <li>Open <strong className="text-[var(--hub-ink)]">Chrome</strong> on your Android device.</li>
+              <li>Tap the top-right menu icon (<strong className="text-[var(--hub-ink)]">⋮</strong>).</li>
+              <li>Tap <strong className="text-[var(--hub-ink)]">Install app</strong> or <strong className="text-[var(--hub-ink)]">Add to Home screen</strong>.</li>
+              <li>Launch from your app drawer or home screen anytime.</li>
+            </ol>
+          </div>
+
+          {/* Windows Desktop & Laptop */}
+          <div className="p-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)]/50 space-y-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-[var(--hub-ink)]">
+              <Laptop className="w-4 h-4 text-blue-600" />
+              <span>Windows Laptop & PC</span>
+            </div>
+            <ol className="text-[11px] text-[var(--hub-muted)] space-y-1 list-decimal list-inside leading-relaxed">
+              <li>Open in <strong className="text-[var(--hub-ink)]">Chrome</strong> or <strong className="text-[var(--hub-ink)]">Edge</strong>.</li>
+              <li>Click the <strong className="text-[var(--hub-ink)]">Install</strong> icon at the right of the address bar.</li>
+              <li>Pin to your Windows Taskbar or Start menu for instant access.</li>
+              <li>Runs in its own window without browser tabs.</li>
+            </ol>
+          </div>
+
+          {/* iOS / iPadOS */}
+          <div className="p-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)]/50 space-y-2">
+            <div className="flex items-center gap-2 text-xs font-bold text-[var(--hub-ink)]">
+              <Tablet className="w-4 h-4 text-purple-600" />
+              <span>iPhone & iPad (Safari)</span>
+            </div>
+            <ol className="text-[11px] text-[var(--hub-muted)] space-y-1 list-decimal list-inside leading-relaxed">
+              <li>Open the link in <strong className="text-[var(--hub-ink)]">Safari</strong>.</li>
+              <li>Tap the <strong className="text-[var(--hub-ink)]">Share</strong> icon (square with arrow up).</li>
+              <li>Scroll down and tap <strong className="text-[var(--hub-ink)]">Add to Home Screen</strong>.</li>
+              <li>Tap <strong className="text-[var(--hub-ink)]">Add</strong> in the top-right corner.</li>
+            </ol>
+          </div>
+        </div>
+
+        {/* Capacitor native APK note */}
+        <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-dashed border-[var(--hub-line)] flex items-center justify-between text-xs text-[var(--hub-muted)]">
+          <div className="flex items-center gap-2">
+            <Code2 className="w-4 h-4 text-[var(--hub-ink)] flex-none" />
+            <span>Need a standalone Android APK? Capacitor package ID <code className="font-mono text-[var(--hub-ink)]">com.yaswanth.hub</code> and compilation instructions are provided in <code className="font-mono text-[var(--hub-ink)]">BUILD.md</code>.</span>
+          </div>
+        </div>
       </div>
 
       {/* 1. Google Workspace Integration */}
