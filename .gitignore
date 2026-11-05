@@ -37,3 +37,5 @@ service-account*.json
 
 
 .vercel
+supabase/.temp/
+.temp/
