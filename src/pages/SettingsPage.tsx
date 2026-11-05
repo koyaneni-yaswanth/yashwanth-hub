@@ -40,6 +40,7 @@ import { GoogleAuthService } from '../services/google/googleAuthService';
 import { GoogleCalendarService } from '../services/google/googleCalendarService';
 import { NeoSapienService } from '../services/neoSapienService';
 import { CapacitorService } from '../services/native/capacitorService';
+import { IntegrationVaultService } from '../services/integrationVaultService';
 import { generateId } from '../lib/utils';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
@@ -67,12 +68,16 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
   const [googleClientId, setGoogleClientId] = useState(() => localStorage.getItem('yash_google_client_id') || '');
   const [googleSyncStatus, setGoogleSyncStatus] = useState<string | null>(null);
   const [isGoogleSyncing, setIsGoogleSyncing] = useState(false);
+  const [isTestingGoogle, setIsTestingGoogle] = useState(false);
+  const [googleTestResult, setGoogleTestResult] = useState<string | null>(null);
 
   // NeoSapien State
   const [neoConfig, setNeoConfig] = useState(() => NeoSapienService.getConfig());
   const [isScanningBLE, setIsScanningBLE] = useState(false);
   const [neoTranscriptInput, setNeoTranscriptInput] = useState('');
   const [neoIngestResult, setNeoIngestResult] = useState<string | null>(null);
+  const [isTestingNeo, setIsTestingNeo] = useState(false);
+  const [neoTestResult, setNeoTestResult] = useState<string | null>(null);
 
   // PWA & Multi-Device State
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -239,6 +244,42 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
       setGoogleSyncStatus(`Google Sync: ${err.message || 'Authentication required'}`);
     } finally {
       setIsGoogleSyncing(false);
+    }
+  };
+
+  const handleTestGoogleTasks = async () => {
+    setIsTestingGoogle(true);
+    setGoogleTestResult(null);
+    try {
+      const res = await IntegrationVaultService.testGoogleTasksConnection();
+      if (res.success) {
+        const count = res.data?.latestTasks?.length || 0;
+        setGoogleTestResult(`Connection Verified! Google Tasks API active (${count} tasks retrieved).`);
+      } else {
+        setGoogleTestResult(`Connection Warning: ${res.error || 'Token invalid or expired'}`);
+      }
+    } catch (err: any) {
+      setGoogleTestResult(`Test failed: ${err.message}`);
+    } finally {
+      setIsTestingGoogle(false);
+    }
+  };
+
+  const handleTestNeoSapien = async () => {
+    setIsTestingNeo(true);
+    setNeoTestResult(null);
+    try {
+      const res = await IntegrationVaultService.testNeoSapienConnection();
+      if (res.success) {
+        const tools = res.data?.tools || [];
+        setNeoTestResult(`MCP Handshake Verified! ${tools.length} remote tools discovered.`);
+      } else {
+        setNeoTestResult(`MCP Warning: ${res.error || 'Check NeoSapien token'}`);
+      }
+    } catch (err: any) {
+      setNeoTestResult(`Test failed: ${err.message}`);
+    } finally {
+      setIsTestingNeo(false);
     }
   };
 
@@ -646,7 +687,22 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
               </button>
             </>
           )}
+
+          <button
+            onClick={handleTestGoogleTasks}
+            disabled={isTestingGoogle}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-ink)] hover:border-blue-500 cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isTestingGoogle ? 'animate-spin text-blue-500' : 'text-blue-500'}`} />
+            <span>{isTestingGoogle ? 'Testing...' : 'Test Tasks Connection'}</span>
+          </button>
         </div>
+
+        {googleTestResult && (
+          <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/30 text-xs text-blue-900 dark:text-blue-200">
+            {googleTestResult}
+          </div>
+        )}
       </div>
 
       {/* 2. NeoSapien Wearable Device Integration */}
@@ -701,6 +757,23 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
             </button>
           )}
         </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={handleTestNeoSapien}
+            disabled={isTestingNeo}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-ink)] hover:border-purple-500 cursor-pointer disabled:opacity-50"
+          >
+            <Radio className={`w-3.5 h-3.5 ${isTestingNeo ? 'animate-spin text-purple-600' : 'text-purple-600'}`} />
+            <span>{isTestingNeo ? 'Testing MCP...' : 'Test NeoSapien MCP Gateway'}</span>
+          </button>
+        </div>
+
+        {neoTestResult && (
+          <div className="p-3 rounded-lg bg-purple-500/10 border border-purple-500/30 text-xs text-purple-900 dark:text-purple-200">
+            {neoTestResult}
+          </div>
+        )}
 
         {/* Ingest Transcript Box */}
         <div className="space-y-2 pt-2 border-t border-[var(--hub-line)]">

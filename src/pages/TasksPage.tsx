@@ -9,6 +9,7 @@ import {
   CheckCircle,
   Filter,
   Calendar,
+  RefreshCw,
 } from 'lucide-react';
 import { db } from '../db';
 import type { Task, Area, Priority } from '../types';
@@ -17,6 +18,7 @@ import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { SyncQueueService } from '../services/sync/syncQueueService';
+import { IntegrationVaultService } from '../services/integrationVaultService';
 
 interface TasksPageProps {
   currentArea: string;
@@ -30,6 +32,10 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'done' | 'starred' | 'overdue'>('all');
   const [selectedAreaFilter, setSelectedAreaFilter] = useState(currentArea);
+
+  // Sync State
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatusMsg, setSyncStatusMsg] = useState<{ text: string; success: boolean } | null>(null);
 
   // Modal State for Create / Edit
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -152,9 +158,10 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
   };
 
   const handleToggleTask = async (task: Task) => {
+    const nextDone = !task.done;
     const updated = {
       ...task,
-      done: !task.done,
+      done: nextDone,
       updated_at: new Date().toISOString(),
     };
     await db.tasks.update(task.id, {
@@ -162,6 +169,65 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
       updated_at: updated.updated_at,
     });
     SyncQueueService.enqueueChange('tasks', task.id, 'UPDATE', updated);
+
+    // Asynchronously dispatch task status to Google Tasks and NeoSapien MCP if synced/connected
+    try {
+      if (task.google_task_id) {
+        fetch('/api/integrations/google-tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'complete',
+            taskId: task.google_task_id,
+            completed: nextDone,
+          }),
+        }).catch((err) => console.warn('[TasksPage] Google task toggle background error:', err));
+      }
+
+      fetch('/api/integrations/neosapien', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'sync_task',
+          task: {
+            id: task.id,
+            text: task.text,
+            done: nextDone,
+            area: task.area,
+            priority: task.priority,
+          },
+        }),
+      }).catch((err) => console.warn('[TasksPage] NeoSapien sync background error:', err));
+    } catch {
+      // Non-blocking
+    }
+  };
+
+  const handleSyncNow = async () => {
+    setIsSyncing(true);
+    setSyncStatusMsg(null);
+    try {
+      const res = await IntegrationVaultService.triggerSyncNow();
+      if (res.success) {
+        setSyncStatusMsg({
+          text: 'Bi-directional sync completed with Google Tasks & NeoSapien',
+          success: true,
+        });
+      } else {
+        setSyncStatusMsg({
+          text: `Sync warning: ${res.error || 'Check integration tokens'}`,
+          success: false,
+        });
+      }
+    } catch (err: any) {
+      setSyncStatusMsg({
+        text: `Sync error: ${err.message || 'Network failure'}`,
+        success: false,
+      });
+    } finally {
+      setIsSyncing(false);
+      setTimeout(() => setSyncStatusMsg(null), 5000);
+    }
   };
 
   const handleToggleStar = async (task: Task) => {
@@ -254,6 +320,12 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
             {task.plan && (
               <Badge variant="emerald">Week {task.plan} Milestone</Badge>
             )}
+
+            {task.google_task_id ? (
+              <Badge variant="blue" dot>Google Tasks Synced</Badge>
+            ) : task.synced ? (
+              <Badge variant="emerald" dot>Cloud Synced</Badge>
+            ) : null}
           </div>
         </div>
 
@@ -287,7 +359,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Header & New Task Button */}
+      {/* Header & Action Buttons */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold font-heading text-[var(--hub-ink)] tracking-tight">
@@ -297,14 +369,38 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
             Organize, prioritize and execute tasks across workspaces
           </p>
         </div>
-        <button
-          onClick={openCreateModal}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--hub-accent)] text-white text-sm font-semibold hover:bg-[var(--hub-accent-hover)] transition-all cursor-pointer shadow-xs self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>New Task</span>
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            onClick={handleSyncNow}
+            disabled={isSyncing}
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-surface)] text-[var(--hub-ink)] text-sm font-semibold hover:bg-[var(--hub-surface-subtle)] transition-all cursor-pointer shadow-xs disabled:opacity-50"
+            title="Trigger bi-directional sync with Google Tasks and NeoSapien"
+          >
+            <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin text-[var(--hub-accent)]' : 'text-[var(--hub-muted)]'}`} />
+            <span>{isSyncing ? 'Syncing...' : 'Sync Now'}</span>
+          </button>
+          <button
+            onClick={openCreateModal}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--hub-accent)] text-white text-sm font-semibold hover:bg-[var(--hub-accent-hover)] transition-all cursor-pointer shadow-xs"
+          >
+            <Plus className="w-4 h-4" />
+            <span>New Task</span>
+          </button>
+        </div>
       </div>
+
+      {syncStatusMsg && (
+        <div className={`p-3 rounded-xl text-xs font-semibold flex items-center justify-between border ${
+          syncStatusMsg.success
+            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-300'
+            : 'bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-300'
+        }`}>
+          <span>{syncStatusMsg.text}</span>
+          <button onClick={() => setSyncStatusMsg(null)} className="text-xs opacity-70 hover:opacity-100 cursor-pointer">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Filter & Search Bar */}
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-3 sm:p-4 space-y-3 shadow-xs">

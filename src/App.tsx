@@ -16,6 +16,7 @@ import { GoogleAuthService } from './services/google/googleAuthService';
 import { DeviceFleetService } from './services/deviceFleetService';
 import { RealtimeSyncManager } from './services/sync/realtimeSyncManager';
 import { CapacitorService } from './services/native/capacitorService';
+import { IntegrationVaultService } from './services/integrationVaultService';
 
 // Pages
 import { DashboardPage } from './pages/DashboardPage';
@@ -64,10 +65,8 @@ function HubMain() {
       RealtimeSyncManager.init();
       // Run initial intelligence reminder check
       ReminderEngine.runIntelligenceScan().catch(() => {});
-      // Auto-restore Google session from server vault if disconnected in localStorage
-      if (!GoogleAuthService.isConnected()) {
-        GoogleAuthService.restoreSessionFromServer().catch(() => {});
-      }
+      // Query integration_tokens in Supabase to restore Google & NeoSapien connections
+      IntegrationVaultService.initSessionRestoration().catch(() => {});
     });
 
     // Check for Google OAuth Token or Error in URL hash or search parameters
@@ -75,7 +74,7 @@ function HubMain() {
     const search = window.location.search;
 
     if (search.includes('google_connected=true')) {
-      GoogleAuthService.restoreSessionFromServer().then(() => {
+      IntegrationVaultService.initSessionRestoration().then(() => {
         setCurrentTab('integrations');
       });
       window.history.replaceState(null, '', window.location.pathname);

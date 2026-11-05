@@ -72,16 +72,32 @@ export default async function handler(req: any, res: any) {
     const expiresAt = tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : new Date(Date.now() + 3600000).toISOString();
     const scopesList = tokens.scope ? tokens.scope.split(' ') : [];
 
+    let refreshToken = tokens.refresh_token || null;
+    if (!refreshToken) {
+      const { data: existing } = await supabaseServer
+        .from('integration_tokens')
+        .select('refresh_token, encrypted_refresh_token')
+        .eq('user_id', userId)
+        .eq('provider', 'google')
+        .single();
+      refreshToken = existing?.refresh_token || existing?.encrypted_refresh_token || null;
+    }
+
     const { error: upsertErr } = await supabaseServer
       .from('integration_tokens')
       .upsert({
         user_id: userId,
         provider: 'google',
-        encrypted_access_token: tokens.access_token || null,
-        encrypted_refresh_token: tokens.refresh_token || null,
-        token_expires_at: expiresAt,
+        access_token: tokens.access_token || null,
+        refresh_token: refreshToken,
+        expires_at: expiresAt,
+        token_type: tokens.token_type || 'Bearer',
         scopes: scopesList,
         account_email: userEmail || null,
+        encrypted_access_token: tokens.access_token || null,
+        encrypted_refresh_token: refreshToken,
+        token_expires_at: expiresAt,
+        token_expiry: expiresAt,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'user_id,provider' });
 

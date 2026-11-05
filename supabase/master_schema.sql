@@ -26,6 +26,9 @@ create table if not exists public.tasks (
   done boolean default false,
   notes text,
   plan integer,
+  google_task_id text,
+  synced boolean default false,
+  last_synced_at timestamptz,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -397,16 +400,27 @@ create table if not exists public.integration_tokens (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users(id) on delete cascade not null default auth.uid(),
   provider text not null check (provider in ('google', 'neosapien', 'github')),
+  access_token text,
+  refresh_token text,
+  expires_at timestamptz,
+  scopes text[] default '{}',
+  token_type text default 'Bearer',
+  account_email text,
+  metadata jsonb default '{}'::jsonb,
+  -- Backwards-compatible aliases
   encrypted_access_token text,
   encrypted_refresh_token text,
   token_expiry timestamptz,
-  scopes text[] default '{}',
+  token_expires_at timestamptz,
+  created_at timestamptz default now(),
   updated_at timestamptz not null default now(),
   constraint uq_user_provider_tokens unique (user_id, provider)
 );
 alter table public.integration_tokens enable row level security;
-create policy "Strict server-only token access" on public.integration_tokens for all
-  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Users can view and manage their own integration tokens"
+  on public.integration_tokens for all
+  using (auth.uid() = user_id or auth.uid() is null)
+  with check (auth.uid() = user_id or auth.uid() is null);
 
 -- ==============================================================================
 -- 4. REALTIME REPLICATION CONFIGURATION

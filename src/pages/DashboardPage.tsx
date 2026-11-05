@@ -12,6 +12,8 @@ import {
   FileText,
   Wind,
   Check,
+  RefreshCw,
+  Sparkles,
 } from 'lucide-react';
 import { db } from '../db';
 import type { Task, Area, Priority } from '../types';
@@ -20,7 +22,7 @@ import { StatCard } from '../components/common/StatCard';
 import { Badge } from '../components/common/Badge';
 import { Neo1DeviceCard } from '../components/neo/Neo1DeviceCard';
 import { AgentPresenceService } from '../services/agentPresenceService';
-import { Sparkles } from 'lucide-react';
+import { IntegrationVaultService } from '../services/integrationVaultService';
 
 interface DashboardPageProps {
   currentArea: string;
@@ -37,6 +39,20 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const today = getTodayISO();
   const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
   const currentMonthStr = today.slice(0, 7);
+
+  // Sync state
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSyncNow = async () => {
+    setIsSyncing(true);
+    try {
+      await IntegrationVaultService.triggerSyncNow();
+    } catch (err) {
+      console.warn('[DashboardPage] Sync error:', err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Quick Task Form State
   const [quickText, setQuickText] = useState('');
@@ -137,6 +153,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <button
+            onClick={handleSyncNow}
+            disabled={isSyncing}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-line)] text-[var(--hub-ink)] text-xs font-semibold hover:bg-[var(--hub-surface-subtle)] transition-all cursor-pointer shadow-xs disabled:opacity-50"
+            title="Sync tasks with Google Tasks and NeoSapien"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-[var(--hub-accent)]' : 'text-[var(--hub-muted)]'}`} />
+            <span>{isSyncing ? 'Syncing...' : 'Sync'}</span>
+          </button>
           <button
             onClick={() => AgentPresenceService.runDemoTour(onNavigate)}
             className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/25 text-indigo-700 dark:text-indigo-300 text-xs font-semibold hover:bg-indigo-500/20 transition-all cursor-pointer shadow-xs"
@@ -322,6 +347,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                             {formatShortDate(task.due_date)}
                           </span>
                         )}
+                        {task.google_task_id ? (
+                          <Badge variant="blue" dot>Google Tasks</Badge>
+                        ) : task.synced ? (
+                          <Badge variant="emerald" dot>Cloud</Badge>
+                        ) : null}
                       </div>
                     </div>
                     <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100">

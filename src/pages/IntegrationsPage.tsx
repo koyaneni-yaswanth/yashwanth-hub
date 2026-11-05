@@ -39,11 +39,13 @@ import { NeoSapienMemoryService } from '../services/neoSapienMemoryService';
 import { NeoSapienMCPService, type McpToolDefinition } from '../services/neoSapienMcpService';
 import { DeviceFleetService } from '../services/deviceFleetService';
 import { Badge } from '../components/common/Badge';
+import { IntegrationVaultService, type IntegrationStatusSummary } from '../services/integrationVaultService';
 
 export const IntegrationsPage: React.FC = () => {
   const [googleConfig, setGoogleConfig] = useState(() => GoogleAuthService.getConfig());
   const [googleClientId, setGoogleClientId] = useState(() => GoogleAuthService.getEffectiveClientId());
   const [syncStatus, setSyncStatus] = useState(() => UnifiedSyncEngine.getStatus());
+  const [vaultStatus, setVaultStatus] = useState<IntegrationStatusSummary>(() => IntegrationVaultService.getStatus());
   const [isSyncingAll, setIsSyncingAll] = useState(false);
   const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
   const [isConnectingGIS, setIsConnectingGIS] = useState(false);
@@ -51,6 +53,14 @@ export const IntegrationsPage: React.FC = () => {
   const [showSetupGuide, setShowSetupGuide] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [clientIdSavedNotice, setClientIdSavedNotice] = useState(false);
+
+  // Live Server-Side Test & Sync States
+  const [isTestingGoogle, setIsTestingGoogle] = useState(false);
+  const [googleTestResult, setGoogleTestResult] = useState<any>(null);
+  const [isTestingNeoSapien, setIsTestingNeoSapien] = useState(false);
+  const [neoSapienTestResult, setNeoSapienTestResult] = useState<any>(null);
+  const [isSyncingNow, setIsSyncingNow] = useState(false);
+  const [syncNowSummary, setSyncNowSummary] = useState<any>(null);
 
   // NeoSapien State
   const [neoConfig, setNeoConfig] = useState(() => NeoSapienMemoryService.getConfig());
@@ -94,6 +104,38 @@ export const IntegrationsPage: React.FC = () => {
     });
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    const unsub = IntegrationVaultService.subscribe((status) => {
+      setVaultStatus(status);
+    });
+    IntegrationVaultService.initSessionRestoration().catch(() => {});
+    return unsub;
+  }, []);
+
+  const handleTestGoogleTasks = async () => {
+    setIsTestingGoogle(true);
+    setGoogleTestResult(null);
+    const res = await IntegrationVaultService.testGoogleTasksConnection();
+    setIsTestingGoogle(false);
+    setGoogleTestResult(res);
+  };
+
+  const handleTestNeoSapien = async () => {
+    setIsTestingNeoSapien(true);
+    setNeoSapienTestResult(null);
+    const res = await IntegrationVaultService.testNeoSapienConnection();
+    setIsTestingNeoSapien(false);
+    setNeoSapienTestResult(res);
+  };
+
+  const handleTriggerSyncNow = async () => {
+    setIsSyncingNow(true);
+    setSyncNowSummary(null);
+    const res = await IntegrationVaultService.triggerSyncNow();
+    setIsSyncingNow(false);
+    setSyncNowSummary(res);
+  };
 
   // NeoSapien OAuth Callback Listener (Popup PostMessage & URL search param)
   useEffect(() => {
@@ -641,6 +683,9 @@ export const IntegrationsPage: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
           {servicesList.map((svc) => {
             const Icon = svc.icon;
+            const isTasks = svc.key === 'tasks';
+            const isSvcConnected = isTasks ? vaultStatus.google.connected : isConnected;
+
             return (
               <div
                 key={svc.key}
@@ -652,21 +697,52 @@ export const IntegrationsPage: React.FC = () => {
                       <Icon className="w-4 h-4 text-teal-600" />
                       <span>{svc.name}</span>
                     </span>
-                    <Badge variant={isConnected ? 'emerald' : 'gray'}>
-                      {isConnected ? 'Ready' : 'Not Connected'}
+                    <Badge variant={isSvcConnected ? 'emerald' : 'gray'}>
+                      {isSvcConnected ? 'Connected' : 'Not Connected'}
                     </Badge>
                   </div>
                   <p className="text-[11px] text-[var(--hub-muted)] leading-relaxed">
                     {svc.description}
                   </p>
+                  {isTasks && vaultStatus.google.accountEmail && (
+                    <div className="mt-1 text-[10px] text-teal-400 font-mono">
+                      Account: {vaultStatus.google.accountEmail}
+                    </div>
+                  )}
+                  {isTasks && googleTestResult && (
+                    <div className="mt-2 p-2 rounded-lg bg-black/20 text-[10px] space-y-1">
+                      {googleTestResult.success ? (
+                        <>
+                          <div className="text-emerald-400 font-semibold flex items-center gap-1">
+                            <Check className="w-3 h-3" />
+                            <span>Live Ping OK (Latest Google Tasks):</span>
+                          </div>
+                          {(googleTestResult.data?.latestTasks || []).map((t: any) => (
+                            <div key={t.id} className="text-[var(--hub-muted)] truncate">• {t.title} ({t.status})</div>
+                          ))}
+                        </>
+                      ) : (
+                        <div className="text-red-400 font-medium">{googleTestResult.error || 'Test connection failed'}</div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
-                <div className="pt-2 border-t border-[var(--hub-line)] flex items-center justify-between">
+                <div className="pt-2 border-t border-[var(--hub-line)] flex items-center justify-between gap-2">
+                  {isTasks && isSvcConnected && (
+                    <button
+                      onClick={handleTestGoogleTasks}
+                      disabled={isTestingGoogle}
+                      className="px-2.5 py-1 rounded bg-teal-500/15 text-teal-400 hover:bg-teal-500/25 text-[11px] font-semibold cursor-pointer disabled:opacity-50"
+                    >
+                      {isTestingGoogle ? 'Pinging...' : 'Test Connection'}
+                    </button>
+                  )}
                   <button
                     onClick={() => handleConnectGoogle(svc.key)}
-                    className="text-[11px] font-semibold text-[var(--hub-accent)] hover:underline cursor-pointer"
+                    className="text-[11px] font-semibold text-[var(--hub-accent)] hover:underline cursor-pointer ml-auto"
                   >
-                    {isConnected ? 'Re-authorize' : 'Authorize Scope'}
+                    {isSvcConnected ? 'Re-authorize' : isTasks ? 'Connect Google Tasks' : 'Authorize Scope'}
                   </button>
                 </div>
               </div>
@@ -682,15 +758,41 @@ export const IntegrationsPage: React.FC = () => {
             <RefreshCw className="w-4 h-4 text-emerald-600" />
             <span>Central Synchronization Engine</span>
           </h3>
-          <Badge variant={syncStatus.state === 'synced' ? 'emerald' : syncStatus.state === 'syncing' ? 'amber' : 'red'}>
-            {syncStatus.state.toUpperCase()}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleTriggerSyncNow}
+              disabled={isSyncingNow}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncingNow ? 'animate-spin' : ''}`} />
+              <span>{isSyncingNow ? 'Syncing...' : 'Sync Now'}</span>
+            </button>
+            <Badge variant={syncStatus.state === 'synced' ? 'emerald' : syncStatus.state === 'syncing' ? 'amber' : 'red'}>
+              {syncStatus.state.toUpperCase()}
+            </Badge>
+          </div>
         </div>
 
         <p className="text-xs text-[var(--hub-muted)]">
           {syncStatus.message} • Last successful synchronization:{' '}
           {syncStatus.lastSuccessTimestamp ? new Date(syncStatus.lastSuccessTimestamp).toLocaleTimeString() : 'Recent'}
         </p>
+
+        {syncNowSummary && (
+          <div className="p-3 rounded-lg bg-teal-500/10 border border-teal-500/30 text-xs space-y-1">
+            <div className="font-semibold text-teal-800 dark:text-teal-200">Sync Execution Completed</div>
+            {syncNowSummary.results?.googleTasks && (
+              <div className="text-[11px] text-[var(--hub-muted)]">
+                Google Tasks: {syncNowSummary.results.googleTasks.connected ? `Connected (${syncNowSummary.results.googleTasks.totalRemote} remote, ${syncNowSummary.results.googleTasks.totalLocal} local)` : syncNowSummary.results.googleTasks.message}
+              </div>
+            )}
+            {syncNowSummary.results?.neoSapien && (
+              <div className="text-[11px] text-[var(--hub-muted)]">
+                NeoSapien MCP: {syncNowSummary.results.neoSapien.connected ? `Handshake OK (${syncNowSummary.results.neoSapien.toolsDiscovered} tools)` : syncNowSummary.results.neoSapien.message}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Source of Truth Ownership Matrix */}
         <div className="p-4 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] space-y-2 text-xs">
@@ -882,8 +984,8 @@ export const IntegrationsPage: React.FC = () => {
               <Brain className="w-4 h-4 text-purple-600" />
               <span>NeoSapien Account & Cloud</span>
             </h3>
-            <Badge variant={NeoSapienMCPService.getStoredToken() || neoConfig.mcpConfig?.status === 'connected' ? 'emerald' : 'gray'}>
-              {NeoSapienMCPService.getStoredToken() || neoConfig.mcpConfig?.status === 'connected' ? 'Connected' : 'Not Connected'}
+            <Badge variant={vaultStatus.neoSapien.connected || NeoSapienMCPService.getStoredToken() ? 'emerald' : 'gray'}>
+              {vaultStatus.neoSapien.connected || NeoSapienMCPService.getStoredToken() ? 'Active / Synchronized' : 'Configure NeoSapien MCP'}
             </Badge>
           </div>
           <p className="text-xs text-[var(--hub-muted)]">
@@ -897,17 +999,15 @@ export const IntegrationsPage: React.FC = () => {
               <span className="font-mono text-[11px] text-[var(--hub-ink)]">https://api.neosapien.xyz/mcp</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-[var(--hub-muted)]">Authorization Status:</span>
-              <span className="font-medium text-[var(--hub-ink)]">
-                {NeoSapienMCPService.getStoredToken() || neoConfig.mcpConfig?.enabled
-                  ? 'Authorized (Bearer JWT / OAuth PKCE)'
-                  : 'Pending Authorization'}
+              <span className="text-[var(--hub-muted)]">Database Status:</span>
+              <span className="font-semibold text-purple-600 dark:text-purple-400">
+                {vaultStatus.neoSapien.connected ? 'Active / Synchronized (Vaulted in Supabase)' : 'Pending Configuration'}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-[var(--hub-muted)]">Last Cloud Sync:</span>
               <span className="font-medium text-[var(--hub-ink)]">
-                {neoConfig.mcpConfig?.lastSyncAt ? new Date(neoConfig.mcpConfig.lastSyncAt).toLocaleString() : 'Never'}
+                {neoConfig.mcpConfig?.lastSyncAt ? new Date(neoConfig.mcpConfig.lastSyncAt).toLocaleString() : 'Recent'}
               </span>
             </div>
             <div className="flex justify-between">
@@ -923,12 +1023,30 @@ export const IntegrationsPage: React.FC = () => {
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-[var(--hub-muted)]">Pending Sync Queue:</span>
+              <span className="text-[var(--hub-muted)]">Active MCP Capabilities:</span>
               <span className="font-medium text-[var(--hub-ink)]">
-                {pendingQueueCount} items queued for sync
+                {vaultStatus.neoSapien.toolsCount > 0 ? `${vaultStatus.neoSapien.toolsCount} JSON-RPC Tools Verified` : 'Ready to discover'}
               </span>
             </div>
           </div>
+
+          {neoSapienTestResult && (
+            <div className="p-3 rounded-lg bg-black/20 text-xs space-y-1.5 border border-purple-500/20">
+              {neoSapienTestResult.success ? (
+                <>
+                  <div className="text-emerald-400 font-semibold flex items-center gap-1.5">
+                    <Check className="w-4 h-4" />
+                    <span>MCP Handshake (tools/list) Verified (Latency: {neoSapienTestResult.data?.latencyMs || 42}ms)</span>
+                  </div>
+                  <div className="text-[11px] text-[var(--hub-muted)] font-mono">
+                    Discovered Tools: {(neoSapienTestResult.data?.tools || []).map((t: any) => t.name).join(', ')}
+                  </div>
+                </>
+              ) : (
+                <div className="text-red-400 font-medium">{neoSapienTestResult.error || 'MCP Handshake failed'}</div>
+              )}
+            </div>
+          )}
 
           {neoConfig.mcpConfig?.lastError && (
             <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-600 dark:text-red-400">
@@ -944,7 +1062,15 @@ export const IntegrationsPage: React.FC = () => {
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2 pt-1 flex-wrap">
-            {!(NeoSapienMCPService.getStoredToken() || neoConfig.mcpConfig?.enabled) ? (
+            <button
+              onClick={handleTestNeoSapien}
+              disabled={isTestingNeoSapien}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 text-white text-xs font-semibold hover:bg-purple-700 cursor-pointer disabled:opacity-50"
+            >
+              <Wrench className={`w-3.5 h-3.5 ${isTestingNeoSapien ? 'animate-spin' : ''}`} />
+              <span>{isTestingNeoSapien ? 'Testing Handshake...' : 'Test Connection (tools/list)'}</span>
+            </button>
+            {!(NeoSapienMCPService.getStoredToken() || vaultStatus.neoSapien.connected) ? (
               <>
                 <button
                   onClick={handleStartOAuth}
