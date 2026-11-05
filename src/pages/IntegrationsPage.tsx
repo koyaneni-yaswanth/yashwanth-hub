@@ -28,6 +28,9 @@ import {
   Radio,
   FileText,
   Upload,
+  Wrench,
+  Key,
+  ExternalLink,
 } from 'lucide-react';
 import { db } from '../db';
 import type { GoogleServiceKey } from '../types';
@@ -35,6 +38,7 @@ import { GoogleAuthService } from '../services/google/googleAuthService';
 import { UnifiedSyncEngine } from '../services/sync/unifiedSyncEngine';
 import { NeoSapienService } from '../services/neoSapienService';
 import { NeoSapienMemoryService } from '../services/neoSapienMemoryService';
+import { NeoSapienMCPService, type McpToolDefinition } from '../services/neoSapienMcpService';
 import { DeviceFleetService } from '../services/deviceFleetService';
 import { Badge } from '../components/common/Badge';
 
@@ -54,9 +58,17 @@ export const IntegrationsPage: React.FC = () => {
   const [isScanningBLE, setIsScanningBLE] = useState(false);
   const [isSyncingMCP, setIsSyncingMCP] = useState(false);
   const [showMcpConfig, setShowMcpConfig] = useState(false);
-  const [mcpUrl, setMcpUrl] = useState(() => neoConfig.mcpConfig?.serverUrl || 'http://localhost:3000/sse');
-  const [mcpToken, setMcpToken] = useState(() => neoConfig.mcpConfig?.authToken || '');
   const [mcpFeedback, setMcpFeedback] = useState<string | null>(null);
+
+  // Advanced MCP OAuth & Tools State
+  const [isConnectingOAuth, setIsConnectingOAuth] = useState(false);
+  const [discoveredTools, setDiscoveredTools] = useState<McpToolDefinition[]>([]);
+  const [isLoadingTools, setIsLoadingTools] = useState(false);
+  const [showToolsModal, setShowToolsModal] = useState(false);
+  const [authModalTab, setAuthModalTab] = useState<'oauth' | 'apikey' | 'token'>('oauth');
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [bearerTokenInput, setBearerTokenInput] = useState('');
+  const totalMemoriesCount = useLiveQuery(() => db.neo_memories.count(), []) || 0;
 
   // Device Fleet State
   const [renamingDeviceId, setRenamingDeviceId] = useState<string | null>(null);
@@ -84,30 +96,126 @@ export const IntegrationsPage: React.FC = () => {
     return unsubscribe;
   }, []);
 
-  const handleSaveMcpConfig = (e: React.FormEvent) => {
-    e.preventDefault();
-    const updated = {
-      ...neoConfig,
-      mcpConfig: {
-        enabled: true,
-        serverUrl: mcpUrl.trim(),
-        authToken: mcpToken.trim(),
-        authType: mcpToken.trim() ? ('bearer' as const) : ('none' as const),
-        readOnly: true,
-        status: 'disconnected' as const,
-      },
+  // NeoSapien OAuth Callback Listener (Popup PostMessage & URL search param)
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      if (event.data?.type === 'NEOSAPIEN_AUTH_CODE') {
+        setIsConnectingOAuth(true);
+        setMcpFeedback('Exchanging NeoSapien authorization code...');
+        try {
+          await NeoSapienMCPService.completeOAuthCodeExchange(event.data.code, event.data.state);
+          setNeoConfig(NeoSapienMemoryService.getConfig());
+          setShowMcpConfig(false);
+          setMcpFeedback('Successfully authenticated with NeoSapien via OAuth 2.0 PKCE!');
+        } catch (err: any) {
+          setMcpFeedback(`OAuth Exchange Error: ${err.message}`);
+        } finally {
+          setIsConnectingOAuth(false);
+        }
+      }
     };
-    NeoSapienMemoryService.saveConfig(updated);
-    setNeoConfig(updated);
-    setShowMcpConfig(false);
-    setMcpFeedback('NeoSapien MCP configuration saved. Ready to synchronize.');
+
+    window.addEventListener('message', handleMessage);
+
+    // URL parameter fallback for mobile/full-page redirects
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('neo_code') || params.get('code');
+      const state = params.get('state');
+      if (code && (params.get('neo_code') || window.location.pathname.includes('/settings'))) {
+        setIsConnectingOAuth(true);
+        setMcpFeedback('Completing NeoSapien sign-in from redirect...');
+        NeoSapienMCPService.completeOAuthCodeExchange(code, state || '')
+          .then(() => {
+            setNeoConfig(NeoSapienMemoryService.getConfig());
+            setMcpFeedback('Successfully authenticated with NeoSapien via OAuth 2.0 PKCE!');
+            window.history.replaceState({}, document.title, window.location.pathname);
+          })
+          .catch((err) => {
+            setMcpFeedback(`OAuth Error: ${err.message}`);
+          })
+          .finally(() => setIsConnectingOAuth(false));
+      }
+    }
+
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  const handleStartOAuth = async () => {
+    setIsConnectingOAuth(true);
+    setMcpFeedback(null);
+    try {
+      const { authorizationUrl } = await NeoSapienMCPService.initiateOAuthFlow();
+      const popup = window.open(
+        authorizationUrl,
+        'neosapien_oauth',
+        'width=550,height=720,left=200,top=100,menubar=no,toolbar=no,status=no'
+      );
+      if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+        window.location.href = authorizationUrl;
+      }
+    } catch (err: any) {
+      setMcpFeedback(`OAuth initiation failed: ${err.message}`);
+    } finally {
+      setIsConnectingOAuth(false);
+    }
+  };
+
+  const handleConnectApiKey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!apiKeyInput.trim()) return;
+    setIsConnectingOAuth(true);
+    setMcpFeedback(null);
+    try {
+      await NeoSapienMCPService.connectWithApiKey(apiKeyInput.trim());
+      setNeoConfig(NeoSapienMemoryService.getConfig());
+      setShowMcpConfig(false);
+      setApiKeyInput('');
+      setMcpFeedback('Successfully authorized with NeoSapien using API Key.');
+    } catch (err: any) {
+      setMcpFeedback(`API Key Error: ${err.message}`);
+    } finally {
+      setIsConnectingOAuth(false);
+    }
+  };
+
+  const handleConnectBearerToken = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bearerTokenInput.trim()) return;
+    setIsConnectingOAuth(true);
+    setMcpFeedback(null);
+    try {
+      await NeoSapienMCPService.connectWithBearerToken(bearerTokenInput.trim());
+      setNeoConfig(NeoSapienMemoryService.getConfig());
+      setShowMcpConfig(false);
+      setBearerTokenInput('');
+      setMcpFeedback('Successfully connected with NeoSapien Bearer Token.');
+    } catch (err: any) {
+      setMcpFeedback(`Bearer Token Error: ${err.message}`);
+    } finally {
+      setIsConnectingOAuth(false);
+    }
+  };
+
+  const handleDiscoverTools = async () => {
+    setIsLoadingTools(true);
+    setMcpFeedback(null);
+    try {
+      const tools = await NeoSapienMCPService.getDiscoveredTools();
+      setDiscoveredTools(tools);
+      setShowToolsModal(true);
+    } catch (err: any) {
+      setMcpFeedback(`Tool Discovery Error: ${err.message}`);
+    } finally {
+      setIsLoadingTools(false);
+    }
   };
 
   const handleSyncMcpNow = async () => {
     setIsSyncingMCP(true);
     setMcpFeedback(null);
     try {
-      const res = await NeoSapienMemoryService.syncViaMCP();
+      const res = await NeoSapienMCPService.syncMemories();
       setNeoConfig(NeoSapienMemoryService.getConfig());
       setMcpFeedback(res.message);
     } catch (err: any) {
@@ -118,9 +226,10 @@ export const IntegrationsPage: React.FC = () => {
   };
 
   const handleDisconnectMcp = () => {
-    NeoSapienMemoryService.disconnectMCP();
+    NeoSapienMCPService.clearTokens();
     setNeoConfig(NeoSapienMemoryService.getConfig());
-    setMcpFeedback('NeoSapien MCP connection disconnected.');
+    setDiscoveredTools([]);
+    setMcpFeedback('NeoSapien disconnected and session tokens removed.');
   };
 
   const handleImportJsonFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -711,20 +820,26 @@ export const IntegrationsPage: React.FC = () => {
               <Brain className="w-4 h-4 text-purple-600" />
               <span>NeoSapien Account & Cloud</span>
             </h3>
-            <Badge variant={neoConfig.mcpConfig?.status === 'connected' ? 'emerald' : neoConfig.mcpConfig?.status === 'error' ? 'red' : 'gray'}>
-              {neoConfig.mcpConfig?.status === 'connected' ? 'Connected' : neoConfig.mcpConfig?.status === 'error' ? 'Error' : 'Not Configured'}
+            <Badge variant={NeoSapienMCPService.getStoredToken() || neoConfig.mcpConfig?.status === 'connected' ? 'emerald' : 'gray'}>
+              {NeoSapienMCPService.getStoredToken() || neoConfig.mcpConfig?.status === 'connected' ? 'Connected' : 'Not Connected'}
             </Badge>
           </div>
           <p className="text-xs text-[var(--hub-muted)]">
-            Synchronize ambient audio memories, meeting summaries, and commitments via official MCP / OAuth
+            Synchronize ambient audio memories, meeting summaries, and commitments via official NeoSapien MCP (<code className="text-purple-500 font-mono">https://api.neosapien.xyz/mcp</code>)
           </p>
 
           {/* Status Details */}
           <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] space-y-1.5 text-xs">
             <div className="flex justify-between">
+              <span className="text-[var(--hub-muted)]">Target Server:</span>
+              <span className="font-mono text-[11px] text-[var(--hub-ink)]">https://api.neosapien.xyz/mcp</span>
+            </div>
+            <div className="flex justify-between">
               <span className="text-[var(--hub-muted)]">Authorization Status:</span>
               <span className="font-medium text-[var(--hub-ink)]">
-                {neoConfig.mcpConfig?.enabled ? 'Authorized (MCP / OAuth)' : 'Pending Setup'}
+                {NeoSapienMCPService.getStoredToken() || neoConfig.mcpConfig?.enabled
+                  ? 'Authorized (Bearer JWT / OAuth PKCE)'
+                  : 'Pending Authorization'}
               </span>
             </div>
             <div className="flex justify-between">
@@ -735,8 +850,20 @@ export const IntegrationsPage: React.FC = () => {
             </div>
             <div className="flex justify-between">
               <span className="text-[var(--hub-muted)]">Latest Imported Memory:</span>
-              <span className="font-medium text-[var(--hub-ink)] truncate max-w-[200px]">
+              <span className="font-medium text-[var(--hub-ink)] truncate max-w-[220px]" title={latestMemory ? latestMemory.title : 'None'}>
                 {latestMemory ? latestMemory.title : 'None yet'}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[var(--hub-muted)]">Total Imported Memories:</span>
+              <span className="font-semibold text-purple-600 dark:text-purple-400">
+                {totalMemoriesCount} memories
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[var(--hub-muted)]">Pending Sync Queue:</span>
+              <span className="font-medium text-[var(--hub-ink)]">
+                {pendingQueueCount} items queued for sync
               </span>
             </div>
           </div>
@@ -755,14 +882,28 @@ export const IntegrationsPage: React.FC = () => {
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2 pt-1 flex-wrap">
-            <button
-              onClick={() => setShowMcpConfig(true)}
-              className="px-3 py-1.5 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer"
-            >
-              Configure MCP
-            </button>
-
-            {neoConfig.mcpConfig?.enabled && (
+            {!(NeoSapienMCPService.getStoredToken() || neoConfig.mcpConfig?.enabled) ? (
+              <>
+                <button
+                  onClick={handleStartOAuth}
+                  disabled={isConnectingOAuth}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-purple-600 text-white text-xs font-semibold hover:bg-purple-700 cursor-pointer shadow-xs disabled:opacity-60"
+                >
+                  <Brain className={`w-3.5 h-3.5 ${isConnectingOAuth ? 'animate-spin' : ''}`} />
+                  <span>{isConnectingOAuth ? 'Connecting...' : 'Connect NeoSapien (OAuth)'}</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setAuthModalTab('apikey');
+                    setShowMcpConfig(true);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] hover:border-purple-500 cursor-pointer"
+                >
+                  <Key className="w-3.5 h-3.5 text-purple-500" />
+                  <span>API Key / Token</span>
+                </button>
+              </>
+            ) : (
               <>
                 <button
                   onClick={handleSyncMcpNow}
@@ -771,6 +912,21 @@ export const IntegrationsPage: React.FC = () => {
                 >
                   <RefreshCw className={`w-3 h-3 ${isSyncingMCP ? 'animate-spin' : ''}`} />
                   <span>{isSyncingMCP ? 'Syncing...' : 'Sync Now'}</span>
+                </button>
+                <button
+                  onClick={handleDiscoverTools}
+                  disabled={isLoadingTools}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] hover:border-purple-500 cursor-pointer disabled:opacity-50"
+                  title="Inspect tools/list from official MCP endpoint"
+                >
+                  <Wrench className={`w-3 h-3 text-purple-600 ${isLoadingTools ? 'animate-spin' : ''}`} />
+                  <span>{isLoadingTools ? 'Discovering...' : 'Discover MCP Tools'}</span>
+                </button>
+                <button
+                  onClick={() => setShowMcpConfig(true)}
+                  className="px-2.5 py-1.5 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs font-medium text-[var(--hub-muted)] hover:text-[var(--hub-ink)] cursor-pointer"
+                >
+                  Credentials
                 </button>
                 <button
                   onClick={handleDisconnectMcp}
@@ -831,63 +987,222 @@ export const IntegrationsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* MCP Configuration Modal */}
+      {/* Multi-Tab NeoSapien Authorization Modal */}
       {showMcpConfig && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 max-w-md w-full shadow-xl space-y-4">
+          <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 max-w-lg w-full shadow-xl space-y-4">
             <div className="flex items-center justify-between border-b border-[var(--hub-line)] pb-3">
               <h4 className="font-bold text-sm text-[var(--hub-ink)] flex items-center gap-2">
                 <Brain className="w-4 h-4 text-purple-600" />
-                <span>NeoSapien MCP Server Settings</span>
+                <span>NeoSapien MCP Server & Authentication</span>
               </h4>
               <button
                 onClick={() => setShowMcpConfig(false)}
-                className="text-xs text-[var(--hub-muted)] hover:text-[var(--hub-ink)]"
+                className="text-xs text-[var(--hub-muted)] hover:text-[var(--hub-ink)] cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleSaveMcpConfig} className="space-y-3 text-xs">
-              <div>
-                <label className="block text-[var(--hub-muted)] mb-1 font-medium">MCP Server Endpoint (SSE / JSON-RPC)</label>
-                <input
-                  type="text"
-                  value={mcpUrl}
-                  onChange={(e) => setMcpUrl(e.target.value)}
-                  placeholder="http://localhost:3000/sse"
-                  required
-                  className="w-full px-3 py-2 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-[var(--hub-ink)] focus:border-[var(--hub-accent)] outline-none"
-                />
-              </div>
+            {/* Modal Tabs */}
+            <div className="flex border-b border-[var(--hub-line)] gap-4 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setAuthModalTab('oauth')}
+                className={`pb-2 border-b-2 cursor-pointer ${
+                  authModalTab === 'oauth'
+                    ? 'border-purple-600 text-purple-600 dark:text-purple-400'
+                    : 'border-transparent text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
+                }`}
+              >
+                OAuth 2.0 PKCE (Recommended)
+              </button>
+              <button
+                type="button"
+                onClick={() => setAuthModalTab('apikey')}
+                className={`pb-2 border-b-2 cursor-pointer ${
+                  authModalTab === 'apikey'
+                    ? 'border-purple-600 text-purple-600 dark:text-purple-400'
+                    : 'border-transparent text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
+                }`}
+              >
+                API Key
+              </button>
+              <button
+                type="button"
+                onClick={() => setAuthModalTab('token')}
+                className={`pb-2 border-b-2 cursor-pointer ${
+                  authModalTab === 'token'
+                    ? 'border-purple-600 text-purple-600 dark:text-purple-400'
+                    : 'border-transparent text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
+                }`}
+              >
+                Direct Bearer Token
+              </button>
+            </div>
 
-              <div>
-                <label className="block text-[var(--hub-muted)] mb-1 font-medium">Bearer Authorization Token (Optional)</label>
-                <input
-                  type="password"
-                  value={mcpToken}
-                  onChange={(e) => setMcpToken(e.target.value)}
-                  placeholder="neo_token_..."
-                  className="w-full px-3 py-2 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-[var(--hub-ink)] focus:border-[var(--hub-accent)] outline-none font-mono"
-                />
+            {/* Tab 1: OAuth 2.0 PKCE */}
+            {authModalTab === 'oauth' && (
+              <div className="space-y-3 text-xs">
+                <p className="text-[var(--hub-muted)] leading-relaxed">
+                  Authenticates with the official NeoSapien server (<code className="text-purple-500 font-mono">https://api.neosapien.xyz/mcp</code>) using Dynamic Client Registration and OAuth 2.0 PKCE with Google, Apple, or Email sign-in.
+                </p>
+                <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] space-y-1 font-mono text-[11px] text-[var(--hub-muted)]">
+                  <div>Authorization: <span className="text-[var(--hub-ink)]">https://api.neosapien.xyz/mcp/authorize</span></div>
+                  <div>Token Endpoint: <span className="text-[var(--hub-ink)]">https://api.neosapien.xyz/mcp/token</span></div>
+                  <div>Registration: <span className="text-[var(--hub-ink)]">https://api.neosapien.xyz/register</span></div>
+                </div>
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={handleStartOAuth}
+                    disabled={isConnectingOAuth}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-purple-600 text-white font-semibold hover:bg-purple-700 cursor-pointer shadow-xs disabled:opacity-60"
+                  >
+                    <Brain className={`w-4 h-4 ${isConnectingOAuth ? 'animate-spin' : ''}`} />
+                    <span>{isConnectingOAuth ? 'Opening NeoSapien Authorization...' : 'Sign in with NeoSapien (OAuth PKCE)'}</span>
+                  </button>
+                </div>
               </div>
+            )}
 
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowMcpConfig(false)}
-                  className="px-3 py-1.5 rounded-lg border border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)]"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white font-semibold hover:bg-[var(--hub-accent-hover)]"
-                >
-                  Save Configuration
-                </button>
+            {/* Tab 2: API Key */}
+            {authModalTab === 'apikey' && (
+              <form onSubmit={handleConnectApiKey} className="space-y-3 text-xs">
+                <p className="text-[var(--hub-muted)] leading-relaxed">
+                  Enter your NeoCore API key to exchange for an authorized session Bearer token via <code className="text-purple-500 font-mono">POST /auth/access-token</code>.
+                </p>
+                <div>
+                  <label className="block text-[var(--hub-muted)] mb-1 font-medium">NeoCore API Key (x-api-key)</label>
+                  <input
+                    type="password"
+                    value={apiKeyInput}
+                    onChange={(e) => setApiKeyInput(e.target.value)}
+                    placeholder="neo_api_..."
+                    required
+                    className="w-full px-3 py-2 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-[var(--hub-ink)] focus:border-purple-500 outline-none font-mono"
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowMcpConfig(false)}
+                    className="px-3 py-1.5 rounded-lg border border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isConnectingOAuth || !apiKeyInput.trim()}
+                    className="px-4 py-1.5 rounded-lg bg-purple-600 text-white font-semibold hover:bg-purple-700 disabled:opacity-50 cursor-pointer"
+                  >
+                    {isConnectingOAuth ? 'Verifying...' : 'Connect with API Key'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Tab 3: Direct Bearer Token */}
+            {authModalTab === 'token' && (
+              <form onSubmit={handleConnectBearerToken} className="space-y-3 text-xs">
+                <p className="text-[var(--hub-muted)] leading-relaxed">
+                  Enter an existing NeoSapien Bearer JWT. The token will be tested against the live MCP server.
+                </p>
+                <div>
+                  <label className="block text-[var(--hub-muted)] mb-1 font-medium">Bearer JWT Token</label>
+                  <textarea
+                    rows={3}
+                    value={bearerTokenInput}
+                    onChange={(e) => setBearerTokenInput(e.target.value)}
+                    placeholder="eyJhbGciOi..."
+                    required
+                    className="w-full px-3 py-2 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-[var(--hub-ink)] focus:border-purple-500 outline-none font-mono text-[11px]"
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowMcpConfig(false)}
+                    className="px-3 py-1.5 rounded-lg border border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isConnectingOAuth || !bearerTokenInput.trim()}
+                    className="px-4 py-1.5 rounded-lg bg-purple-600 text-white font-semibold hover:bg-purple-700 disabled:opacity-50 cursor-pointer"
+                  >
+                    {isConnectingOAuth ? 'Validating...' : 'Validate & Save Token'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Discovered MCP Tools Inspector Modal */}
+      {showToolsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 max-w-2xl w-full max-h-[80vh] flex flex-col shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[var(--hub-line)] pb-3">
+              <div className="flex items-center gap-2">
+                <Wrench className="w-5 h-5 text-purple-600" />
+                <div>
+                  <h4 className="font-bold text-sm text-[var(--hub-ink)]">
+                    Discovered NeoSapien MCP Tools
+                  </h4>
+                  <span className="text-[11px] text-[var(--hub-muted)]">
+                    Live reflection from <code className="font-mono text-purple-500">https://api.neosapien.xyz/mcp (tools/list)</code>
+                  </span>
+                </div>
               </div>
-            </form>
+              <Badge variant="purple">{discoveredTools.length} Tools</Badge>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+              {discoveredTools.length === 0 ? (
+                <p className="text-xs text-[var(--hub-muted)] py-4 text-center">
+                  No tools discovered or endpoint returned an empty list.
+                </p>
+              ) : (
+                discoveredTools.map((t) => (
+                  <div
+                    key={t.name}
+                    className="p-3.5 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)] space-y-2 text-xs"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono font-bold text-purple-600 dark:text-purple-400 text-xs">
+                        {t.name}
+                      </span>
+                    </div>
+                    <p className="text-[var(--hub-ink)] leading-relaxed">
+                      {t.description}
+                    </p>
+                    {t.inputSchema && (
+                      <div className="p-2.5 rounded-lg bg-black/20 border border-[var(--hub-line)]">
+                        <span className="text-[10px] uppercase font-bold text-[var(--hub-muted)] block mb-1">
+                          Input Schema
+                        </span>
+                        <pre className="text-[10px] font-mono text-[var(--hub-ink)] overflow-x-auto whitespace-pre-wrap">
+                          {JSON.stringify(t.inputSchema, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="flex justify-end pt-3 border-t border-[var(--hub-line)]">
+              <button
+                type="button"
+                onClick={() => setShowToolsModal(false)}
+                className="px-4 py-1.5 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] hover:border-purple-500 cursor-pointer"
+              >
+                Close Inspector
+              </button>
+            </div>
           </div>
         </div>
       )}

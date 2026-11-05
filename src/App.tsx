@@ -94,6 +94,8 @@ function HubMain() {
         setCurrentTab('integrations');
       }
       window.history.replaceState(null, '', window.location.pathname);
+    } else if (search.includes('neo_code=')) {
+      setCurrentTab('integrations');
     }
 
     // Periodic reminder check every 60 seconds

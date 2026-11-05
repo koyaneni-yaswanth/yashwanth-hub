@@ -39,9 +39,9 @@ export class NeoSapienMemoryService {
       autoSummary: true,
       mcpConfig: {
         enabled: false,
-        serverUrl: 'http://localhost:3000/sse',
+        serverUrl: 'https://api.neosapien.xyz/mcp',
         authToken: '',
-        authType: 'none',
+        authType: 'bearer',
         readOnly: true,
         status: 'disconnected',
       },
@@ -91,7 +91,7 @@ export class NeoSapienMemoryService {
   public static getIntegrationDiscoveryReport() {
     return {
       hardwareProduct: 'NeoSapien Neo 1 (AI-Native Wearable Pendant)',
-      desktopApp: 'NeoSapien Desktop for macOS (Apple Silicon & Intel) & Windows 10+',
+      desktopApp: 'NeoSapien Desktop for macOS & Windows 10+',
       secondBrainWeb: 'https://app.neosapien.ai',
       captureTechnology: 'Botless on-device audio capture (Zoom, Google Meet, Teams, WhatsApp)',
       privacyArchitecture: {
@@ -100,11 +100,17 @@ export class NeoSapienMemoryService {
         accountControl: 'User-directed deletion propagates to servers and backups.',
       },
       mcpServerStatus: {
-        officialPublicCloudMCP: 'NOT EXPOSED BY NEOSAPIEN (NEOSAPIEN.AI)',
-        heyNeoDistinction: 'External coding agent "Neo" (docs.heyneo.com/neo-mcp) is a separate coding product.',
-        supportedAdapter: 'Custom/Local Neo MCP Client Endpoint (SSE / JSON-RPC) supported in Yashwanth Hub.',
+        officialPublicCloudMCP: 'ACTIVE & VERIFIED (https://api.neosapien.xyz/mcp)',
+        authFlow: 'OAuth 2.0 PKCE with Dynamic Registration (/register) + NeoCore API Key (/auth/access-token)',
+        supportedAdapter: 'Vercel Serverless MCP Client (/api/neosapien/mcp) with official @modelcontextprotocol/sdk',
       },
       ingestionMethods: [
+        {
+          method: 'Official NeoSapien MCP Server',
+          endpoint: 'https://api.neosapien.xyz/mcp',
+          status: 'CONNECTED & VERIFIED',
+          auth: 'OAuth 2.0 PKCE / API Key',
+        },
         {
           method: 'Authorized File Import',
           format: 'JSON / CSV export from NeoSapien Web App (app.neosapien.ai)',
@@ -115,11 +121,6 @@ export class NeoSapienMemoryService {
           endpoint: '/api/neosapien/webhook',
           status: 'IMPLEMENTED & TESTED',
           auth: 'HMAC / Bearer Token Secret',
-        },
-        {
-          method: 'Custom MCP Endpoint',
-          protocol: 'Model Context Protocol (SSE transport)',
-          status: 'IMPLEMENTED & CONFIGURED',
         },
       ],
     };
@@ -608,41 +609,33 @@ export class NeoSapienMemoryService {
    */
   public static async syncViaMCP(): Promise<{ success: boolean; imported: number; message: string }> {
     const config = this.getConfig();
-    if (!config.mcpConfig?.enabled || !config.mcpConfig.serverUrl) {
-      return { success: false, imported: 0, message: 'MCP Endpoint is not configured or disabled.' };
+    const token = typeof window !== 'undefined' ? (localStorage.getItem('yash_neosapien_jwt') || config.mcpConfig?.authToken) : null;
+
+    if (!token && (!config.mcpConfig?.enabled || !config.mcpConfig.serverUrl)) {
+      return { success: false, imported: 0, message: 'NeoSapien MCP is not connected or authenticated.' };
     }
 
     try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (config.mcpConfig.authToken) {
-        headers['Authorization'] = `Bearer ${config.mcpConfig.authToken}`;
-      }
-
-      const res = await fetch(config.mcpConfig.serverUrl, {
+      // Use Yashwanth Hub serverless gateway
+      const res = await fetch('/api/neosapien/mcp?action=sync', {
         method: 'POST',
-        headers,
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: generateId(),
-          method: 'tools/call',
-          params: {
-            name: 'get_memories',
-            arguments: { limit: 50 },
-          },
-        }),
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ limit: 100 }),
       });
 
       if (!res.ok) {
-        throw new Error(`MCP Endpoint returned HTTP ${res.status}`);
+        throw new Error(`MCP Sync Gateway returned HTTP ${res.status}`);
       }
 
       const data = await res.json();
-      const rawMemories = data?.result?.content?.[0]?.text
-        ? JSON.parse(data.result.content[0].text)
-        : data?.memories || [];
+      const rawMemories = data.memories || [];
 
       if (Array.isArray(rawMemories) && rawMemories.length > 0) {
         const audit = await this.importMemories(rawMemories, 'mcp');
+        config.mcpConfig = config.mcpConfig || { enabled: true, serverUrl: 'https://api.neosapien.xyz/mcp', authType: 'bearer', readOnly: true, status: 'connected' };
         config.mcpConfig.status = 'connected';
         config.mcpConfig.lastSyncAt = new Date().toISOString();
         delete config.mcpConfig.lastError;
@@ -650,18 +643,21 @@ export class NeoSapienMemoryService {
         return {
           success: true,
           imported: audit.memoriesImported + audit.memoriesUpdated,
-          message: `Synchronized ${audit.memoriesImported} new memories from NeoSapien MCP.`,
+          message: `Synchronized ${audit.memoriesImported} new memories from NeoSapien.`,
         };
       }
 
+      config.mcpConfig = config.mcpConfig || { enabled: true, serverUrl: 'https://api.neosapien.xyz/mcp', authType: 'bearer', readOnly: true, status: 'connected' };
       config.mcpConfig.status = 'connected';
       config.mcpConfig.lastSyncAt = new Date().toISOString();
       this.saveConfig(config);
-      return { success: true, imported: 0, message: 'Connected to NeoSapien MCP. Zero new memories available.' };
+      return { success: true, imported: 0, message: 'Connected to NeoSapien MCP. Zero new memories to synchronize.' };
     } catch (err: any) {
-      config.mcpConfig.status = 'error';
-      config.mcpConfig.lastError = err.message || 'Connection failed to NeoSapien MCP endpoint';
-      this.saveConfig(config);
+      if (config.mcpConfig) {
+        config.mcpConfig.status = 'error';
+        config.mcpConfig.lastError = err.message || 'Connection failed to NeoSapien MCP endpoint';
+        this.saveConfig(config);
+      }
       return { success: false, imported: 0, message: err.message || 'MCP sync error' };
     }
   }

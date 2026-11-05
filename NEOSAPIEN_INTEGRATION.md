@@ -98,8 +98,12 @@ When Neo 1 records conversations in field environments (e.g., wind testing at VN
 ## 5. UI Controls in Connection Center (`src/pages/IntegrationsPage.tsx`)
 
 On the **Connection & Synchronization Center** page, the NeoSapien integration provides:
-- **Configure MCP Endpoint**: Modal input for Server URL (SSE/JSON-RPC) and Bearer Token.
-- **Manual Sync Now**: Immediate trigger calling `NeoSapienMemoryService.syncViaMCP()`.
+- **Official MCP Server**: Target endpoint configured to `https://api.neosapien.xyz/mcp`.
+- **Connect NeoSapien (OAuth PKCE)**: One-click authorization through `https://api.neosapien.xyz/mcp/authorize` using Dynamic Client Registration (`/register`) and PKCE `S256`.
+- **API Key / Token Authentication**: Multi-tab modal allowing authentication via NeoCore API Key (`/auth/access-token`) or direct Bearer JWT validation.
+- **Discover MCP Tools**: Real-time inspection modal reflecting tools directly from `tools/list` (`list_memories`, `get_memory`, `get_transcript`, `search_memories`, `get_user_stats`, `get_device_status`).
+- **Manual Sync Now**: Immediate trigger calling `NeoSapienMCPService.syncMemories()` via `/api/neosapien/mcp?action=sync`.
 - **Import JSON Export**: One-click file picker supporting official `app.neosapien.ai` exports.
-- **Disconnect**: Safely disables cloud polling and resets credentials.
-- **Hardware Telemetry Card**: Displays live BLE battery percentage when paired, or the mandated official notice when monitoring through the mobile companion app.
+- **Disconnect**: Safely revokes local credentials and clears stored session tokens.
+- **Hardware Telemetry Card**: Displays live BLE battery percentage when paired, or the mandated official notice when monitoring through the mobile companion app:
+  > *"Neo 1 physical device status is available in the official NeoSapien mobile application. Live wearable telemetry is not exposed through the connected integration."*
