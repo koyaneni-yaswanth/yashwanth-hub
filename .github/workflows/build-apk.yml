@@ -35,14 +35,12 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: |
-            platform-tools
-            platforms;android-36
-            build-tools;36.0.0
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
-      - name: Accept Android SDK Licenses
+      - name: Accept Android SDK Licenses & Configure local.properties
         run: |
           yes | sdkmanager --licenses || true
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
 
       - name: Sync Capacitor Android
         run: npx cap sync android
