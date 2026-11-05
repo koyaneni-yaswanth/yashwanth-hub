@@ -49,7 +49,8 @@ export const IntegrationsPage: React.FC = () => {
   const [isConnectingGIS, setIsConnectingGIS] = useState(false);
   const [oauthErrorMessage, setOauthErrorMessage] = useState<string | null>(null);
   const [showSetupGuide, setShowSetupGuide] = useState(false);
-  const [copiedOrigin, setCopiedOrigin] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [clientIdSavedNotice, setClientIdSavedNotice] = useState(false);
 
   // NeoSapien State
   const [neoConfig, setNeoConfig] = useState(() => NeoSapienMemoryService.getConfig());
@@ -252,16 +253,18 @@ export const IntegrationsPage: React.FC = () => {
   };
 
   const handleSaveClientId = () => {
-    GoogleAuthService.saveClientId(googleClientId);
+    const cleaned = GoogleAuthService.cleanClientId(googleClientId);
+    GoogleAuthService.saveClientId(cleaned);
+    setGoogleClientId(cleaned);
     setOauthErrorMessage(null);
-    alert('Google OAuth 2.0 Web Client ID saved.');
+    setClientIdSavedNotice(true);
+    setTimeout(() => setClientIdSavedNotice(false), 3000);
   };
 
-  const handleCopyOrigin = () => {
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://yashwanth-hub.vercel.app';
-    navigator.clipboard.writeText(origin);
-    setCopiedOrigin(true);
-    setTimeout(() => setCopiedOrigin(false), 2000);
+  const handleCopyText = (text: string, key: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2000);
   };
 
   const handleConnectGoogle = async (service?: GoogleServiceKey) => {
@@ -489,85 +492,146 @@ export const IntegrationsPage: React.FC = () => {
                   Save
                 </button>
               </div>
+              {clientIdSavedNotice && (
+                <div className="text-[11px] text-emerald-500 font-medium flex items-center gap-1">
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Client ID sanitized and saved successfully.</span>
+                </div>
+              )}
             </div>
 
             {/* Google Cloud Console Setup & 401 Troubleshooting Card */}
             {showSetupGuide && (
-              <div className="p-4 rounded-xl bg-[var(--hub-bg)] border border-teal-500/30 text-xs space-y-3">
+              <div className="p-4 rounded-xl bg-[var(--hub-bg)] border border-teal-500/30 text-xs space-y-4">
                 <div className="font-bold text-sm text-[var(--hub-ink)] flex items-center gap-2">
                   <Cloud className="w-4 h-4 text-teal-500" />
                   <span>Google Cloud Console — Setup & 401 Repair Guide</span>
                 </div>
 
-                <ol className="list-decimal list-inside space-y-1.5 text-[var(--hub-muted)] leading-relaxed">
-                  <li>
-                    Open{' '}
-                    <a
-                      href="https://console.cloud.google.com/apis/credentials"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[var(--hub-accent)] underline font-semibold"
-                    >
-                      Google Cloud Console Credentials
-                    </a>{' '}
-                    under account <code className="text-teal-400">koyaneniyaswanth@gmail.com</code>.
-                  </li>
-                  <li>
-                    Click <strong>Create Credentials → OAuth Client ID</strong>.
-                  </li>
-                  <li>
-                    Application type must be <strong>Web application</strong> (NOT Desktop, Android, or iOS).
-                  </li>
-                  <li>
-                    Add this exact URL to <strong>Authorized JavaScript origins</strong>:
-                    <div className="mt-1 flex items-center gap-2 font-mono text-[11px] text-[var(--hub-ink)] bg-black/20 p-2 rounded-lg">
-                      <span>{typeof window !== 'undefined' ? window.location.origin : 'https://yashwanth-hub.vercel.app'}</span>
-                      <button
-                        onClick={handleCopyOrigin}
-                        className="ml-auto px-2 py-0.5 rounded bg-teal-500/20 text-teal-400 hover:bg-teal-500/30 text-[10px] flex items-center gap-1 font-sans"
+                {/* Root Causes Section */}
+                <div className="p-3 rounded-lg bg-black/15 border border-[var(--hub-line)] space-y-2">
+                  <div className="font-bold text-[11px] text-amber-400">Root Causes: Why It Keeps Asking Repeatedly & Failing</div>
+                  <ul className="space-y-1.5 text-[11px] text-[var(--hub-muted)] list-disc list-inside leading-relaxed">
+                    <li>
+                      <strong className="text-[var(--hub-ink)]">401 invalid_client:</strong> Google rejects the Client ID if it has surrounding quotes/spaces, belongs to a deleted/different project, or the OAuth Client type was created as <em>Desktop/Android</em> instead of <strong>Web application</strong>.
+                    </li>
+                    <li>
+                      <strong className="text-[var(--hub-ink)]">Popup window closed:</strong> When Google rejects the authorization with 401 or redirect_uri mismatch, Google Identity Services immediately closes the popup modal.
+                    </li>
+                    <li>
+                      <strong className="text-[var(--hub-ink)]">Repeated Login Prompt:</strong> If the flow fails before returning valid tokens, no session or refresh token can be vaulted into <code className="text-teal-400">integration_tokens</code>, so the app remains logged out.
+                    </li>
+                  </ul>
+                </div>
+
+                {/* Step-by-Step Fix */}
+                <div className="space-y-3">
+                  <div className="font-bold text-xs text-[var(--hub-ink)]">Step-by-Step Configuration in Google Cloud Console</div>
+
+                  <div className="space-y-2 text-[var(--hub-muted)] leading-relaxed">
+                    <div>
+                      1. Open{' '}
+                      <a
+                        href="https://console.cloud.google.com/apis/credentials"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[var(--hub-accent)] underline font-semibold"
                       >
-                        {copiedOrigin ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                        <span>{copiedOrigin ? 'Copied' : 'Copy'}</span>
-                      </button>
+                        Google Cloud Console Credentials
+                      </a>{' '}
+                      and ensure you have an entry under <strong>OAuth 2.0 Client IDs</strong> with <strong>Application type: Web application</strong>.
                     </div>
-                  </li>
-                  <li>
-                    Add the same URL to <strong>Authorized redirect URIs</strong>:
-                    <div className="mt-1 flex items-center gap-2 font-mono text-[11px] text-[var(--hub-ink)] bg-black/20 p-2 rounded-lg">
-                      <span>{typeof window !== 'undefined' ? window.location.origin : 'https://yashwanth-hub.vercel.app'}</span>
+
+                    {/* Authorized JavaScript Origins */}
+                    <div className="space-y-1.5 pt-1">
+                      <div className="font-semibold text-[11px] text-[var(--hub-ink)]">
+                        2. Under <strong>Authorized JavaScript origins</strong>, add both URLs:
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {[
+                          'http://localhost:5173',
+                          'https://yashwanth-hub.vercel.app',
+                        ].map((uri) => (
+                          <div
+                            key={uri}
+                            className="flex items-center justify-between p-2 rounded-lg bg-black/20 font-mono text-[11px] text-[var(--hub-ink)]"
+                          >
+                            <span className="truncate">{uri}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyText(uri, `orig-${uri}`)}
+                              className="ml-2 px-2 py-0.5 rounded bg-teal-500/20 text-teal-400 hover:bg-teal-500/30 text-[10px] flex items-center gap-1 font-sans flex-none"
+                            >
+                              {copiedKey === `orig-${uri}` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                              <span>{copiedKey === `orig-${uri}` ? 'Copied' : 'Copy'}</span>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </li>
-                  <li>
-                    In <strong>OAuth consent screen → Test users</strong>, ensure <code className="text-teal-400">koyaneniyaswanth@gmail.com</code> is added.
-                  </li>
-                </ol>
+
+                    {/* Authorized Redirect URIs */}
+                    <div className="space-y-1.5 pt-1">
+                      <div className="font-semibold text-[11px] text-[var(--hub-ink)]">
+                        3. Under <strong>Authorized redirect URIs</strong>, add all required routes:
+                      </div>
+                      <div className="grid grid-cols-1 gap-1.5">
+                        {[
+                          'http://localhost:5173/auth/callback',
+                          'https://yashwanth-hub.vercel.app/auth/callback',
+                          'https://xjhkxnfahkkgwbbtmhtk.supabase.co/auth/v1/callback',
+                          'https://yashwanth-hub.vercel.app/api/auth/google/callback',
+                          'http://localhost:5173',
+                          'https://yashwanth-hub.vercel.app',
+                        ].map((uri) => (
+                          <div
+                            key={uri}
+                            className="flex items-center justify-between p-2 rounded-lg bg-black/20 font-mono text-[11px] text-[var(--hub-ink)]"
+                          >
+                            <span className="truncate">{uri}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyText(uri, `red-${uri}`)}
+                              className="ml-2 px-2 py-0.5 rounded bg-teal-500/20 text-teal-400 hover:bg-teal-500/30 text-[10px] flex items-center gap-1 font-sans flex-none"
+                            >
+                              {copiedKey === `red-${uri}` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                              <span>{copiedKey === `red-${uri}` ? 'Copied' : 'Copy'}</span>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="pt-1">
+                      4. In <strong>OAuth consent screen → Test users</strong>, verify <code className="text-teal-400">koyaneniyaswanth@gmail.com</code> is added so Google allows logins during testing.
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
               <button
-                onClick={() => handleConnectGoogle()}
-                disabled={isConnectingGIS}
-                className="flex-1 flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-bold hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs disabled:opacity-60"
+                onClick={() => handleConnectRedirectFallback()}
+                className="flex-1 flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-bold hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
               >
-                {isConnectingGIS ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Opening Google Sign-In...</span>
-                  </>
-                ) : (
-                  <>
-                    <Cloud className="w-4 h-4" />
-                    <span>Sign in with Google (GIS Popup)</span>
-                  </>
-                )}
+                <Cloud className="w-4 h-4" />
+                <span>Use Full-Page Redirect (Recommended)</span>
               </button>
 
               <button
-                onClick={() => handleConnectRedirectFallback()}
-                className="px-4 py-2.5 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-muted)] hover:text-[var(--hub-ink)] cursor-pointer"
+                onClick={() => handleConnectGoogle()}
+                disabled={isConnectingGIS}
+                className="px-4 py-2.5 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-muted)] hover:text-[var(--hub-ink)] cursor-pointer disabled:opacity-60 flex items-center justify-center gap-1.5"
               >
-                Use Full-Page Redirect
+                {isConnectingGIS ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Opening GIS Popup...</span>
+                  </>
+                ) : (
+                  <span>GIS Popup Sign-In</span>
+                )}
               </button>
             </div>
           </div>

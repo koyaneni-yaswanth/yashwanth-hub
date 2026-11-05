@@ -152,17 +152,36 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
   const notificationCount = useLiveQuery(() => db.notifications.count(), []) || 0;
 
   // Google Handlers
+  const handleSaveClientId = () => {
+    const cleaned = GoogleAuthService.cleanClientId(googleClientId);
+    GoogleAuthService.saveClientId(cleaned);
+    setGoogleClientId(cleaned);
+    setGoogleSyncStatus('✓ Google Web Client ID saved successfully.');
+    setTimeout(() => setGoogleSyncStatus(null), 3000);
+  };
+
+  const handleConnectRedirectFallback = () => {
+    const cleaned = GoogleAuthService.cleanClientId(googleClientId);
+    if (!cleaned || !GoogleAuthService.isValidClientId(cleaned)) {
+      alert('Valid Google Web Client ID is required. Format: [id].apps.googleusercontent.com');
+      return;
+    }
+    GoogleAuthService.saveClientId(cleaned);
+    const authUrl = GoogleAuthService.getAuthUrl(cleaned, GoogleAuthService.getRedirectUri());
+    window.location.href = authUrl;
+  };
+
   const handleConnectGoogle = async () => {
-    const trimmedId = googleClientId.trim();
-    if (!trimmedId) {
+    const cleaned = GoogleAuthService.cleanClientId(googleClientId);
+    if (!cleaned) {
       alert('Please enter your Google OAuth 2.0 Web Client ID from Google Cloud Console.');
       return;
     }
-    if (!GoogleAuthService.isValidClientId(trimmedId)) {
+    if (!GoogleAuthService.isValidClientId(cleaned)) {
       alert('Invalid Client ID format. Must end with ".apps.googleusercontent.com" from a Web application client.');
       return;
     }
-    GoogleAuthService.saveClientId(trimmedId);
+    GoogleAuthService.saveClientId(cleaned);
 
     // If running in native mobile app (Android / iOS):
     if (CapacitorService.isNative()) {
@@ -186,13 +205,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
       }
 
       // Fallback direct Google OAuth opened via system browser to avoid webview 403
-      const nativeAuthUrl = GoogleAuthService.getAuthUrl(trimmedId, 'com.yaswanth.hub://auth/callback');
+      const nativeAuthUrl = GoogleAuthService.getAuthUrl(cleaned, 'com.yaswanth.hub://auth/callback');
       window.open(nativeAuthUrl, '_system');
       return;
     }
 
     try {
-      const res = await GoogleAuthService.requestGisToken(trimmedId);
+      const res = await GoogleAuthService.requestGisToken(cleaned);
       if (res.success) {
         setGoogleConfig(GoogleAuthService.getConfig());
         return;
@@ -201,7 +220,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
       // Fallback to standard redirect
     }
 
-    const authUrl = GoogleAuthService.getAuthUrl(trimmedId, GoogleAuthService.getRedirectUri());
+    const authUrl = GoogleAuthService.getAuthUrl(cleaned, GoogleAuthService.getRedirectUri());
     window.location.href = authUrl;
   };
 
@@ -567,13 +586,21 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
           <label className="block text-xs font-bold text-[var(--hub-ink)] mb-1">
             Google OAuth 2.0 Web Client ID
           </label>
-          <input
-            type="text"
-            value={googleClientId}
-            onChange={(e) => setGoogleClientId(e.target.value)}
-            placeholder="123456789-abcdefg.apps.googleusercontent.com"
-            className="w-full py-2 px-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs text-[var(--hub-ink)] font-mono"
-          />
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={googleClientId}
+              onChange={(e) => setGoogleClientId(e.target.value)}
+              placeholder="123456789-abcdefg.apps.googleusercontent.com"
+              className="flex-1 py-2 px-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs text-[var(--hub-ink)] font-mono"
+            />
+            <button
+              onClick={handleSaveClientId}
+              className="px-4 py-2 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer"
+            >
+              Save
+            </button>
+          </div>
         </div>
 
         {googleSyncStatus && (
@@ -584,13 +611,22 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
 
         <div className="flex flex-wrap items-center gap-3 pt-1">
           {!googleConfig.connected ? (
-            <button
-              onClick={handleConnectGoogle}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 cursor-pointer shadow-xs"
-            >
-              <CalendarDays className="w-3.5 h-3.5" />
-              <span>Connect Google Account</span>
-            </button>
+            <>
+              <button
+                onClick={handleConnectRedirectFallback}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
+              >
+                <CalendarDays className="w-3.5 h-3.5" />
+                <span>Use Full-Page Redirect (Recommended)</span>
+              </button>
+
+              <button
+                onClick={handleConnectGoogle}
+                className="px-4 py-2 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-muted)] hover:text-[var(--hub-ink)] cursor-pointer"
+              >
+                GIS Popup Sign-In
+              </button>
+            </>
           ) : (
             <>
               <button

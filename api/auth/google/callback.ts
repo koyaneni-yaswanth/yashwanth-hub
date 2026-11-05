@@ -20,7 +20,11 @@ export default async function handler(req: any, res: any) {
   try {
     const clientId = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-    const redirectUri = 'https://yashwanth-hub.vercel.app/api/auth/google/callback';
+    const host = req.headers?.host || 'yashwanth-hub.vercel.app';
+    const isLocal = host.includes('localhost') || host.includes('127.0.0.1');
+    const redirectUri = isLocal
+      ? `http://${host}/api/auth/google/callback`
+      : 'https://yashwanth-hub.vercel.app/api/auth/google/callback';
 
     const oauth2Client = new google.auth.OAuth2(
       clientId,

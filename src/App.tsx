@@ -64,17 +64,28 @@ function HubMain() {
       RealtimeSyncManager.init();
       // Run initial intelligence reminder check
       ReminderEngine.runIntelligenceScan().catch(() => {});
+      // Auto-restore Google session from server vault if disconnected in localStorage
+      if (!GoogleAuthService.isConnected()) {
+        GoogleAuthService.restoreSessionFromServer().catch(() => {});
+      }
     });
 
     // Check for Google OAuth Token or Error in URL hash or search parameters
     const hash = window.location.hash;
     const search = window.location.search;
-    if (hash.includes('access_token=') || hash.includes('error=') || search.includes('error=')) {
+
+    if (search.includes('google_connected=true')) {
+      GoogleAuthService.restoreSessionFromServer().then(() => {
+        setCurrentTab('integrations');
+      });
+      window.history.replaceState(null, '', window.location.pathname);
+    } else if (hash.includes('access_token=') || hash.includes('error=') || search.includes('error=')) {
       const rawStr = hash.includes('access_token=') || hash.includes('error=') ? hash : search;
       const res = GoogleAuthService.parseOAuthCallback(rawStr);
 
       if (res.success && res.token) {
-        const expiresAt = Date.now() + (res.expiresIn || 3600) * 1000;
+        const expiresIn = res.expiresIn || 3600;
+        const expiresAt = Date.now() + expiresIn * 1000;
         const config = GoogleAuthService.getConfig();
         GoogleAuthService.saveConfig({
           ...config,
@@ -94,6 +105,8 @@ function HubMain() {
               picture: profile.picture,
             });
           }
+          // Vault token in Supabase integration_tokens table for serverless cron & cross-device persistence
+          GoogleAuthService.syncTokenToServer(res.token!, expiresAt, profile?.email).catch(() => {});
         });
         setCurrentTab('integrations');
       } else if (!res.success && res.error) {

@@ -1,6 +1,7 @@
 import type { GoogleWorkspaceConfig, GoogleServiceKey, GoogleServiceStatus } from '../../types';
 import { generateId } from '../../lib/utils';
 import { Capacitor } from '@capacitor/core';
+import { getSupabaseClient } from '../../lib/supabase';
 
 export const SERVICE_SCOPES: Record<GoogleServiceKey | 'identity', string> = {
   identity: 'openid email profile',
@@ -41,27 +42,34 @@ export class GoogleAuthService {
     };
   }
 
+  // Sanitizes Client ID by stripping quotes, whitespace, and invisible characters
+  public static cleanClientId(clientId: string): string {
+    if (!clientId) return '';
+    return clientId.trim().replace(/^["']|["']$/g, '').trim();
+  }
+
   // Retrieve effective Client ID from localStorage or environment
   public static getEffectiveClientId(): string {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem(this.CLIENT_ID_KEY);
-      if (stored && stored.trim()) return stored.trim();
+      if (stored && stored.trim()) return this.cleanClientId(stored);
     }
     const envId = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || '236257519636-q6kb0ika36uqleovphts0s526er75ms6.apps.googleusercontent.com';
-    return typeof envId === 'string' ? envId.trim() : '236257519636-q6kb0ika36uqleovphts0s526er75ms6.apps.googleusercontent.com';
+    return typeof envId === 'string' ? this.cleanClientId(envId) : '236257519636-q6kb0ika36uqleovphts0s526er75ms6.apps.googleusercontent.com';
   }
 
   public static saveClientId(clientId: string): void {
     if (typeof window !== 'undefined') {
-      localStorage.setItem(this.CLIENT_ID_KEY, clientId.trim());
+      const cleaned = this.cleanClientId(clientId);
+      localStorage.setItem(this.CLIENT_ID_KEY, cleaned);
     }
   }
 
   // Validates Google OAuth Client ID syntax
   public static isValidClientId(clientId: string): boolean {
-    const trimmed = clientId.trim();
-    if (!trimmed || trimmed.includes('your-google-oauth-client-id')) return false;
-    return /^[0-9]+-[a-z0-9_]+\.apps\.googleusercontent\.com$/i.test(trimmed);
+    const cleaned = this.cleanClientId(clientId);
+    if (!cleaned || cleaned.includes('your-google-oauth-client-id')) return false;
+    return /^[0-9]+-[a-z0-9_]+\.apps\.googleusercontent\.com$/i.test(cleaned);
   }
 
   // Get standardized redirect URI (matches exactly what must be registered in Google Cloud Console)
@@ -195,6 +203,9 @@ export class GoogleAuthService {
                   picture: profile.picture,
                 });
               }
+
+              // Vault token in Supabase integration_tokens so session persists across refreshes & devices
+              this.syncTokenToServer(response.access_token, expiresAt, profile?.email).catch(() => {});
 
               resolve({
                 success: true,
@@ -338,6 +349,80 @@ export class GoogleAuthService {
     });
   }
 
+  /**
+   * Persists the token to Supabase public.integration_tokens so that serverless
+   * automations and other sessions stay in sync and never forget the login.
+   */
+  public static async syncTokenToServer(token: string, expiresAt: number, email?: string): Promise<void> {
+    try {
+      const client = getSupabaseClient();
+      if (!client) return;
+      const { data: { user } } = await client.auth.getUser();
+      const userId = user?.id || '00000000-0000-0000-0000-000000000001';
+      await client.from('integration_tokens').upsert(
+        {
+          user_id: userId,
+          provider: 'google',
+          encrypted_access_token: token,
+          token_expires_at: new Date(expiresAt).toISOString(),
+          account_email: email || null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,provider' }
+      );
+    } catch (err) {
+      console.warn('[GoogleAuthService] Could not sync token to Supabase integration_tokens:', err);
+    }
+  }
+
+  /**
+   * Checks Supabase integration_tokens on app startup to restore the Google connection
+   * if localStorage was cleared or session was created on another device / server callback.
+   */
+  public static async restoreSessionFromServer(): Promise<boolean> {
+    try {
+      const client = getSupabaseClient();
+      if (!client) return false;
+      const { data: { user } } = await client.auth.getUser();
+      const userId = user?.id || '00000000-0000-0000-0000-000000000001';
+
+      const { data, error } = await client
+        .from('integration_tokens')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('provider', 'google')
+        .single();
+
+      if (error || !data) return false;
+
+      // Check if not expired
+      const expiry = data.token_expires_at ? new Date(data.token_expires_at).getTime() : 0;
+      if (expiry && Date.now() > expiry) {
+        console.warn('[GoogleAuthService] Server-side integration_token has expired.');
+        return false;
+      }
+
+      if (data.encrypted_access_token) {
+        const config = this.getConfig();
+        this.saveConfig({
+          ...config,
+          connected: true,
+          accessToken: data.encrypted_access_token,
+          expiresAt: expiry || Date.now() + 3600000,
+          email: data.account_email || config.email,
+          calendarSyncEnabled: true,
+          driveSyncEnabled: true,
+          gmailSyncEnabled: true,
+        });
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.warn('[GoogleAuthService] restoreSessionFromServer error:', err);
+      return false;
+    }
+  }
+
   // Disconnect & revoke credentials completely
   public static async disconnect(): Promise<void> {
     const token = this.getAccessToken();
@@ -351,6 +436,18 @@ export class GoogleAuthService {
         console.warn('Failed to revoke Google token on server:', err);
       }
     }
+
+    try {
+      const client = getSupabaseClient();
+      if (client) {
+        const { data: { user } } = await client.auth.getUser();
+        const userId = user?.id || '00000000-0000-0000-0000-000000000001';
+        await client.from('integration_tokens').delete().eq('user_id', userId).eq('provider', 'google');
+      }
+    } catch {
+      // Ignored if offline
+    }
+
     this.saveConfig({
       connected: false,
       email: undefined,
