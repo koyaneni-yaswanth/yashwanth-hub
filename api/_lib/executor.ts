@@ -2,7 +2,7 @@
 // Hard Constraint 1 & 2: All execution logic executes exclusively on the server.
 // Hard Constraint 4: Every execution writes an immutable execution record with real metrics.
 
-import { supabaseServer, recordExecutionLog } from './db';
+import { supabaseServer, recordExecutionLog } from './db.ts';
 
 export interface ExecuteParams {
   action_type: string;

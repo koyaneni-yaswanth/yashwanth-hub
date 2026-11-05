@@ -2,8 +2,8 @@
 // Endpoint: /api/cron/process-triggers
 // Protected by CRON_SECRET Bearer token. Evaluates due triggers and dispatches them to the runner.
 
-import { supabaseServer } from '../automations/db.ts';
-import { executeAutomationRun } from '../automations/runner.ts';
+import { supabaseServer } from '../_lib/db.ts';
+import { executeAutomationRun } from '../_lib/runner.ts';
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');

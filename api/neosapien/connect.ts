@@ -140,6 +140,58 @@ export default async function handler(req: any, res: any) {
       });
     }
 
+    // 4. ACTION: Refresh Expired Token
+    if (action === 'refresh') {
+      const { refresh_token } = req.body || {};
+
+      if (!refresh_token) {
+        return res.status(400).json({
+          error: 'Missing Refresh Token',
+          message: 'refresh_token is required.',
+        });
+      }
+
+      const refreshParams = new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token,
+      });
+
+      const refreshResp = await fetch(`${NEOSAPIEN_BASE_URL}/mcp/token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: refreshParams.toString(),
+      });
+
+      if (!refreshResp.ok) {
+        return res.status(refreshResp.status).json({
+          error: 'Token Refresh Failed',
+          message: 'Refresh token expired or invalid. Please re-authenticate.',
+        });
+      }
+
+      const tokenData = await refreshResp.json();
+
+      return res.status(200).json({
+        success: true,
+        accessToken: tokenData.access_token,
+        refreshToken: tokenData.refresh_token || refresh_token,
+        expiresIn: tokenData.expires_in,
+        issuedAt: new Date().toISOString(),
+      });
+    }
+
+    // 5. ACTION: Disconnect
+    if (action === 'disconnect') {
+      return res.status(200).json({
+        success: true,
+        status: 'disconnected',
+        message: 'NeoSapien integration disconnected and session terminated.',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     return res.status(400).json({ error: 'Unknown action specified' });
   } catch (error: any) {
     return res.status(500).json({

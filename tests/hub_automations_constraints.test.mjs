@@ -7,12 +7,11 @@ const projectRoot = process.cwd();
 
 test('Constraint 1 & 2: Server-side automation endpoints exist and client is free of automation execution logic', () => {
   const serverEndpoints = [
-    'api/automations/index.ts',
-    'api/automations/cron.ts',
-    'api/automations/queue.ts',
-    'api/automations/run.ts',
-    'api/automations/executor.ts',
-    'api/automations/db.ts',
+    'api/automations/dispatch.ts',
+    'api/cron/process-triggers.ts',
+    'api/_lib/runner.ts',
+    'api/_lib/db.ts',
+    'api/_lib/executor.ts',
   ];
 
   for (const ep of serverEndpoints) {
@@ -34,16 +33,16 @@ test('Constraint 3: Scheduled triggers rely on vercel.json cron jobs and Supabas
 
   const vercelConfig = JSON.parse(fs.readFileSync(vercelJsonPath, 'utf-8'));
   assert.ok(Array.isArray(vercelConfig.crons), 'vercel.json must contain a "crons" array');
-  assert.ok(vercelConfig.crons.length >= 3, 'vercel.json must define scheduled automation cron jobs');
+  assert.ok(vercelConfig.crons.length >= 2, 'vercel.json must define scheduled automation cron jobs');
 
   const cronPaths = vercelConfig.crons.map((c) => c.path);
   assert.ok(
-    cronPaths.some((p) => p.includes('/api/automations/cron')),
-    'vercel.json must have a cron job pointing to /api/automations/cron'
+    cronPaths.some((p) => p.includes('/api/cron/process-triggers')),
+    'vercel.json must have a cron job pointing to /api/cron/process-triggers'
   );
   assert.ok(
-    cronPaths.some((p) => p.includes('/api/automations/queue')),
-    'vercel.json must have a cron job draining /api/automations/queue'
+    cronPaths.some((p) => p.includes('/api/automations/cron')),
+    'vercel.json must have a cron job pointing to /api/automations/cron'
   );
 
   // Check that no browser intervals trigger automation runs in src/

@@ -3,7 +3,7 @@
 // Handles HTTP redirect from Google OAuth consent screen, exchanges code, and redirects to Hub frontend.
 
 import { google } from 'googleapis';
-import { supabaseServer } from '../../automations/db';
+import { supabaseServer } from '../../_lib/db.ts';
 
 export default async function handler(req: any, res: any) {
   const code = req.query.code;

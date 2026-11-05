@@ -10,8 +10,8 @@
  */
 
 import assert from 'node:assert/strict';
-import { supabaseServer } from '../api/automations/db.ts';
-import { executeAutomationRun } from '../api/automations/runner.ts';
+import { supabaseServer } from '../api/_lib/db.ts';
+import { executeAutomationRun } from '../api/_lib/runner.ts';
 import dispatchHandler from '../api/automations/dispatch.ts';
 
 async function runSmokeTest() {

@@ -1,41 +1,86 @@
-// Vercel Serverless Function: Automation Dispatcher
-// Endpoint: /api/automations/dispatch
+// Vercel Serverless Function: Automation Dispatcher & Registry
+// Endpoint: /api/automations/dispatch (also serves /api/automations and /api/automations/run via rewrites)
 // Validates user JWT, enforces idempotency, inserts 'queued' run record, and triggers runner.
 
-import { supabaseServer } from './db.ts';
-import { executeAutomationRun } from './runner.ts';
+import { supabaseServer } from '../_lib/db.ts';
+import { executeAutomationRun } from '../_lib/runner.ts';
 
 const memoryIdempotencyCache = new Map<string, any>();
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Idempotency-Key');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({
-      error: 'Method Not Allowed',
-      message: 'Only POST requests are supported at /api/automations/dispatch',
-    });
-  }
+  // 1. Authenticate User JWT if present
+  const authHeader = req.headers.authorization;
+  let userId: string | null = null;
 
-  try {
-    // 1. Authenticate User JWT
-    const authHeader = req.headers.authorization;
-    let userId: string | null = null;
-
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.slice(7).trim();
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.slice(7).trim();
+    try {
       const { data: { user }, error: authErr } = await supabaseServer.auth.getUser(token);
       if (user && !authErr) {
         userId = user.id;
       }
+    } catch {
+      // Ignored for unauthenticated or mock tests
     }
+  }
 
+  // ---------------------------------------------------------------------------
+  // GET: Return automations list and recent execution history
+  // ---------------------------------------------------------------------------
+  if (req.method === 'GET') {
+    try {
+      let automationsQuery = supabaseServer
+        .from('automations')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      let runsQuery = supabaseServer
+        .from('automation_runs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(25);
+
+      if (userId) {
+        automationsQuery = automationsQuery.eq('user_id', userId);
+        runsQuery = runsQuery.eq('user_id', userId);
+      }
+
+      const [autoRes, runsRes] = await Promise.all([automationsQuery, runsQuery]);
+
+      return res.status(200).json({
+        success: true,
+        automations: autoRes.data || [],
+        recentExecutionLogs: runsRes.data || [],
+        runs: runsRes.data || [],
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        error: 'Failed to fetch automations',
+        message: err.message,
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // POST: Execute / Dispatch automation run
+  // ---------------------------------------------------------------------------
+  if (req.method !== 'POST') {
+    return res.status(405).json({
+      error: 'Method Not Allowed',
+      message: 'Supported methods: GET, POST',
+    });
+  }
+
+  try {
     const {
       automation_id,
       action_type,

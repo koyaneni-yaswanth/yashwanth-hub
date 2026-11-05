@@ -4,7 +4,7 @@
 // Hard Constraint: Refresh tokens are NEVER sent to or stored in client storage.
 
 import { google } from 'googleapis';
-import { supabaseServer } from '../../automations/db';
+import { supabaseServer } from '../../_lib/db.ts';
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');
