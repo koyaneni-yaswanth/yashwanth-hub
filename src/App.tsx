@@ -39,6 +39,11 @@ import { NotificationsPage } from './pages/NotificationsPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { AutomationsPage } from './pages/AutomationsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { StartupCommandPage } from './pages/StartupCommandPage';
+import { RoboticsLabPage } from './pages/RoboticsLabPage';
+import { FinancePage } from './pages/FinancePage';
+import { HealthRoutinePage } from './pages/HealthRoutinePage';
+import { KnowledgeMemoryPage } from './pages/KnowledgeMemoryPage';
 
 function HubMain() {
   const { isDark } = useTheme();
@@ -204,12 +209,18 @@ function HubMain() {
         return <FilesAndPhotosPage currentArea={currentArea} areas={areas} />;
       case 'gmail':
         return <GmailPage onNavigateToTasks={() => setCurrentTab('tasks')} />;
+      case 'finance':
       case 'expenses':
-        return <ExpensesPage currentArea={currentArea} areas={areas} />;
+        return <FinancePage currentArea={currentArea} areas={areas} />;
       case 'contacts':
         return <ContactsPage currentArea={currentArea} areas={areas} />;
+      case 'startup-command':
       case 'wind-plan':
-        return <WindPlanPage />;
+        return <StartupCommandPage />;
+      case 'robotics-lab':
+        return <RoboticsLabPage />;
+      case 'health-routine':
+        return <HealthRoutinePage />;
       case 'ai-assistant':
         return (
           <AIAssistantPage
@@ -218,9 +229,10 @@ function HubMain() {
             onNavigate={(tab) => setCurrentTab(tab)}
           />
         );
+      case 'knowledge-memory':
       case 'neo-memory':
         return (
-          <NeoMemoryCenterPage
+          <KnowledgeMemoryPage
             currentArea={currentArea}
             areas={areas}
             onNavigateToTasks={() => setCurrentTab('tasks')}

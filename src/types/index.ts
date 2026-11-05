@@ -490,9 +490,20 @@ export interface AIComparisonResult {
 
 export type NavigationTab =
   | 'dashboard'
-  | 'projects'
-  | 'tasks'
+  | 'ai-assistant'
+  | 'automations'
   | 'calendar'
+  | 'tasks'
+  | 'projects'
+  | 'startup-command'
+  | 'robotics-lab'
+  | 'knowledge-memory'
+  | 'finance'
+  | 'health-routine'
+  | 'integrations'
+  | 'analytics'
+  | 'settings'
+  // Backward compatibility tabs
   | 'meetings'
   | 'travel'
   | 'notes'
@@ -502,14 +513,9 @@ export type NavigationTab =
   | 'expenses'
   | 'contacts'
   | 'wind-plan'
-  | 'ai-assistant'
   | 'notifications'
-  | 'analytics'
-  | 'automations'
-  | 'integrations'
   | 'neo-memory'
-  | 'system-health'
-  | 'settings';
+  | 'system-health';
 
 // ==========================================
 // REAL-TIME AI OPERATING SYSTEM SCHEMA (SUPABASE & DEXIE)
@@ -617,4 +623,64 @@ export interface DataAuditLog {
   details: string;
   performed_by: string;
 }
+
+// ==========================================
+// STARTUP COMMAND & V3F READINESS MODELS
+// ==========================================
+
+export type V3FScore = 0 | 1 | 2 | 3 | 'N/A';
+
+export interface V3FAssessmentItem {
+  id: string;
+  category:
+    | 'Founders, Governance & Compliance'
+    | 'Customer & Market'
+    | 'Product & Technology'
+    | 'GTM & Brand'
+    | 'Finance & Funding'
+    | 'Traction & Execution';
+  parameter: string;
+  score: V3FScore;
+  evidence: string;
+  gap: string;
+  owner: string;
+  next_action: string;
+  due_date: string;
+  status: 'pending' | 'in_progress' | 'verified';
+}
+
+// ==========================================
+// ROBOTICS LAB MODELS
+// ==========================================
+
+export interface RoboticsProjectRecord {
+  id: string;
+  project: 'AgileX PiPER' | '3-Drone Swarm' | 'AWR2944 mmWave' | 'General';
+  title: string;
+  category: 'Hardware' | 'Software' | 'Simulation' | 'Test Run' | 'Telemetry';
+  description: string;
+  status: 'planning' | 'active' | 'testing' | 'completed' | 'blocked';
+  parameters?: Record<string, any>;
+  tags?: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+// ==========================================
+// HEALTH, SLEEP & ROUTINE MODELS
+// ==========================================
+
+export interface HealthRoutineRecord {
+  id: string;
+  date: string;
+  sleep_hours: number;
+  sleep_quality: 'poor' | 'fair' | 'good' | 'optimal';
+  bedtime: string;
+  wake_time: string;
+  deep_work_hours: number;
+  energy_rating: number; // 1-10
+  routine_completed: string[];
+  notes?: string;
+}
+
 

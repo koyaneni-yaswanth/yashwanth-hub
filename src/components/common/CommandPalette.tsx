@@ -22,6 +22,9 @@ import {
   Brain,
   Activity,
   Zap,
+  Bot,
+  Heart,
+  BarChart3,
 } from 'lucide-react';
 import { db } from '../../db';
 import type { NavigationTab, Area } from '../../types';
@@ -66,24 +69,28 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   // Static Navigation Items
   const navItems = [
-    { label: 'Go to Dashboard', tab: 'dashboard' as NavigationTab, icon: Command, category: 'Navigation' },
-    { label: 'Go to Projects & Engineering', tab: 'projects' as NavigationTab, icon: FolderKanban, category: 'Navigation' },
-    { label: 'Go to Tasks', tab: 'tasks' as NavigationTab, icon: CheckSquare, category: 'Navigation' },
-    { label: 'Go to Calendar', tab: 'calendar' as NavigationTab, icon: Calendar, category: 'Navigation' },
-    { label: 'Go to Meetings', tab: 'meetings' as NavigationTab, icon: Video, category: 'Navigation' },
-    { label: 'Go to Neo Memory Center', tab: 'neo-memory' as NavigationTab, icon: Brain, category: 'Navigation' },
-    { label: 'Go to Files & Photos Vault', tab: 'files' as NavigationTab, icon: FolderArchive, category: 'Navigation' },
-    { label: 'Go to Gmail Intelligence', tab: 'gmail' as NavigationTab, icon: Mail, category: 'Navigation' },
-    { label: 'Go to Contacts', tab: 'contacts' as NavigationTab, icon: Users, category: 'Navigation' },
-    { label: 'Go to Notes', tab: 'notes' as NavigationTab, icon: FileText, category: 'Navigation' },
-    { label: 'Go to Wind Plan (90-Day TRL)', tab: 'wind-plan' as NavigationTab, icon: Wind, category: 'Navigation' },
-    { label: 'Go to AI Copilot', tab: 'ai-assistant' as NavigationTab, icon: Sparkles, category: 'Navigation' },
-    { label: 'Go to Google & AI Integrations', tab: 'integrations' as NavigationTab, icon: Cloud, category: 'Navigation' },
-    { label: 'Go to Automations Engine', tab: 'automations' as NavigationTab, icon: Zap, category: 'Navigation' },
-    { label: 'Go to System Health & Sync Center', tab: 'system-health' as NavigationTab, icon: Activity, category: 'Navigation' },
-    { label: 'Go to Notifications', tab: 'notifications' as NavigationTab, icon: Bell, category: 'Navigation' },
-    { label: 'Go to Expenses', tab: 'expenses' as NavigationTab, icon: IndianRupee, category: 'Navigation' },
-    { label: 'Go to Settings', tab: 'settings' as NavigationTab, icon: Settings, category: 'Navigation' },
+    { label: 'Go to 1. Home Dashboard', tab: 'dashboard' as NavigationTab, icon: Command, category: 'Navigation' },
+    { label: 'Go to 2. AI Assistant & Agents', tab: 'ai-assistant' as NavigationTab, icon: Sparkles, category: 'Navigation' },
+    { label: 'Go to 3. Automations Engine', tab: 'automations' as NavigationTab, icon: Zap, category: 'Navigation' },
+    { label: 'Go to 4. Calendar & Schedule', tab: 'calendar' as NavigationTab, icon: Calendar, category: 'Navigation' },
+    { label: 'Go to 5. Tasks & Kanban', tab: 'tasks' as NavigationTab, icon: CheckSquare, category: 'Navigation' },
+    { label: 'Go to 6. Projects & Workspaces', tab: 'projects' as NavigationTab, icon: FolderKanban, category: 'Navigation' },
+    { label: 'Go to 7. Startup Command (Pawan Shakti)', tab: 'startup-command' as NavigationTab, icon: Wind, category: 'Navigation' },
+    { label: 'Go to 8. Robotics Lab (PiPER, Drones, Radar)', tab: 'robotics-lab' as NavigationTab, icon: Bot, category: 'Navigation' },
+    { label: 'Go to 9. Knowledge & Memory Hub', tab: 'knowledge-memory' as NavigationTab, icon: Brain, category: 'Navigation' },
+    { label: 'Go to 10. Finance & Grants Tracker', tab: 'finance' as NavigationTab, icon: IndianRupee, category: 'Navigation' },
+    { label: 'Go to 11. Health & Routine Protocol', tab: 'health-routine' as NavigationTab, icon: Heart, category: 'Navigation' },
+    { label: 'Go to 12. Integrations & MCP Hub', tab: 'integrations' as NavigationTab, icon: Cloud, category: 'Navigation' },
+    { label: 'Go to 13. System Analytics', tab: 'analytics' as NavigationTab, icon: BarChart3, category: 'Navigation' },
+    { label: 'Go to 14. Settings & Preferences', tab: 'settings' as NavigationTab, icon: Settings, category: 'Navigation' },
+    // Specialized Views
+    { label: 'Go to Neo Memory Center', tab: 'neo-memory' as NavigationTab, icon: Brain, category: 'Sub-Hub' },
+    { label: 'Go to Notes Vault', tab: 'notes' as NavigationTab, icon: FileText, category: 'Sub-Hub' },
+    { label: 'Go to Meetings Intelligence', tab: 'meetings' as NavigationTab, icon: Video, category: 'Sub-Hub' },
+    { label: 'Go to Files & Photos Vault', tab: 'files' as NavigationTab, icon: FolderArchive, category: 'Sub-Hub' },
+    { label: 'Go to Gmail Intelligence', tab: 'gmail' as NavigationTab, icon: Mail, category: 'Sub-Hub' },
+    { label: 'Go to System Health & Sync Center', tab: 'system-health' as NavigationTab, icon: Activity, category: 'Sub-Hub' },
+    { label: 'Go to Notifications', tab: 'notifications' as NavigationTab, icon: Bell, category: 'Sub-Hub' },
   ];
 
   // Quick Action Items

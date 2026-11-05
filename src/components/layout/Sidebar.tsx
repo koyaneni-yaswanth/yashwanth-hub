@@ -19,6 +19,9 @@ import {
   Brain,
   Activity,
   Zap,
+  Wind,
+  Bot,
+  Heart,
 } from 'lucide-react';
 import type { NavigationTab } from '../../types';
 
@@ -50,34 +53,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile,
 }) => {
   const navItems: NavItem[] = [
-    { id: 'dashboard', label: 'Home', icon: LayoutDashboard },
-    { id: 'calendar', label: 'Calendar', icon: Calendar },
-    { id: 'tasks', label: 'Tasks', icon: CheckSquare, badge: openTasksCount > 0 ? openTasksCount : undefined },
-    { id: 'meetings', label: 'Meetings & Meet', icon: Video },
-    { id: 'neo-memory', label: 'Neo Memory Center', icon: Brain },
+    { id: 'dashboard', label: '1. Home', icon: LayoutDashboard },
+    { id: 'ai-assistant', label: '2. AI Assistant (Jarvis)', icon: Sparkles, highlight: true },
+    { id: 'automations', label: '3. Automations Engine', icon: Zap },
+    { id: 'calendar', label: '4. Calendar', icon: Calendar },
+    { id: 'tasks', label: '5. Tasks', icon: CheckSquare, badge: openTasksCount > 0 ? openTasksCount : undefined },
     {
       id: 'projects',
-      label: 'Projects & Engineering',
+      label: '6. Projects',
       icon: FolderKanban,
       badge: activeProjectsCount > 0 ? activeProjectsCount : undefined,
     },
-    { id: 'files', label: 'Files & Photos', icon: FolderArchive },
-    { id: 'gmail', label: 'Gmail Intelligence', icon: Mail },
-    { id: 'contacts', label: 'Contacts', icon: Users },
-    { id: 'expenses', label: 'Expenses', icon: IndianRupee },
-    { id: 'notes', label: 'Notes', icon: FileText },
-    { id: 'ai-assistant', label: 'Yashwanth AI', icon: Sparkles, highlight: true },
-    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-    { id: 'automations', label: 'Automations Engine', icon: Zap },
-    { id: 'integrations', label: 'Integrations & Sync', icon: Cloud },
-    { id: 'system-health', label: 'System Health & Sync', icon: Activity },
-    {
-      id: 'notifications',
-      label: 'Reminders & Alerts',
-      icon: Bell,
-      badge: unreadNotifsCount > 0 ? unreadNotifsCount : undefined,
-    },
-    { id: 'settings', label: 'Settings', icon: Settings },
+    { id: 'startup-command', label: '7. Startup Command', icon: Wind },
+    { id: 'robotics-lab', label: '8. Robotics Lab', icon: Bot },
+    { id: 'knowledge-memory', label: '9. Knowledge & Memory', icon: Brain },
+    { id: 'finance', label: '10. Finance & Capital', icon: IndianRupee },
+    { id: 'health-routine', label: '11. Health & Routine', icon: Heart },
+    { id: 'integrations', label: '12. Integrations & Sync', icon: Cloud },
+    { id: 'analytics', label: '13. Analytics', icon: BarChart3 },
+    { id: 'settings', label: '14. Settings', icon: Settings },
   ];
 
   const handleNavClick = (tab: NavigationTab) => {

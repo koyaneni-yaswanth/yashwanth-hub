@@ -14,9 +14,18 @@ import {
   Check,
   RefreshCw,
   Sparkles,
+  Bot,
+  Heart,
+  Zap,
+  Brain,
+  ArrowRight,
+  Clock,
+  ShieldCheck,
+  Layers,
+  FolderKanban,
 } from 'lucide-react';
 import { db } from '../db';
-import type { Task, Area, Priority } from '../types';
+import type { Task, Area, Priority, NavigationTab } from '../types';
 import { formatINR, formatShortDate, getGreeting, getTodayISO, isOverdue, generateId } from '../lib/utils';
 import { StatCard } from '../components/common/StatCard';
 import { Badge } from '../components/common/Badge';
@@ -39,6 +48,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const today = getTodayISO();
   const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
   const currentMonthStr = today.slice(0, 7);
+
+  // V3F Target Calculation (15 November 2026)
+  const v3fTargetDate = new Date('2026-11-15T23:59:59+05:30').getTime();
+  const daysToV3F = Math.max(0, Math.ceil((v3fTargetDate - Date.now()) / (1000 * 60 * 60 * 24)));
+  const taskInputRef = React.useRef<HTMLInputElement>(null);
 
   // Sync state
   const [isSyncing, setIsSyncing] = useState(false);
@@ -220,11 +234,203 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         <Neo1DeviceCard />
       </div>
 
+      {/* Universal Quick-Action Bar */}
+      <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-4 shadow-xs">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-[var(--hub-accent)]" />
+            <span className="text-xs font-bold uppercase tracking-wider text-[var(--hub-ink)] font-heading">
+              Universal Quick Actions
+            </span>
+          </div>
+          <span className="text-[11px] text-[var(--hub-muted)]">
+            One-click execution across all 14 operating hubs
+          </span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+          <button
+            type="button"
+            onClick={() => onNavigate('ai-assistant')}
+            className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/20 text-xs font-medium transition-all group cursor-pointer"
+          >
+            <Sparkles className="w-4 h-4 mb-1 group-hover:scale-110 transition-transform" />
+            <span>Ask AI</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              taskInputRef.current?.focus();
+              taskInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }}
+            className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 text-xs font-medium transition-all group cursor-pointer"
+          >
+            <CheckCircle2 className="w-4 h-4 mb-1 group-hover:scale-110 transition-transform" />
+            <span>Create Task</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigate('calendar')}
+            className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-500/20 text-xs font-medium transition-all group cursor-pointer"
+          >
+            <Calendar className="w-4 h-4 mb-1 group-hover:scale-110 transition-transform" />
+            <span>Schedule Event</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigate('automations')}
+            className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/20 text-xs font-medium transition-all group cursor-pointer"
+          >
+            <Zap className="w-4 h-4 mb-1 group-hover:scale-110 transition-transform" />
+            <span>Automation</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigate('projects')}
+            className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-500/20 text-xs font-medium transition-all group cursor-pointer"
+          >
+            <FolderKanban className="w-4 h-4 mb-1 group-hover:scale-110 transition-transform" />
+            <span>Add Update</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigate('finance')}
+            className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-teal-500/10 hover:bg-teal-500/20 text-teal-700 dark:text-teal-300 border border-teal-500/20 text-xs font-medium transition-all group cursor-pointer"
+          >
+            <IndianRupee className="w-4 h-4 mb-1 group-hover:scale-110 transition-transform" />
+            <span>Record Expense</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigate('knowledge-memory')}
+            className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/20 text-xs font-medium transition-all group cursor-pointer"
+          >
+            <Brain className="w-4 h-4 mb-1 group-hover:scale-110 transition-transform" />
+            <span>Capture Note</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => AgentPresenceService.runDemoTour(onNavigate)}
+            className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border border-cyan-500/20 text-xs font-medium transition-all group cursor-pointer"
+          >
+            <Bot className="w-4 h-4 mb-1 group-hover:scale-110 transition-transform" />
+            <span>Work Session</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Strategic Founder Workspaces Hub */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Pawan Shakti Card */}
+        <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-5 shadow-xs flex flex-col justify-between hover:border-teal-500/50 transition-all">
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-xs font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider">
+                <Wind className="w-4 h-4" />
+                <span>Pawan Shakti</span>
+              </span>
+              <Badge variant="teal">TRL 4 Prototype</Badge>
+            </div>
+            <h4 className="font-heading font-bold text-base text-[var(--hub-ink)]">
+              Low-Wind Planetary Gearbox System
+            </h4>
+            <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
+              1:10 Planetary gear mechanism optimized for low cut-in speeds (~1 m² swept area). Secured ANRF ₹25L grant and filed patent 2025/399.
+            </p>
+            <div className="p-2.5 rounded-xl bg-teal-500/10 border border-teal-500/20 flex items-center justify-between text-xs">
+              <span className="font-semibold text-teal-800 dark:text-teal-200">V3F Assessment</span>
+              <span className="font-mono font-bold text-teal-700 dark:text-teal-300">
+                {daysToV3F} days left (15 Nov)
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigate('startup-command')}
+            className="mt-4 flex items-center justify-between w-full px-3.5 py-2 rounded-xl bg-[var(--hub-bg)] hover:bg-[var(--hub-surface-subtle)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] transition-colors cursor-pointer group"
+          >
+            <span>Open Startup Command</span>
+            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+          </button>
+        </div>
+
+        {/* Robotics Lab Card */}
+        <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-5 shadow-xs flex flex-col justify-between hover:border-purple-500/50 transition-all">
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-xs font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider">
+                <Bot className="w-4 h-4" />
+                <span>Robotics Lab</span>
+              </span>
+              <Badge variant="purple">3 Systems Active</Badge>
+            </div>
+            <h4 className="font-heading font-bold text-base text-[var(--hub-ink)]">
+              PiPER, Drone Swarm & mmWave Radar
+            </h4>
+            <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
+              AgileX PiPER 6-DOF (ROS 2 / Isaac Sim), 3-drone swarm with SIYI HM30 mesh & Jetson Orin Nano, and TI AWR2944 77GHz radar EKF tracking.
+            </p>
+            <div className="flex items-center gap-1.5 flex-wrap pt-1">
+              <span className="text-[11px] px-2 py-0.5 rounded-md bg-[var(--hub-bg)] border border-[var(--hub-line)] font-mono">
+                SocketCAN 500Hz
+              </span>
+              <span className="text-[11px] px-2 py-0.5 rounded-md bg-[var(--hub-bg)] border border-[var(--hub-line)] font-mono">
+                Isaac Sim 4.0
+              </span>
+              <span className="text-[11px] px-2 py-0.5 rounded-md bg-[var(--hub-bg)] border border-[var(--hub-line)] font-mono">
+                VLA AI
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigate('robotics-lab')}
+            className="mt-4 flex items-center justify-between w-full px-3.5 py-2 rounded-xl bg-[var(--hub-bg)] hover:bg-[var(--hub-surface-subtle)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] transition-colors cursor-pointer group"
+          >
+            <span>Launch Robotics Lab</span>
+            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+          </button>
+        </div>
+
+        {/* Founder Routine & Health Card */}
+        <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-5 shadow-xs flex flex-col justify-between hover:border-rose-500/50 transition-all">
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-xs font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider">
+                <Heart className="w-4 h-4" />
+                <span>Founder Health</span>
+              </span>
+              <Badge variant="red">Peak Performance</Badge>
+            </div>
+            <h4 className="font-heading font-bold text-base text-[var(--hub-ink)]">
+              Circadian Sleep & Deep Work Blocks
+            </h4>
+            <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
+              7.2h nightly sleep tracking, 4.5h deep engineering blocks (CAD & ROS 2 tests), and evening screen wind-down protocol.
+            </p>
+            <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-between text-xs">
+              <span className="font-semibold text-rose-800 dark:text-rose-200">Today's Deep Work</span>
+              <span className="font-mono font-bold text-rose-700 dark:text-rose-300">
+                4.5h Target • 8/10 Energy
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigate('health-routine')}
+            className="mt-4 flex items-center justify-between w-full px-3.5 py-2 rounded-xl bg-[var(--hub-bg)] hover:bg-[var(--hub-surface-subtle)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] transition-colors cursor-pointer group"
+          >
+            <span>View Routine Protocol</span>
+            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+          </button>
+        </div>
+      </div>
+
       {/* Quick Add Task Box */}
       <div data-agent-target="quick-actions" className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-4 shadow-xs">
         <form onSubmit={handleQuickAdd} className="space-y-3">
           <div className="flex items-center gap-2">
             <input
+              ref={taskInputRef}
               type="text"
               value={quickText}
               onChange={(e) => setQuickText(e.target.value)}

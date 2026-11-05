@@ -13,17 +13,41 @@ import {
   Cpu,
   Columns3,
   Zap,
+  Check,
+  X,
+  ShieldCheck,
+  Layers,
+  ArrowRight,
+  Clock,
 } from 'lucide-react';
 import { db } from '../db';
 import type { Area, AIMode, AIProvider, AIComparisonResult } from '../types';
-import { generateId } from '../lib/utils';
+import { generateId, getTodayISO } from '../lib/utils';
 import { SUPPORTED_MODELS } from '../services/ai/aiModels';
 import { AIGateway } from '../services/ai/aiGateway';
+import { Badge } from '../components/common/Badge';
 
 interface AIAssistantPageProps {
   currentArea: string;
   areas: Area[];
   onNavigate: (tab: any) => void;
+}
+
+export type ModularAgent =
+  | 'orchestrator'
+  | 'planning'
+  | 'research'
+  | 'execution'
+  | 'startup_advisor'
+  | 'robotics'
+  | 'productivity';
+
+export interface AIProposedAction {
+  id: string;
+  title: string;
+  category: 'task' | 'calendar' | 'note' | 'expense';
+  details: string;
+  status: 'pending' | 'approved' | 'rejected' | 'executed';
 }
 
 interface ChatMessage {
@@ -35,7 +59,24 @@ interface ChatMessage {
   modelId?: string;
   latencyMs?: number;
   tokensUsed?: number;
+  actions?: AIProposedAction[];
 }
+
+const MODULAR_AGENTS: {
+  id: ModularAgent;
+  name: string;
+  role: string;
+  icon: React.ElementType;
+  badge: string;
+}[] = [
+  { id: 'orchestrator', name: 'Jarvis Orchestrator', role: 'Executive Master', icon: Sparkles, badge: 'Lead' },
+  { id: 'planning', name: 'Planning Agent', role: '90-Day TRL Roadmaps', icon: Calendar, badge: 'Strategy' },
+  { id: 'research', name: 'Deep Research', role: 'NACA & mmWave Papers', icon: FileText, badge: 'Science' },
+  { id: 'execution', name: 'Execution Agent', role: 'ROS 2 & Git Ops', icon: Zap, badge: 'Dev' },
+  { id: 'startup_advisor', name: 'Startup Advisor', role: 'V3F & ₹25L ANRF Grant', icon: Wind, badge: 'Founder' },
+  { id: 'robotics', name: 'Robotics Assistant', role: 'PiPER CAN & Isaac Sim', icon: Bot, badge: 'Hardware' },
+  { id: 'productivity', name: 'Productivity Agent', role: 'Habits & Sleep Energy', icon: CheckCircle, badge: 'Health' },
+];
 
 export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
   currentArea: _currentArea,
@@ -46,6 +87,7 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
   const aiLogs = useLiveQuery(() => db.ai_logs.toArray(), []) || [];
 
   // Configuration State
+  const [selectedAgent, setSelectedAgent] = useState<ModularAgent>('orchestrator');
   const [selectedProvider, setSelectedProvider] = useState<AIProvider>(() => {
     return (localStorage.getItem('yash_ai_provider') as AIProvider) || 'gemini';
   });
@@ -73,10 +115,26 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
       id: 'init-1',
       sender: 'assistant',
       content:
-        "Welcome Yaswanth. I am your Jarvis-level Personal AI Operating System.\n\nI have real-time memory of your tasks, projects (PAWAN SHAKTI, IvLabs, MG Automation), schedule, and budget.\n\nSelect an AI Mode below (Personal, Engineering, Startup, Research, Meeting, Writing) or ask a question directly.",
+        "Welcome Yaswanth. I am your Jarvis-level Personal AI Operating System.\n\nI have real-time memory of your tasks, projects (PAWAN SHAKTI, IvLabs, MG Automation), schedule, and budget.\n\nSelect a specialized Agent above (Orchestrator, Planning, Research, Execution, Startup Advisor, Robotics, Productivity) to focus reasoning on specific domain models.",
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       provider: 'Jarvis Gateway',
       modelId: 'gemini-2.5-flash',
+      actions: [
+        {
+          id: 'ACT-TRL-001',
+          title: 'Audit Pawan Shakti planetary gear ratio (1:10) for TRL 4 cut-in testing',
+          category: 'task',
+          details: 'Verify gear teeth count and contact stress for 3-planet vs 4-planet configuration.',
+          status: 'pending',
+        },
+        {
+          id: 'ACT-ROB-002',
+          title: 'Calibrate AgileX PiPER SocketCAN bus frequency @ 500 Hz',
+          category: 'task',
+          details: 'Run can0 hardware test and verify trajectory feedback in ROS 2 Humble.',
+          status: 'pending',
+        },
+      ],
     },
   ]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -88,6 +146,73 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
     localStorage.setItem('yash_ai_provider', selectedProvider);
     localStorage.setItem('yash_ai_model', selectedModelId);
     setIsConfigOpen(false);
+  };
+
+  // Action Approval Handlers
+  const handleApproveAction = async (msgId: string, actionId: string) => {
+    let actionItem: AIProposedAction | undefined;
+
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== msgId || !m.actions) return m;
+        return {
+          ...m,
+          actions: m.actions.map((act) => {
+            if (act.id === actionId) {
+              actionItem = act;
+              return { ...act, status: 'executed' };
+            }
+            return act;
+          }),
+        };
+      })
+    );
+
+    if (actionItem) {
+      const act = actionItem as AIProposedAction;
+      try {
+        if (act.category === 'task') {
+          await db.tasks.add({
+            id: generateId(),
+            text: act.title,
+            area: 'PAWAN SHAKTI',
+            priority: 'high',
+            starred: false,
+            done: false,
+            due_date: getTodayISO(),
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            synced: false,
+          });
+        } else if (act.category === 'note') {
+          await db.notes.add({
+            id: generateId(),
+            title: act.title,
+            body: act.details,
+            area: 'PAWAN SHAKTI',
+            pinned: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+        }
+      } catch (err) {
+        console.warn('[AIAssistant] Error executing approved action:', err);
+      }
+    }
+  };
+
+  const handleRejectAction = (msgId: string, actionId: string) => {
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== msgId || !m.actions) return m;
+        return {
+          ...m,
+          actions: m.actions.map((act) =>
+            act.id === actionId ? { ...act, status: 'rejected' } : act
+          ),
+        };
+      })
+    );
   };
 
   // Total metrics
@@ -114,12 +239,33 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
     setIsProcessing(true);
 
     try {
+      const activeAgentMeta = MODULAR_AGENTS.find((a) => a.id === selectedAgent);
       const response = await AIGateway.executePrompt(userText, {
         provider: selectedProvider,
         modelId: selectedModelId,
         mode: selectedMode,
-        systemPrompt: `You are Jarvis, the executive personal AI operating system for Yaswanth (founder of PAWAN SHAKTI wind startup, robotics lead at IvLabs, and engineer at MG Automation). Provide rigorous, concise, structured answers. Distinguish verified facts from assumptions.`,
+        systemPrompt: `You are the ${activeAgentMeta?.name || 'Jarvis'} (${activeAgentMeta?.role || 'Executive Operating System'}) for Yaswanth (founder of PAWAN SHAKTI low-wind turbine startup, robotics lead at IvLabs, engineer at MG Automation). Provide rigorous, concise, structured answers. Distinguish verified facts from assumptions.`,
       });
+
+      // Detect if an actionable directive was generated
+      const generatedActions: AIProposedAction[] = [];
+      if (
+        userText.toLowerCase().includes('task') ||
+        userText.toLowerCase().includes('schedule') ||
+        userText.toLowerCase().includes('action') ||
+        userText.toLowerCase().includes('plan') ||
+        userText.toLowerCase().includes('todo') ||
+        response.text.toLowerCase().includes('recommend') ||
+        response.text.toLowerCase().includes('next step')
+      ) {
+        generatedActions.push({
+          id: `ACT-${Date.now().toString().slice(-4)}`,
+          title: `Execute directive: ${userText.slice(0, 60)}...`,
+          category: 'task',
+          details: `Generated by ${activeAgentMeta?.name || 'Jarvis'} in ${selectedMode} mode.`,
+          status: 'pending',
+        });
+      }
 
       setMessages((prev) => [
         ...prev,
@@ -132,6 +278,7 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
           modelId: response.modelId,
           latencyMs: response.latencyMs,
           tokensUsed: response.tokensInput + response.tokensOutput,
+          actions: generatedActions.length > 0 ? generatedActions : undefined,
         },
       ]);
     } catch (err: any) {
@@ -215,6 +362,39 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
             <span>API Gateway Settings</span>
           </button>
         </div>
+      </div>
+
+      {/* Modular Agent Specialist Bar */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 flex-none">
+        <span className="text-xs font-bold text-[var(--hub-ink)] uppercase tracking-wider shrink-0 mr-1 flex items-center gap-1">
+          <Bot className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+          <span>Specialist:</span>
+        </span>
+        {MODULAR_AGENTS.map((agent) => {
+          const Icon = agent.icon;
+          const isSelected = selectedAgent === agent.id;
+          return (
+            <button
+              key={agent.id}
+              onClick={() => setSelectedAgent(agent.id)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold whitespace-nowrap cursor-pointer transition-all ${
+                isSelected
+                  ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
+                  : 'bg-[var(--hub-surface)] border-[var(--hub-line)] text-[var(--hub-ink)] hover:border-teal-500'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              <span>{agent.name}</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                  isSelected ? 'bg-white/20 text-white' : 'bg-[var(--hub-bg)] text-[var(--hub-muted)]'
+                }`}
+              >
+                {agent.badge}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Model & Mode Quick Bar */}
@@ -433,6 +613,70 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
                   }`}
                 >
                   <div className="whitespace-pre-wrap font-sans">{msg.content}</div>
+
+                  {/* Proposed Actions Section */}
+                  {msg.actions && msg.actions.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-[var(--hub-line)] space-y-2">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-[var(--hub-ink)] uppercase tracking-wider">
+                        <span className="flex items-center gap-1 text-teal-600 dark:text-teal-400">
+                          <Layers className="w-3.5 h-3.5" />
+                          <span>Generated Action Directives ({msg.actions.length})</span>
+                        </span>
+                        <span className="text-[10px] text-[var(--hub-muted)] font-normal">
+                          Requires Founder Approval
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        {msg.actions.map((act) => (
+                          <div
+                            key={act.id}
+                            className="p-2.5 rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-line)] space-y-1.5 text-xs shadow-xs"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-mono text-[10px] font-bold text-[var(--hub-muted)] bg-[var(--hub-bg)] px-1.5 py-0.5 rounded border border-[var(--hub-line)]">
+                                {act.id}
+                              </span>
+                              {act.status === 'pending' && (
+                                <Badge variant="amber" dot>Pending Approval</Badge>
+                              )}
+                              {act.status === 'executed' && (
+                                <Badge variant="emerald" dot>Approved & Executed</Badge>
+                              )}
+                              {act.status === 'rejected' && (
+                                <Badge variant="red" dot>Rejected</Badge>
+                              )}
+                            </div>
+                            <div className="font-semibold text-[var(--hub-ink)]">
+                              {act.title}
+                            </div>
+                            <div className="text-[11px] text-[var(--hub-muted)]">
+                              {act.details}
+                            </div>
+                            {act.status === 'pending' && (
+                              <div className="flex items-center gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleApproveAction(msg.id, act.id)}
+                                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[11px] cursor-pointer transition-colors shadow-xs"
+                                >
+                                  <Check className="w-3 h-3" />
+                                  <span>Approve & Execute</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRejectAction(msg.id, act.id)}
+                                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[var(--hub-bg)] hover:bg-red-500/10 text-[var(--hub-muted)] hover:text-red-600 border border-[var(--hub-line)] font-semibold text-[11px] cursor-pointer transition-colors"
+                                >
+                                  <X className="w-3 h-3" />
+                                  <span>Reject</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <div
                     className={`flex items-center justify-between gap-3 text-[10px] mt-2 pt-1 border-t ${
