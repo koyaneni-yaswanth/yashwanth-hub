@@ -106,11 +106,6 @@ function HubMain() {
       setCurrentTab('integrations');
     }
 
-    // Periodic reminder check every 60 seconds
-    const interval = setInterval(() => {
-      ReminderEngine.runIntelligenceScan().catch(() => {});
-    }, 60000);
-
     // Global Command Palette Shortcut (Ctrl+K or Cmd+K)
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
@@ -121,7 +116,6 @@ function HubMain() {
     window.addEventListener('keydown', handleKeyDown);
 
     return () => {
-      clearInterval(interval);
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);

@@ -73,70 +73,38 @@ export class ReminderEngine {
     return notif;
   }
 
-  // Periodic intelligent scan across tasks, meetings, and deadlines
+  // Server-delegated intelligence scan across tasks, meetings, and deadlines
+  // Conforms strictly to Antigravity Hard Constraints:
+  // - Executes on server via /api/automations/run
+  // - Verified database execution record created in automation_execution_logs
+  // - No optimistic success indicators without real execution records
   public static async runIntelligenceScan(): Promise<number> {
-    const today = getTodayISO();
-    const now = new Date();
     let countDelivered = 0;
 
-    const [tasks, meetings, existingNotifs] = await Promise.all([
-      db.tasks.toArray(),
-      db.meetings.toArray(),
-      db.notifications.toArray(),
-    ]);
+    try {
+      // 1. Execute task & meeting scanner strictly on the server
+      const { AutomationService } = await import('./automationService');
+      const res = await AutomationService.triggerServerAutomation('task_deadline_scan', undefined, {
+        lead_time_minutes: 45,
+      });
 
-    // 1. Scan for Overdue Tasks
-    const overdueTasks = tasks.filter((t) => !t.done && isOverdue(t.due_date, t.done));
-    if (overdueTasks.length > 0) {
-      const alreadyAlerted = existingNotifs.some(
-        (n) => n.type === 'deadline' && n.created_at.startsWith(today)
-      );
-      if (!alreadyAlerted) {
-        await this.deliverNotification(
-          'Action Required: Overdue Tasks Detected',
-          `You have ${overdueTasks.length} task(s) past their scheduled due date. High priority: "${overdueTasks[0].text}"`,
-          'deadline',
-          'high',
-          'tasks'
-        );
-        countDelivered++;
+      if (res.success && res.log) {
+        countDelivered = res.log.records_affected || 0;
       }
+    } catch (err) {
+      console.warn('[ReminderEngine] Server automation trigger warning:', err);
     }
 
-    // 2. Scan for Upcoming Meetings in next 45 minutes with incomplete action items
-    for (const m of meetings) {
-      if (m.date === today && m.status === 'scheduled') {
-        const [mHour, mMin] = m.start_time.split(':').map(Number);
-        const meetingMinutes = mHour * 60 + mMin;
-        const currentMinutes = now.getHours() * 60 + now.getMinutes();
-        const diffMinutes = meetingMinutes - currentMinutes;
-
-        // Between 5 and 45 minutes before meeting
-        if (diffMinutes > 0 && diffMinutes <= 45) {
-          const alreadyAlerted = existingNotifs.some(
-            (n) => n.related_record_id === m.id && n.created_at.startsWith(today)
-          );
-          if (!alreadyAlerted) {
-            await this.deliverNotification(
-              `Upcoming Meeting in ${diffMinutes}m: ${m.title}`,
-              `With: ${m.attendees || 'Team'}. Action items pending: ${m.action_items || 'None'}. Click to join.`,
-              'meeting',
-              'high',
-              m.location_or_link || 'meetings'
-            );
-            countDelivered++;
-          }
-        }
-      }
-    }
-
-    // 3. Sync Native Capacitor Scheduled Alarms (for tasks due and events)
+    // 2. Synchronize Native Device Alarms (Capacitor OS-level background notifications)
     if (CapacitorService.isNative()) {
       try {
-        const events = await db.events.toArray();
+        const [tasks, events] = await Promise.all([
+          db.tasks.toArray(),
+          db.events.toArray(),
+        ]);
         await CapacitorService.syncUpcomingNativeReminders(tasks, events);
       } catch (err) {
-        console.warn('Native reminder sync warning:', err);
+        console.warn('[ReminderEngine] Native reminder sync warning:', err);
       }
     }
 

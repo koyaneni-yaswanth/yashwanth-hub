@@ -3,6 +3,24 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
+  "crons": [
+    {
+      "path": "/api/automations/cron?action=task_deadline_scan",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/automations/cron?action=morning_briefing",
+      "schedule": "30 1 * * *"
+    },
+    {
+      "path": "/api/automations/cron?action=neosapien_sync",
+      "schedule": "0 */2 * * *"
+    },
+    {
+      "path": "/api/automations/queue",
+      "schedule": "*/15 * * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/((?!api/|sw\\.js|manifest\\.webmanifest|registerSW\\.js).*)",
