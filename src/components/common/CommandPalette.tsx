@@ -26,6 +26,7 @@ import {
 import { db } from '../../db';
 import type { NavigationTab, Area } from '../../types';
 import { useTheme } from '../../context/ThemeContext';
+import { AgentPresenceService } from '../../services/agentPresenceService';
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -87,6 +88,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   // Quick Action Items
   const actionItems = [
+    {
+      label: 'Trigger AI Agent Collaborative Cursor Tour',
+      action: () => {
+        onClose();
+        AgentPresenceService.runDemoTour(onNavigate);
+      },
+      icon: Sparkles,
+      category: 'AI Assistant',
+    },
     {
       label: 'Toggle Light / Dark Mode',
       action: () => toggleTheme(),

@@ -10,6 +10,7 @@
  */
 
 import { getSupabaseClient } from '../lib/supabase';
+import { AgentPresenceService } from './agentPresenceService';
 
 export interface HubAutomation {
   id: string;
@@ -137,6 +138,12 @@ export class AutomationService {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
+      AgentPresenceService.moveToElement(
+        '[data-agent-target="automations-card"]',
+        `Server dispatch: ${actionType.replace(/_/g, ' ')}...`,
+        { agentName: 'Jarvis Agent', subsystem: 'Serverless', phase: 'working' }
+      );
+
       const resp = await fetch('/api/automations/run', {
         method: 'POST',
         headers,
@@ -149,6 +156,11 @@ export class AutomationService {
 
       if (!resp.ok) {
         const errorData = await resp.json().catch(() => ({}));
+        AgentPresenceService.moveToElement(
+          '[data-agent-target="automations-card"]',
+          `Failed: ${actionType.replace(/_/g, ' ')}`,
+          { agentName: 'Jarvis Agent', subsystem: 'Error', phase: 'error', autoHideMs: 3500 }
+        );
         return {
           success: false,
           error: errorData.message || errorData.error || `Server responded with status ${resp.status}`,
@@ -156,12 +168,22 @@ export class AutomationService {
       }
 
       const data = await resp.json();
+      AgentPresenceService.moveToElement(
+        '[data-agent-target="automations-card"]',
+        `Completed: ${actionType.replace(/_/g, ' ')}`,
+        { agentName: 'Jarvis Agent', subsystem: 'Vercel', phase: 'success', autoHideMs: 2500 }
+      );
       return {
         success: true,
         log: data.result,
       };
     } catch (err: any) {
       console.error('[AutomationService] Server trigger failure:', err);
+      AgentPresenceService.moveToElement(
+        '[data-agent-target="automations-card"]',
+        `Error: ${err.message || 'Dispatch failed'}`,
+        { agentName: 'Jarvis Agent', subsystem: 'Error', phase: 'error', autoHideMs: 3500 }
+      );
       return {
         success: false,
         error: err.message || 'Failed to contact server automation endpoint.',

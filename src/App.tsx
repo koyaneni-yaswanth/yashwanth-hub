@@ -9,6 +9,7 @@ import { Sidebar } from './components/layout/Sidebar';
 import { MobileNav } from './components/layout/MobileNav';
 import { CommandPalette } from './components/common/CommandPalette';
 import { Modal } from './components/common/Modal';
+import { AgentCursor } from './components/common/AgentCursor';
 import { AlertTriangle } from 'lucide-react';
 import { ReminderEngine } from './services/reminderEngine';
 import { GoogleAuthService } from './services/google/googleAuthService';
@@ -359,6 +360,8 @@ function HubMain() {
           </div>
         </Modal>
       )}
+      {/* Global Figma-Style Collaborative AI Agent Cursor */}
+      <AgentCursor />
     </div>
   );
 }

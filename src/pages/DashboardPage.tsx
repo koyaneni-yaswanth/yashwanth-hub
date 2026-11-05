@@ -19,6 +19,8 @@ import { formatINR, formatShortDate, getGreeting, getTodayISO, isOverdue, genera
 import { StatCard } from '../components/common/StatCard';
 import { Badge } from '../components/common/Badge';
 import { Neo1DeviceCard } from '../components/neo/Neo1DeviceCard';
+import { AgentPresenceService } from '../services/agentPresenceService';
+import { Sparkles } from 'lucide-react';
 
 interface DashboardPageProps {
   currentArea: string;
@@ -134,19 +136,30 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             Founder command dashboard • {currentArea === 'All' ? 'All Workspaces' : currentArea}
           </p>
         </div>
-        {planTasks.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
           <button
-            onClick={() => onNavigate('wind-plan')}
-            className="self-start sm:self-auto flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-teal-500/10 border border-teal-500/30 text-teal-800 dark:text-teal-200 text-xs font-semibold hover:bg-teal-500/20 transition-all cursor-pointer"
+            onClick={() => AgentPresenceService.runDemoTour(onNavigate)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/25 text-indigo-700 dark:text-indigo-300 text-xs font-semibold hover:bg-indigo-500/20 transition-all cursor-pointer shadow-xs"
+            title="Launch collaborative floating AI agent cursor demo"
           >
-            <Wind className="w-4 h-4 text-teal-600 dark:text-teal-400" />
-            <span>90-Day Plan: {planPercentage}% TRL Progress</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+            <span>AI Agent Live</span>
           </button>
-        )}
+          {planTasks.length > 0 && (
+            <button
+              onClick={() => onNavigate('wind-plan')}
+              className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-teal-500/10 border border-teal-500/30 text-teal-800 dark:text-teal-200 text-xs font-semibold hover:bg-teal-500/20 transition-all cursor-pointer"
+            >
+              <Wind className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+              <span>90-Day Plan: {planPercentage}% TRL Progress</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Real-time KPI Stats Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+      <div data-agent-target="stats-grid" className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
         <StatCard
           label="Due & Overdue"
           value={dueAndOverdueTasks.length}
@@ -178,10 +191,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       </div>
  
       {/* Real-time Neo 1 & Ecosystem Telemetry Card */}
-      <Neo1DeviceCard />
+      <div data-agent-target="automations-card">
+        <Neo1DeviceCard />
+      </div>
 
       {/* Quick Add Task Box */}
-      <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-4 shadow-xs">
+      <div data-agent-target="quick-actions" className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-4 shadow-xs">
         <form onSubmit={handleQuickAdd} className="space-y-3">
           <div className="flex items-center gap-2">
             <input
