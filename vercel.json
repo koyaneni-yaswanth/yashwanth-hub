@@ -5,6 +5,10 @@
   "framework": "vite",
   "crons": [
     {
+      "path": "/api/cron/process-triggers",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/automations/cron?action=task_deadline_scan",
       "schedule": "0 * * * *"
     },

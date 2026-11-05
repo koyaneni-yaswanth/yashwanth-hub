@@ -18,6 +18,7 @@ import {
   X,
   Brain,
   Activity,
+  Zap,
 } from 'lucide-react';
 import type { NavigationTab } from '../../types';
 
@@ -67,6 +68,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'notes', label: 'Notes', icon: FileText },
     { id: 'ai-assistant', label: 'Yashwanth AI', icon: Sparkles, highlight: true },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+    { id: 'automations', label: 'Automations Engine', icon: Zap },
     { id: 'integrations', label: 'Integrations & Sync', icon: Cloud },
     { id: 'system-health', label: 'System Health & Sync', icon: Activity },
     {

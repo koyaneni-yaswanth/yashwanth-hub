@@ -505,6 +505,7 @@ export type NavigationTab =
   | 'ai-assistant'
   | 'notifications'
   | 'analytics'
+  | 'automations'
   | 'integrations'
   | 'neo-memory'
   | 'system-health'

@@ -35,6 +35,7 @@ import { WindPlanPage } from './pages/WindPlanPage';
 import { AIAssistantPage } from './pages/AIAssistantPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
+import { AutomationsPage } from './pages/AutomationsPage';
 import { SettingsPage } from './pages/SettingsPage';
 
 function HubMain() {
@@ -233,6 +234,8 @@ function HubMain() {
             onNavigate={(tab) => setCurrentTab(tab)}
           />
         );
+      case 'automations':
+        return <AutomationsPage />;
       case 'settings':
         return <SettingsPage areas={areas} />;
       default:
