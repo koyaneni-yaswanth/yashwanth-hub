@@ -43,6 +43,9 @@ import { RoboticsLabPage } from './pages/RoboticsLabPage';
 import { FinancePage } from './pages/FinancePage';
 import { HealthRoutinePage } from './pages/HealthRoutinePage';
 import { KnowledgeMemoryPage } from './pages/KnowledgeMemoryPage';
+import { MyDayPage } from './pages/MyDayPage';
+import { LearningCareerPage } from './pages/LearningCareerPage';
+import { QuickCaptureModal } from './components/common/QuickCaptureModal';
 
 function HubMain() {
   const { isDark } = useTheme();
@@ -50,6 +53,7 @@ function HubMain() {
   const [currentArea, setCurrentArea] = useState<string>('All');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isQuickCaptureOpen, setIsQuickCaptureOpen] = useState(false);
   const [isDbReady, setIsDbReady] = useState(false);
   const [oauthError, setOauthError] = useState<{ message: string; hint?: string } | null>(null);
 
@@ -124,11 +128,14 @@ function HubMain() {
       setCurrentTab('integrations');
     }
 
-    // Global Command Palette Shortcut (Ctrl+K or Cmd+K)
+    // Global Keyboard Shortcuts (Ctrl+K for Command Palette, Ctrl+Q for Quick Capture)
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setIsCommandPaletteOpen((prev) => !prev);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'q') {
+        e.preventDefault();
+        setIsQuickCaptureOpen((prev) => !prev);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -150,12 +157,15 @@ function HubMain() {
       closeCommandPalette: () => setIsCommandPaletteOpen(false),
       isMobileMenuOpen,
       closeMobileMenu: () => setIsMobileMenuOpen(false),
-      isModalOpen: Boolean(oauthError),
-      closeModal: () => setOauthError(null),
+      isModalOpen: Boolean(oauthError) || isQuickCaptureOpen,
+      closeModal: () => {
+        setOauthError(null);
+        setIsQuickCaptureOpen(false);
+      },
       currentTab,
       navigateTab: (tab) => setCurrentTab(tab as NavigationTab),
     });
-  }, [isCommandPaletteOpen, isMobileMenuOpen, oauthError, currentTab]);
+  }, [isCommandPaletteOpen, isMobileMenuOpen, oauthError, isQuickCaptureOpen, currentTab]);
 
   // Live queries
   const areas = useLiveQuery(() => db.areas.toArray(), []) || [];
@@ -185,6 +195,13 @@ function HubMain() {
             onNavigate={(tab) => setCurrentTab(tab)}
           />
         );
+      case 'my-day':
+        return (
+          <MyDayPage
+            onNavigate={(tab) => setCurrentTab(tab)}
+            areas={areas}
+          />
+        );
       case 'projects':
         return (
           <ProjectsPage
@@ -193,6 +210,8 @@ function HubMain() {
             onNavigateToTasks={() => setCurrentTab('tasks')}
           />
         );
+      case 'learning-career':
+        return <LearningCareerPage />;
       case 'tasks':
         return <TasksPage currentArea={currentArea} areas={areas} />;
       case 'calendar':
@@ -282,6 +301,7 @@ function HubMain() {
         areas={areas}
         onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
         onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+        onOpenQuickCapture={() => setIsQuickCaptureOpen(true)}
         onNavigate={(tab) => setCurrentTab(tab)}
         turbineDuration={turbineDuration}
       />
@@ -297,6 +317,7 @@ function HubMain() {
           unreadNotifsCount={unreadNotifs.length}
           isOpenMobile={isMobileMenuOpen}
           onCloseMobile={() => setIsMobileMenuOpen(false)}
+          onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
         />
 
         {/* Dynamic Page Content */}
@@ -329,6 +350,13 @@ function HubMain() {
         onClose={() => setIsCommandPaletteOpen(false)}
         onNavigate={(tab) => setCurrentTab(tab)}
         onSelectArea={(area) => setCurrentArea(area)}
+        areas={areas}
+      />
+
+      {/* Universal Quick Capture Modal (Ctrl+Q) */}
+      <QuickCaptureModal
+        isOpen={isQuickCaptureOpen}
+        onClose={() => setIsQuickCaptureOpen(false)}
         areas={areas}
       />
 

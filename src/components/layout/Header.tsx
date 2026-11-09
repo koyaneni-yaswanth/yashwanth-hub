@@ -10,6 +10,7 @@ import {
   Menu,
   Bell,
   Search,
+  Plus,
 } from 'lucide-react';
 import { db } from '../../db';
 import { TurbineLogo } from '../common/TurbineLogo';
@@ -23,6 +24,7 @@ interface HeaderProps {
   areas: Area[];
   onOpenMobileMenu: () => void;
   onOpenCommandPalette: () => void;
+  onOpenQuickCapture?: () => void;
   onNavigate: (tab: NavigationTab) => void;
   turbineDuration?: number;
 }
@@ -33,6 +35,7 @@ export const Header: React.FC<HeaderProps> = ({
   areas,
   onOpenMobileMenu,
   onOpenCommandPalette,
+  onOpenQuickCapture,
   onNavigate,
   turbineDuration = 8,
 }) => {
@@ -165,8 +168,20 @@ export const Header: React.FC<HeaderProps> = ({
           </kbd>
         </button>
 
-        {/* Right: Area filter, Notifications, Sync Badge, Theme Toggle */}
+        {/* Right: Quick Capture, Area filter, Notifications, Sync Badge, Theme Toggle */}
         <div className="flex items-center gap-2 sm:gap-2.5">
+          {/* Universal Quick Capture Button */}
+          {onOpenQuickCapture && (
+            <button
+              onClick={onOpenQuickCapture}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer shadow-xs"
+              title="Universal Quick Capture (Ctrl+Q)"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">Capture</span>
+            </button>
+          )}
+
           {/* Workspace Area Filter */}
           <div className="relative">
             <select

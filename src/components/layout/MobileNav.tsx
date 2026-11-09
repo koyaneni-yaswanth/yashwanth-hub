@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, FolderKanban, CheckSquare, Sparkles, MoreHorizontal } from 'lucide-react';
+import { LayoutDashboard, Sun, FolderKanban, Sparkles, MoreHorizontal } from 'lucide-react';
 import type { NavigationTab } from '../../types';
 
 interface MobileNavProps {
@@ -14,9 +14,9 @@ export const MobileNav: React.FC<MobileNavProps> = ({
   onOpenMore,
 }) => {
   const quickItems = [
-    { id: 'dashboard' as NavigationTab, label: 'Today', icon: LayoutDashboard },
+    { id: 'dashboard' as NavigationTab, label: 'Home', icon: LayoutDashboard },
+    { id: 'my-day' as NavigationTab, label: 'My Day', icon: Sun },
     { id: 'projects' as NavigationTab, label: 'Projects', icon: FolderKanban },
-    { id: 'tasks' as NavigationTab, label: 'Tasks', icon: CheckSquare },
     { id: 'ai-assistant' as NavigationTab, label: 'Jarvis', icon: Sparkles },
   ];
 
@@ -42,7 +42,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
       })}
       <button
         onClick={onOpenMore}
-        className="flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[11px] font-medium text-[var(--hub-muted)] hover:text-[var(--hub-ink)] transition-colors"
+        className="flex flex-col items-center justify-center py-1 px-3 rounded-lg text-[11px] font-medium text-[var(--hub-muted)] hover:text-[var(--hub-ink)] transition-colors cursor-pointer"
       >
         <MoreHorizontal className="w-5 h-5 mb-0.5" />
         <span>More</span>

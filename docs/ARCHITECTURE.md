@@ -1,23 +1,35 @@
 # Yashwanth Hub — System Architecture & Engineering Blueprint
 
-## 1. Executive Summary & Philosophy
-**Yashwanth Hub** is a local-first, multi-device, offline-capable AI Personal Operating System, Automation Engine, and Deep-Tech Startup Command Center built specifically for Yashwanth Koyaneni (VNIT Nagpur graduate, founder of Pawan Shakti, robotics lead at IvLabs, engineer at MG Automation).
-
-The architecture adheres to three core tenets:
-1. **Local-First & Resilient Data Ownership**: The system boots instantly and operates 100% offline using IndexedDB (Dexie.js), maintaining local cryptographic state, queued mutations, and deterministic caching.
-2. **Authenticated Cloud Synchronization**: High-fidelity bidirectional sync with Supabase PostgreSQL (`xjhkxnfahkkgwbbtmhtk`, Tokyo `ap-northeast-1`), Google Workspace (Tasks, Calendar, Gmail), and NeoSapien MCP (`https://api.neosapien.xyz/mcp`).
-3. **Multi-Model Orchestration**: Dynamic gateway routing across Google Gemini (2.5 Flash / Pro), Anthropic Claude (3.5 Haiku / Sonnet), and OpenAI (GPT-4o) with dedicated agent specialist personas and explicit human-in-the-loop action approval.
+**Document Version:** 2.1.0  
+**Status:** Production  
+**Target URL:** `https://yashwanth-hub.vercel.app`  
+**Git Branch:** `main`  
+**Supabase Reference:** `xjhkxnfahkkgwbbtmhtk` (`ap-northeast-1`, Tokyo)
 
 ---
 
-## 2. High-Level Architectural Topology
+## 1. Architectural Principles
+
+Yashwanth Hub is engineered as an enterprise-grade Personal AI Operating System and Startup Command Center tailored for deep-tech hardware founders. The system adheres to six non-negotiable architectural tenets:
+
+1. **Local-First & Offline Resilience:** The user interface boots instantaneously and operates with 100% functionality offline. All core state is stored in client-side IndexedDB via Dexie.js (`yashwanth_hub_db` v8). Mutations are processed locally first, with background reconciliation to remote services.
+2. **Deterministic Serverless Automation:** No background automations, recurring jobs, or scheduled workflows run inside browser interval timers. All scheduled triggers execute server-side via Vercel Serverless Functions (`api/cron/process-triggers.ts`) invoked by Vercel Cron.
+3. **Strict Function Ceiling Compliance:** The serverless API footprint is strictly budgeted to 10 endpoints, remaining well under the Vercel Hobby plan ceiling of 12 serverless functions. Reusable logic and database helpers reside in `api/_lib/` which does not generate function allocations.
+4. **Zero Client Secret Leakage:** No OAuth client secrets, service role keys, or sensitive backend tokens are packaged into client bundles. Frontend communicates with external services exclusively through authenticated serverless proxies or direct OAuth 2.0 PKCE.
+5. **Truthful State & Zero Fake Data:** The user interface never presents fabricated progress, mock sensor readings, or synthetic calendar seed data. If an integration is unconfigured or a sensor is offline, the system explicitly reports "Not Connected" or "No Live Telemetry".
+6. **Human-in-the-Loop Governance:** Autonomous AI operations operate under a 3-tier action authorization model. High-consequence mutations (financial logging, database alterations, physical hardware commands) require explicit one-click confirmation with a cryptographic action ID.
+
+---
+
+## 2. System Topology & Component Diagram
 
 ```
 +---------------------------------------------------------------------------------------------------+
 |                                      CLIENT RUNTIME SURFACES                                       |
 |  +-------------------------------------------------+  +----------------------------------------+  |
-|  |             Vite + React 18 Web App             |  |      Capacitor 8 Android Mobile App    |  |
+|  |           Vite 8 + React 19 Web Client          |  |      Capacitor 8 Android Mobile App    |  |
 |  |     Tailwind CSS / Lucide / KaTeX / Recharts    |  |   Biometrics / Push / Local Storage    |  |
+|  |          7-Tab Focused Navigation Model         |  |      Back-Button Navigation Stack      |  |
 |  +-------------------------------------------------+  +----------------------------------------+  |
 +---------------------------------------------------------------------------------------------------+
                                                   |
@@ -25,8 +37,8 @@ The architecture adheres to three core tenets:
 +---------------------------------------------------------------------------------------------------+
 |                                    LOCAL-FIRST DATA PLATFORM                                      |
 |  +------------------------------+  +-------------------------------+  +-------------------------+  |
-|  |      Dexie.js (IndexedDB)    |  |     SyncQueueService (Queue)  |  |  AgentPresenceService   |  |
-|  | 14 Hub Entities & Caches     |  | Offline Mutations & Retries   |  | Floating Cursor / Tour  |  |
+|  |      Dexie.js (IndexedDB)    |  |     RealtimeSyncManager       |  |  IntegrationVaultService|  |
+|  | 14 Hub Entities & Caches     |  | Offline Mutations & Retries   |  | Cross-Device Token Sync |  |
 |  +------------------------------+  +-------------------------------+  +-------------------------+  |
 +---------------------------------------------------------------------------------------------------+
                                                   |
@@ -34,13 +46,19 @@ The architecture adheres to three core tenets:
                        |                                                    |
                        v                                                    v
 +--------------------------------------------------+  +---------------------------------------------+
-|          VERCEL SERVERLESS AUTOMATION ENGINE     |  |         SUPABASE CLOUD POSTGRESQL           |
-|  - /api/automations/dispatch (Execution Engine)  |  |  - Project: xjhkxnfahkkgwbbtmhtk (Tokyo)    |
-|  - /api/automations/cron (Scheduled Runs)        |  |  - Tables: automations, automation_runs,    |
-|  - /api/google/tasks-sync (Google Sync)          |  |    integration_tokens, events, tasks,      |
-|  - /api/neosapien/mcp (Tool Dispatcher)          |  |    expenses, projects, memories, notes      |
-+--------------------------------------------------+  |  - Row Level Security (RLS) Policies        |
-                       |                              +---------------------------------------------+
+|        VERCEL SERVERLESS ARCHITECTURE (10 FNS)   |  |         SUPABASE CLOUD POSTGRESQL           |
+|  1. /api/auth/google/callback                    |  |  - Project: xjhkxnfahkkgwbbtmhtk (Tokyo)    |
+|  2. /api/auth/google/token                       |  |  - Direct DB: db.xjhkxnfahkkgwbbtmhtk...    |
+|  3. /api/automations/dispatch                    |  |  - Pooler: aws-0-ap-northeast-1.pooler...   |
+|  4. /api/cron/process-triggers                   |  |  - Tables: automations, automation_runs,    |
+|  5. /api/integrations/google-tasks               |  |    integration_tokens, events, tasks,      |
+|  6. /api/integrations/neosapien                  |  |    expenses, projects, memories, notes      |
+|  7. /api/integrations/sync                       |  |  - Row Level Security (RLS) Policies        |
+|  8. /api/neosapien/callback                      |  |  - Realtime Subscriptions (postgres_changes)|
+|  9. /api/neosapien/connect                       |  +---------------------------------------------+
+| 10. /api/neosapien/mcp                           |
++--------------------------------------------------+
+                       |
                        v
 +---------------------------------------------------------------------------------------------------+
 |                                  EXTERNAL INTEGRATION PROVIDERS                                   |
@@ -53,45 +71,105 @@ The architecture adheres to three core tenets:
 
 ---
 
-## 3. The 14 Unified Master Hubs
+## 3. Navigation & UX Hierarchy
 
-Yashwanth Hub structures all life, engineering, robotics, startup, and automation workflows into 14 numbered master hubs:
+The system employs a streamlined **7-Primary Tab** navigation structure, eliminating cognitive clutter while maintaining instant one-click access to all specialized engineering workspaces:
 
-| Hub ID | Name | Route / Key | Primary Core Capabilities |
+```
+[PRIMARY NAVIGATION BAR]
+  1. Home (dashboard)          -> Morning briefing, KPI stats, "What should I do next?", focus mode
+  2. My Day (my-day)           -> Daily planning ritual, merged timeline, top 3 outcomes, evening review
+  3. Projects (projects)       -> Multi-workspace portfolio (Pawan Shakti, PiPER, Swarm, OS, Career)
+  4. AI Assistant (ai-assist)  -> Multi-model chat, specialist personas, Level 1-3 action approval cards
+  5. Automations (automations) -> Serverless triggers, cron schedules, idempotency run logs, metrics
+  6. Search (Command Palette)  -> Omnipresent modal (Ctrl+K), instant deep-linking, quick action launcher
+  7. More (Drawer / Sheet)     -> Expandable container housing domain-specific command hubs:
+       ├── Calendar            -> Day/Week/Month views, Google Calendar sync
+       ├── Tasks               -> Kanban board, prioritized list, Google Tasks sync
+       ├── Notes               -> Markdown technical journal, full-text search
+       ├── Documents           -> File vault, CAD, BOM, Google Drive browser
+       ├── Startup Command     -> Pawan Shakti V3F assessment, 15 Nov countdown, BOM economics
+       ├── Robotics Lab        -> AgileX PiPER, 3-Drone Swarm, TI mmWave radar, safety layer
+       ├── Learning & Career   -> Technical skills matrix, research papers, CV versions
+       ├── Finance & Capital   -> Live cash, monthly burn, runway, ANRF ₹25L grant tracker
+       ├── Health & Routine    -> 7.2h Circadian sleep, 4.5h Deep Work block timer, habit tracker
+       ├── Knowledge & Memory  -> Neo 1 Wearable, MoM intelligence, decision vault
+       ├── System Health       -> Device fleet telemetry, storage metrics, sync queue
+       ├── Integrations & MCP  -> Google Workspace, NeoSapien tokens, connection health
+       └── Settings            -> Workspace areas, theme switcher, JSON backup/restore
+```
+
+---
+
+## 4. Local-First Data Layer (Dexie.js IndexedDB)
+
+The local client database (`yashwanth_hub_db` v8) manages 14 primary entities:
+
+| Table | Primary Key | Key Indexes | Purpose |
 | :--- | :--- | :--- | :--- |
-| **1** | **Home Dashboard** | `dashboard` | KPI stats grid, universal 8-action execution bar, strategic founder cards (Pawan Shakti, Robotics, Routine), live schedule, quick tasks. |
-| **2** | **AI Assistant (Jarvis)** | `ai-assistant` | Multi-model chat gateway, specialist selection (Orchestrator, Planning, Research, Execution, Startup, Robotics, Productivity), action approvals with IDs. |
-| **3** | **Automations Engine** | `automations` | Event-driven and cron-scheduled workflows, idempotency locking, diagnostic status checks, run history, manual triggers. |
-| **4** | **Calendar** | `calendar` | Day/Week/Month views, Google Calendar bidirectional sync, automated purging of legacy seed data, local event creation. |
-| **5** | **Tasks** | `tasks` | Kanban and list views, Google Tasks bidirectional token sync, priorities, recurring rules, subtask checklists. |
-| **6** | **Projects** | `projects` | Multi-workspace tracker (Pawan Shakti, IvLabs, MG Automation, Personal), milestones, deliverable progress. |
-| **7** | **Startup Command** | `startup-command` | Pawan Shakti command center, 6-category V3F 0-3 assessment rubric, 15 Nov countdown, BOM economics (50 and 500 units), risk register. |
-| **8** | **Robotics Lab** | `robotics-lab` | AgileX PiPER 6-DOF (ROS 2 / MuJoCo / Isaac Sim), 3-drone swarm (SIYI HM30 mesh), TI AWR2944 77GHz mmWave radar telemetry. |
-| **9** | **Knowledge & Memory** | `knowledge-memory` | Neo 1 Wearable & MCP integration, Engineering Notes Vault, Meeting Intelligence & MoMs, Research Vault. |
-| **10** | **Finance & Capital** | `finance` | Cash balance, monthly burn, runway projections, unit economics, ANRF ₹25L grant tracker, expense logging modal. |
-| **11** | **Health & Routine** | `health-routine` | Circadian sleep tracking (7.2h), 4.5h deep work block timer, founder daily discipline checklist, energy optimization. |
-| **12** | **Integrations & MCP** | `integrations` | OAuth token vault, Google Tasks/Calendar/Gmail status, NeoSapien live endpoint health, device fleet telemetry. |
-| **13** | **Analytics** | `analytics` | Historical trends, task completion velocity, financial burn curves, Deep Work efficiency indices. |
-| **14** | **Settings** | `settings` | Local storage management, data import/export, dark/light theme, area workspace configurations. |
+| `tasks` | `id` (UUID) | `area, due_date, starred, done, project_id, google_task_id` | Core action items, subtasks, founder sprint targets |
+| `projects` | `id` (UUID) | `area, status, priority, target_date` | Multi-venture tracking and milestone delivery |
+| `events` | `id` (UUID) | `date, kind, area, google_event_id` | Scheduled calendar entries, meetings, deadlines |
+| `meetings` | `id` (UUID) | `date, start_time` | Formal stakeholder and team meetings |
+| `notes` | `id` (UUID) | `category, starred, updated_at` | Technical notes, sprint logs, research papers |
+| `expenses` | `id` (UUID) | `date, category, area` | Financial ledger entries and grant expenditures |
+| `documents` | `id` (UUID) | `category, project_id` | Technical assets, CAD links, BOM specifications |
+| `neo_memories` | `id` (UUID) | `source, capturedAt, platform, associatedProjectId` | Spoken MoM records, transcript summaries, action items |
+| `notifications` | `id` (UUID) | `read, scheduled_for, priority` | System and deadline alert queue |
+| `device_fleet` | `id` (UUID) | `platform, status, lastActive` | Active device fleet sessions and heartbeat monitoring |
+| `sync_queue` | `id` (UUID) | `service, status, timestamp` | Offline mutation staging and retry queue |
+| `ai_logs` | `id` (UUID) | `provider, timestamp` | AI model prompt logs, latencies, and token counts |
+| `areas` | `id` (UUID) | `name, color` | Top-level workspace partitions |
+| `travel` | `id` (UUID) | `departure_date, return_date` | Travel itineraries and logistics |
 
 ---
 
-## 4. Database & Synchronization Architecture
+## 5. Serverless Backend & API Specifications
 
-### 4.1 Local Storage Layer (Dexie.js / IndexedDB)
-- Database schema: `yashwanth_hub_db` (Version 8)
-- Stores: `tasks`, `projects`, `events`, `meetings`, `notes`, `expenses`, `documents`, `neo_memories`, `notifications`, `travel`, `contacts`, `sync_queue`, `device_fleet`, `ai_logs`.
-- Indexes optimized on `[area+due_date]`, `synced`, `category`, and `starred`.
+The Vercel Serverless Architecture consists of exactly 10 endpoints:
 
-### 4.2 Remote Storage Layer (Supabase PostgreSQL)
-- Direct PostgreSQL instance: `db.xjhkxnfahkkgwbbtmhtk.supabase.co`
-- Connection pooler: `aws-0-ap-northeast-1.pooler.supabase.com`
-- Tables adhere to `supabase/master_schema.sql` with full Row-Level Security (`auth.uid() = user_id`).
-- Automated token storage in `public.integration_tokens` with automatic refresh logic.
+### 5.1 Authentication Endpoints
+- `GET /api/auth/google/callback`: Handles Google OAuth 2.0 authorization code exchange and PKCE validation.
+- `POST /api/auth/google/token`: Exchanges refresh tokens for active access tokens server-side.
+
+### 5.2 Automation & Cron Engine
+- `POST /api/automations/dispatch`: Executes automation runs with idempotency locking and timing metrics.
+- `GET/POST /api/cron/process-triggers`: Invoked by Vercel Cron (`30 1 * * *` and `0 2 * * *`) to process scheduled triggers, deadline scans, and morning briefings.
+
+### 5.3 External Integrations
+- `GET/POST /api/integrations/google-tasks`: Serverless proxy for Google Tasks REST API with automated token vaulting.
+- `GET/POST /api/integrations/neosapien`: MCP JSON-RPC 2.0 gateway connecting to `https://api.neosapien.xyz/mcp`.
+- `POST /api/integrations/sync`: Central coordinator orchestrating bidirectional sync across all external providers.
+
+### 5.4 NeoSapien Second Brain
+- `GET /api/neosapien/callback`: Handles NeoSapien OAuth authentication redirect.
+- `GET/POST /api/neosapien/connect`: Manages NeoSapien connection lifecycle and credential storage.
+- `GET/POST /api/neosapien/mcp`: Consolidated MCP endpoint handling tool listings, memory sync, and webhooks.
+
+### 5.5 Reusable Serverless Library (`api/_lib/`)
+- `api/_lib/db.ts`: Server-side Supabase client with service role key support and immutable execution logging.
+- `api/_lib/executor.ts`: Idempotency manager and action execution router.
+- `api/_lib/runner.ts`: Core automation logic (task deadline scanning, morning briefings, evening carry-forward).
 
 ---
 
-## 5. Security & Isolation Model
-1. **Zero Secret Leakage**: No API keys, OAuth client secrets, or private tokens are packaged into client bundles. Frontend accesses services via authenticated Vercel serverless endpoints.
-2. **Encrypted Token Vault**: Third-party tokens are stored server-side in Supabase with RLS or client-side in browser `localStorage` with explicit user consent.
-3. **Human-in-the-Loop Action Approval**: All autonomous agent actions generate an explicit `Action ID` and require one-click founder approval prior to mutating tasks, schedules, or financial logs.
+## 6. Remote Database Schema (Supabase PostgreSQL)
+
+Supabase PostgreSQL (`xjhkxnfahkkgwbbtmhtk`, `ap-northeast-1`) mirrors the local schema with Row Level Security (RLS) policies enforcing multi-tenant isolation:
+
+- `public.integration_tokens`: Stores vaulted OAuth access and refresh tokens encrypted with user ownership checks (`user_id = auth.uid()`).
+- `public.automations`: Stores registered automation workflows, triggers, and action definitions.
+- `public.automation_runs`: Tracks execution history, duration, status, and output payloads.
+- `public.automation_execution_logs`: Immutable audit log of every serverless execution.
+- `public.tasks`: Remote task mirror supporting bi-directional conflict resolution via `updated_at` timestamps.
+- `public.events`: Remote calendar event repository.
+- `public.neo_memories`: Cloud storage for wearable and meeting memory transcripts.
+
+---
+
+## 7. Security Architecture & Threat Model
+
+1. **OAuth 2.0 with RFC 7636 PKCE:** Client applications generate cryptographic `code_verifier` and SHA-256 `code_challenge` parameters, completely eliminating authorization code interception risks.
+2. **Strict Client-Side Sanitization:** Google Client IDs are stripped of whitespace, quotes, and newlines before submission. Placeholder credentials fail fast with actionable UI diagnostics.
+3. **Hardware Safety Interlock:** Physical commands in the Robotics Lab (AgileX PiPER joint enable, drone launch) require Level 3 explicit user confirmation with double-check dialogs to prevent accidental actuator triggering.
+4. **Content Security & Frame Headers:** Deployed with strict HTTP headers (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection: 1; mode=block`, and strict Referrer-Policy).

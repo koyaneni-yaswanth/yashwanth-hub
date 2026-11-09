@@ -490,11 +490,13 @@ export interface AIComparisonResult {
 
 export type NavigationTab =
   | 'dashboard'
+  | 'my-day'
+  | 'projects'
   | 'ai-assistant'
   | 'automations'
+  | 'learning-career'
   | 'calendar'
   | 'tasks'
-  | 'projects'
   | 'startup-command'
   | 'robotics-lab'
   | 'knowledge-memory'
