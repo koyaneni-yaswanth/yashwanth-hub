@@ -30,7 +30,6 @@ import { formatINR, formatShortDate, getGreeting, getTodayISO, isOverdue, genera
 import { StatCard } from '../components/common/StatCard';
 import { Badge } from '../components/common/Badge';
 import { Neo1DeviceCard } from '../components/neo/Neo1DeviceCard';
-import { AgentPresenceService } from '../services/agentPresenceService';
 import { IntegrationVaultService } from '../services/integrationVaultService';
 
 interface DashboardPageProps {
@@ -176,15 +175,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-[var(--hub-accent)]' : 'text-[var(--hub-muted)]'}`} />
             <span>{isSyncing ? 'Syncing...' : 'Sync'}</span>
           </button>
-          <button
-            onClick={() => AgentPresenceService.runDemoTour(onNavigate)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/25 text-indigo-700 dark:text-indigo-300 text-xs font-semibold hover:bg-indigo-500/20 transition-all cursor-pointer shadow-xs"
-            title="Launch collaborative floating AI agent cursor demo"
-          >
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-            <span>AI Agent Live</span>
-          </button>
           {planTasks.length > 0 && (
             <button
               onClick={() => onNavigate('wind-plan')}
@@ -309,10 +299,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => AgentPresenceService.runDemoTour(onNavigate)}
+            onClick={() => onNavigate('health-routine')}
             className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border border-cyan-500/20 text-xs font-medium transition-all group cursor-pointer"
           >
-            <Bot className="w-4 h-4 mb-1 group-hover:scale-110 transition-transform" />
+            <Clock className="w-4 h-4 mb-1 group-hover:scale-110 transition-transform" />
             <span>Work Session</span>
           </button>
         </div>
