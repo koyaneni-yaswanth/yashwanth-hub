@@ -15,6 +15,7 @@ import {
   CheckSquare,
   AlertTriangle,
   Sparkles,
+  Edit2,
 } from 'lucide-react';
 import { db } from '../db';
 import type {
@@ -25,6 +26,7 @@ import type {
 } from '../types';
 import { NeoSapienMemoryService } from '../services/neoSapienMemoryService';
 import { GoogleAuthService } from '../services/google/googleAuthService';
+import { SyncQueueService } from '../services/sync/syncQueueService';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { generateId, getTodayISO } from '../lib/utils';
@@ -51,8 +53,15 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
   const [selectedSourceFilter, setSelectedSourceFilter] = useState<string>('all');
   const [selectedPlatformFilter, setSelectedPlatformFilter] = useState<string>('all');
 
-  // Modals
+  // Modals & Memory Review Correction State
   const [selectedMemory, setSelectedMemory] = useState<NeoMemory | null>(null);
+  const [isEditingMemory, setIsEditingMemory] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editSummary, setEditSummary] = useState('');
+  const [editArea, setEditArea] = useState('Personal');
+  const [editTags, setEditTags] = useState('');
+  const [editIsImportant, setEditIsImportant] = useState(false);
+
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
   const [importJsonText, setImportJsonText] = useState('');
@@ -126,7 +135,6 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
     refreshReconciliation();
   }, [allMemories]);
 
-  // Action item approval handlers
   const handleApproveActionItem = async (
     memoryId: string,
     actionItemId: string,
@@ -138,6 +146,42 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
     } catch (err: any) {
       alert(`Approval error: ${err.message}`);
     }
+  };
+
+  const openMemoryReview = (mem: NeoMemory, startEditing = false) => {
+    setSelectedMemory(mem);
+    setEditTitle(mem.title || '');
+    setEditSummary(mem.summary || '');
+    setEditArea(mem.associatedArea || 'Personal');
+    setEditTags((mem.tags || []).join(', '));
+    setEditIsImportant(Boolean(mem.isImportant));
+    setIsEditingMemory(startEditing);
+  };
+
+  const handleSaveMemoryCorrection = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedMemory || !editTitle.trim()) return;
+    const now = new Date().toISOString();
+    const patch = {
+      title: editTitle.trim(),
+      summary: editSummary.trim(),
+      associatedArea: editArea,
+      tags: editTags
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean),
+      isImportant: editIsImportant,
+    };
+    await db.neo_memories.update(selectedMemory.id, patch);
+    const updated = await db.neo_memories.get(selectedMemory.id);
+    if (updated) {
+      setSelectedMemory(updated);
+      SyncQueueService.enqueueChange('neo_memories', selectedMemory.id, 'UPDATE', {
+        ...updated,
+        updated_at: now,
+      }).catch(() => {});
+    }
+    setIsEditingMemory(false);
   };
 
   const handleRejectActionItem = async (memoryId: string, actionItemId: string) => {
@@ -433,7 +477,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
                   <div
                     key={mem.id}
                     className="bg-[var(--hub-card-bg)] border border-[var(--hub-border)] rounded-2xl p-5 hover:border-emerald-500/40 transition-all cursor-pointer shadow-sm group"
-                    onClick={() => setSelectedMemory(mem)}
+                    onClick={() => openMemoryReview(mem)}
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -711,7 +755,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
                             • <strong>{mm.title}</strong> ({mm.capturedAt.slice(0, 10)})
                           </span>
                           <button
-                            onClick={() => setSelectedMemory(mm)}
+                            onClick={() => openMemoryReview(mm)}
                             className="text-emerald-400 hover:underline"
                           >
                             View
@@ -799,33 +843,120 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
         </div>
       )}
 
-      {/* DETAIL MODAL: INSPECT MEMORY */}
+      {/* DETAIL MODAL: INSPECT & CORRECT MEMORY */}
       {selectedMemory && (
         <Modal
           isOpen={!!selectedMemory}
-          onClose={() => setSelectedMemory(null)}
-          title={selectedMemory.title}
+          onClose={() => {
+            setSelectedMemory(null);
+            setIsEditingMemory(false);
+          }}
+          title={isEditingMemory ? 'Review & Correct Memory' : selectedMemory.title}
           maxWidth="max-w-3xl"
         >
           <div className="space-y-5">
-            <div className="flex items-center gap-2 flex-wrap text-xs text-[var(--hub-muted)]">
-              <Badge variant="gray">{selectedMemory.source}</Badge>
-              <Badge variant="gray">{selectedMemory.platform}</Badge>
-              <span>Captured: {selectedMemory.capturedAt.slice(0, 16).replace('T', ' ')}</span>
-              <span>Duration: {selectedMemory.durationMinutes || 15} mins</span>
-              {selectedMemory.associatedArea && (
-                <Badge variant="emerald">{selectedMemory.associatedArea}</Badge>
-              )}
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap text-xs text-[var(--hub-muted)]">
+                <Badge variant="gray">{selectedMemory.source}</Badge>
+                <Badge variant="gray">{selectedMemory.platform}</Badge>
+                <span>Captured: {selectedMemory.capturedAt.slice(0, 16).replace('T', ' ')}</span>
+                <span>Duration: {selectedMemory.durationMinutes || 15} mins</span>
+                {selectedMemory.associatedArea && (
+                  <Badge variant="emerald">{selectedMemory.associatedArea}</Badge>
+                )}
+              </div>
+
+              <button
+                onClick={() => openMemoryReview(selectedMemory, !isEditingMemory)}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-accent)] hover:bg-[var(--hub-bg)] cursor-pointer"
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+                <span>{isEditingMemory ? 'Cancel Edit' : 'Review & Correct'}</span>
+              </button>
             </div>
 
-            <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--hub-muted)] mb-1">
-                Executive Discussion Summary
-              </h4>
-              <p className="text-sm leading-relaxed bg-[var(--hub-bg)] p-3.5 rounded-xl border border-[var(--hub-border)]">
-                {selectedMemory.summary}
-              </p>
-            </div>
+            {isEditingMemory ? (
+              <form onSubmit={handleSaveMemoryCorrection} className="space-y-3 text-xs p-4 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-accent)]/30">
+                <div>
+                  <label className="block font-bold text-[var(--hub-ink)] mb-1">Memory Title *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-surface)] text-[var(--hub-ink)]"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-[var(--hub-ink)] mb-1">Corrected Summary *</label>
+                  <textarea
+                    rows={4}
+                    required
+                    value={editSummary}
+                    onChange={(e) => setEditSummary(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-surface)] text-[var(--hub-ink)]"
+                  />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-[var(--hub-ink)] mb-1">Associated Area</label>
+                    <select
+                      value={editArea}
+                      onChange={(e) => setEditArea(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-surface)] text-[var(--hub-ink)]"
+                    >
+                      <option value="Personal">Personal</option>
+                      {areas.map((a) => (
+                        <option key={a.id} value={a.name}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-bold text-[var(--hub-ink)] mb-1">Tags (comma separated)</label>
+                    <input
+                      type="text"
+                      value={editTags}
+                      onChange={(e) => setEditTags(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-surface)] text-[var(--hub-ink)]"
+                    />
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 pt-1 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editIsImportant}
+                    onChange={(e) => setEditIsImportant(e.target.checked)}
+                  />
+                  <span className="font-medium text-[var(--hub-ink)]">Mark as High-Priority / Pinned Reference Memory</span>
+                </label>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingMemory(false)}
+                    className="px-3 py-1.5 rounded-lg border border-[var(--hub-line)] text-[var(--hub-muted)] cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white font-semibold cursor-pointer"
+                  >
+                    Save Correction
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--hub-muted)] mb-1">
+                  Executive Discussion Summary
+                </h4>
+                <p className="text-sm leading-relaxed bg-[var(--hub-bg)] p-3.5 rounded-xl border border-[var(--hub-border)]">
+                  {selectedMemory.summary}
+                </p>
+              </div>
+            )}
 
             {selectedMemory.decisions?.length > 0 && (
               <div>
@@ -896,17 +1027,21 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
               <button
                 onClick={() => {
                   setSelectedMemory(null);
+                  setIsEditingMemory(false);
                   onNavigateToAI?.(`Analyze this NeoSapien memory: "${selectedMemory.title}". What are the critical engineering tradeoffs and next steps?`);
                 }}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-purple-500/15 border border-purple-500/30 text-purple-400 text-xs font-semibold hover:bg-purple-500/25 transition-colors"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-purple-500/15 border border-purple-500/30 text-purple-400 text-xs font-semibold hover:bg-purple-500/25 transition-colors cursor-pointer"
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 Ask Yashwanth AI About This Memory
               </button>
 
               <button
-                onClick={() => setSelectedMemory(null)}
-                className="px-4 py-2 rounded-xl bg-[var(--hub-border)] text-xs font-medium hover:bg-[var(--hub-border)]/80 transition-colors"
+                onClick={() => {
+                  setSelectedMemory(null);
+                  setIsEditingMemory(false);
+                }}
+                className="px-4 py-2 rounded-xl bg-[var(--hub-border)] text-xs font-medium hover:bg-[var(--hub-border)]/80 transition-colors cursor-pointer"
               >
                 Close
               </button>

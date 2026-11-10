@@ -9,177 +9,83 @@ import {
   XCircle,
   RefreshCw,
   FileCode,
-  Terminal,
   Activity,
   Calendar,
   Brain,
-  ShieldCheck,
+  ShieldAlert,
   ChevronRight,
-  ExternalLink,
-  Layers,
   Copy,
   Check,
+  Plus,
+  ThumbsUp,
+  ThumbsDown,
   RotateCcw,
 } from 'lucide-react';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { getSupabaseClient } from '../lib/supabase';
-
-export interface AutomationItem {
-  id: string;
-  user_id?: string;
-  name: string;
-  description?: string;
-  trigger_type: 'cron' | 'event' | 'webhook' | 'manual';
-  trigger_config: {
-    cron_expression?: string;
-    timezone?: string;
-    next_run_at?: string;
-    last_run_at?: string;
-  };
-  action_type: string;
-  action_config: Record<string, any>;
-  status: 'active' | 'paused' | 'error' | 'needs_authorization';
-  created_at: string;
-  updated_at: string;
-}
-
-export interface AutomationRunItem {
-  id: string;
-  automation_id: string;
-  user_id?: string;
-  trigger_source: 'cron_vercel' | 'pg_cron' | 'manual' | 'webhook' | 'event';
-  status: 'queued' | 'running' | 'completed' | 'failed';
-  started_at?: string;
-  completed_at?: string;
-  duration_ms?: number;
-  input_payload?: Record<string, any>;
-  output_payload?: Record<string, any>;
-  error_log?: string;
-  retry_count: number;
-  idempotency_key?: string;
-  created_at: string;
-}
+import {
+  AutomationService,
+  type AutomationDefinition,
+  type AutomationExecutionLog,
+  type AutomationQueueJob,
+} from '../services/automationService';
 
 export const AutomationsPage: React.FC = () => {
-  const [automations, setAutomations] = useState<AutomationItem[]>([]);
-  const [runs, setRuns] = useState<AutomationRunItem[]>([]);
+  const [automations, setAutomations] = useState<AutomationDefinition[]>([]);
+  const [queueJobs, setQueueJobs] = useState<AutomationQueueJob[]>([]);
+  const [runs, setRuns] = useState<AutomationExecutionLog[]>([]);
+  const [configured, setConfigured] = useState(true);
+  const [authenticated, setAuthenticated] = useState(true);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [dispatchingId, setDispatchingId] = useState<string | null>(null);
-  const [selectedRun, setSelectedRun] = useState<AutomationRunItem | null>(null);
+  const [reviewingJobId, setReviewingJobId] = useState<string | null>(null);
+  const [selectedRun, setSelectedRun] = useState<AutomationExecutionLog | null>(null);
   const [isLogsDrawerOpen, setIsLogsDrawerOpen] = useState(false);
   const [filterAutomationId, setFilterAutomationId] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
-  // Load live data directly from Supabase / server API
+  // Create schedule modal state
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newDescription, setNewDescription] = useState('');
+  const [newActionType, setNewActionType] = useState('task_deadline_scan');
+  const [newTriggerType, setNewTriggerType] = useState<'cron' | 'one_time'>('cron');
+  const [newCronExpr, setNewCronExpr] = useState('0 7 * * *');
+  const [newScheduledFor, setNewScheduledFor] = useState('');
+  const [newRequiresApproval, setNewRequiresApproval] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const client = getSupabaseClient();
-      if (client) {
-        const [autoRes, runsRes] = await Promise.all([
-          client.from('automations').select('*').order('created_at', { ascending: true }),
-          client.from('automation_runs').select('*').order('created_at', { ascending: false }).limit(40),
-        ]);
-
-        if (autoRes.data && autoRes.data.length > 0) {
-          setAutomations(autoRes.data as AutomationItem[]);
-        } else {
-          // If table empty, fallback to seed endpoint or default system automations
-          fetchFallbackAutomations();
-        }
-
-        if (runsRes.data) {
-          setRuns(runsRes.data as AutomationRunItem[]);
-        }
-      } else {
-        fetchFallbackAutomations();
-      }
-    } catch (err) {
-      console.warn('[AutomationsPage] Error loading data:', err);
-      fetchFallbackAutomations();
+      const data = await AutomationService.loadDashboardData();
+      setConfigured(data.configured);
+      setAuthenticated(data.authenticated);
+      setStatusMessage(data.message || null);
+      setAutomations(data.automations);
+      setQueueJobs(data.queue);
+      setRuns(data.runs);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const fetchFallbackAutomations = async () => {
-    try {
-      const res = await fetch('/api/automations');
-      if (res.ok) {
-        const json = await res.json();
-        if (json.automations && json.automations.length > 0) {
-          setAutomations(json.automations);
-        }
-        if (json.recentExecutionLogs) {
-          setRuns(json.recentExecutionLogs);
-        }
-      }
-    } catch {
-      // Offline fallback state with real system definitions
-      setAutomations([
-        {
-          id: 'a0000000-0000-0000-0000-000000000001',
-          name: 'Executive Morning Briefing',
-          description: 'Daily 07:00 AM IST executive briefing synthesizing high-priority tasks, calendar events, and hardware milestones.',
-          trigger_type: 'cron',
-          trigger_config: { cron_expression: '0 7 * * *', timezone: 'Asia/Kolkata' },
-          action_type: 'morning_briefing',
-          action_config: { priority_threshold: 'high' },
-          status: 'active',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-        {
-          id: 'a0000000-0000-0000-0000-000000000002',
-          name: 'Task Deadline & Meeting Scanner',
-          description: 'Hourly server-side scan detecting tasks past due date and meetings starting within 45 minutes.',
-          trigger_type: 'cron',
-          trigger_config: { cron_expression: '0 * * * *', timezone: 'Asia/Kolkata' },
-          action_type: 'task_deadline_scan',
-          action_config: { lead_time_minutes: 45 },
-          status: 'active',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-        {
-          id: 'a0000000-0000-0000-0000-000000000003',
-          name: 'NeoSapien Wearable & MCP Memory Sync',
-          description: 'Bi-hourly automated synchronization pulling Neo 1 wearable conversations via official NeoSapien MCP.',
-          trigger_type: 'cron',
-          trigger_config: { cron_expression: '0 */2 * * *', timezone: 'Asia/Kolkata' },
-          action_type: 'neosapien_mcp',
-          action_config: { mcp_endpoint: 'https://api.neosapien.xyz/mcp' },
-          status: 'active',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-      ]);
     }
   };
 
   useEffect(() => {
     loadData();
 
-    // Subscribe to Supabase Realtime for live run updates
     const client = getSupabaseClient();
     if (client) {
       const channel = client
-        .channel('public:automation_runs')
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'automation_runs' },
-          (payload) => {
-            if (payload.eventType === 'INSERT') {
-              setRuns((prev) => [payload.new as AutomationRunItem, ...prev]);
-            } else if (payload.eventType === 'UPDATE') {
-              setRuns((prev) =>
-                prev.map((r) => (r.id === payload.new.id ? (payload.new as AutomationRunItem) : r))
-              );
-            }
-          }
-        )
+        .channel('public:automation_v2_stream')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'automation_runs' }, () => {
+          loadData();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'automation_queue' }, () => {
+          loadData();
+        })
         .subscribe();
 
       return () => {
@@ -188,71 +94,93 @@ export const AutomationsPage: React.FC = () => {
     }
   }, []);
 
-  // Action: Trigger "Run Now" via /api/automations/dispatch
-  const handleRunNow = async (auto: AutomationItem) => {
+  const handleRunNow = async (auto: AutomationDefinition) => {
     setDispatchingId(auto.id);
     setActionMessage(null);
     try {
-      const idempotencyKey = `manual_${auto.id}_${Date.now()}`;
-      const client = getSupabaseClient();
-      let token: string | undefined = undefined;
-      if (client) {
-        const { data: { session } } = await client.auth.getSession();
-        token = session?.access_token;
-      }
-
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'Idempotency-Key': idempotencyKey,
-      };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const res = await fetch('/api/automations/dispatch', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          automation_id: auto.id,
-          action_type: auto.action_type,
-          trigger_source: 'manual',
-          idempotency_key: idempotencyKey,
-        }),
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        setActionMessage(`Run executed in ${data.duration_ms}ms (Status: ${data.status}).`);
-        loadData();
+      const res = await AutomationService.triggerServerAutomation(auto.action_type, auto.id);
+      if (res.requires_approval) {
+        setActionMessage('Job queued in Approval Queue. Confirm execution below.');
+      } else if (res.success && res.log) {
+        setActionMessage(`Executed in ${res.log.duration_ms}ms (${res.log.records_affected} records affected).`);
       } else {
-        setActionMessage(`Dispatch error: ${data.message || data.error}`);
+        setActionMessage(res.error || 'Dispatch did not complete.');
       }
-    } catch (err: any) {
-      setActionMessage(`Network error triggering automation: ${err.message}`);
+      await loadData();
     } finally {
       setDispatchingId(null);
     }
   };
 
-  // Action: Toggle Pause / Resume
-  const handleToggleStatus = async (auto: AutomationItem) => {
+  const handleToggleStatus = async (auto: AutomationDefinition) => {
     const nextStatus = auto.status === 'active' ? 'paused' : 'active';
-    try {
-      const client = getSupabaseClient();
-      if (client) {
-        await client
-          .from('automations')
-          .update({ status: nextStatus, updated_at: new Date().toISOString() })
-          .eq('id', auto.id);
-      }
-      setAutomations((prev) =>
-        prev.map((a) => (a.id === auto.id ? { ...a, status: nextStatus } : a))
-      );
-    } catch (err: any) {
-      console.warn('Could not toggle automation status:', err);
+    const res = await AutomationService.toggleStatus(auto.id, nextStatus);
+    if (res.success) {
+      setAutomations((prev) => prev.map((a) => (a.id === auto.id ? { ...a, status: nextStatus } : a)));
+      setActionMessage(`Automation "${auto.name}" ${nextStatus === 'paused' ? 'paused' : 'resumed'}.`);
+    } else {
+      setActionMessage(res.error || 'Could not update automation status.');
     }
   };
 
-  // Helper to open drawer for a specific automation or global run
-  const handleOpenLogs = (automationId?: string, run?: AutomationRunItem) => {
+  const handleReviewJob = async (jobId: string, decision: 'approve_job' | 'reject_job' | 'retry_job') => {
+    setReviewingJobId(jobId);
+    setActionMessage(null);
+    try {
+      const res = await AutomationService.reviewQueueJob(jobId, decision);
+      if (res.success) {
+        setActionMessage(
+          decision === 'approve_job'
+            ? 'Job approved and dispatched.'
+            : decision === 'reject_job'
+            ? 'Job rejected and cancelled.'
+            : 'Job re-queued and executed.'
+        );
+        await loadData();
+      } else {
+        setActionMessage(res.error || 'Queue action failed.');
+      }
+    } finally {
+      setReviewingJobId(null);
+    }
+  };
+
+  const handleCreateSchedule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newName.trim()) return;
+    setIsCreating(true);
+    setActionMessage(null);
+    try {
+      const res = await AutomationService.createSchedule({
+        name: newName.trim(),
+        description: newDescription.trim(),
+        action_type: newActionType,
+        trigger_type: newTriggerType,
+        cron_expression: newTriggerType === 'cron' ? newCronExpr.trim() : undefined,
+        scheduled_for:
+          newTriggerType === 'one_time' && newScheduledFor
+            ? new Date(newScheduledFor).toISOString()
+            : undefined,
+        timezone: 'Asia/Kolkata',
+        requires_approval: newRequiresApproval,
+      });
+
+      if (res.success) {
+        setIsCreateOpen(false);
+        setNewName('');
+        setNewDescription('');
+        setNewScheduledFor('');
+        setActionMessage(`Schedule "${res.automation?.name}" created on server.`);
+        await loadData();
+      } else {
+        setActionMessage(res.error || 'Failed to create schedule.');
+      }
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const handleOpenLogs = (automationId?: string, run?: AutomationExecutionLog) => {
     setFilterAutomationId(automationId || null);
     if (run) setSelectedRun(run);
     setIsLogsDrawerOpen(true);
@@ -262,6 +190,15 @@ export const AutomationsPage: React.FC = () => {
     ? runs.filter((r) => r.automation_id === filterAutomationId)
     : runs;
 
+  const pendingApprovals = queueJobs.filter(
+    (j) => j.approval_status === 'pending_approval' && j.status !== 'cancelled'
+  );
+  const activeOrFailedQueue = queueJobs.filter(
+    (j) =>
+      j.approval_status !== 'pending_approval' &&
+      (j.status === 'pending' || j.status === 'retry_scheduled' || j.status === 'processing' || j.status === 'failed')
+  );
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -269,20 +206,28 @@ export const AutomationsPage: React.FC = () => {
         <div>
           <h2 className="font-heading font-extrabold text-2xl text-[var(--hub-ink)] flex items-center gap-2">
             <Zap className="w-6 h-6 text-[var(--hub-accent)]" />
-            <span>Server-Side Automations Engine</span>
+            <span>Automations & Durable Scheduler</span>
           </h2>
           <p className="text-sm text-[var(--hub-muted)] mt-1">
-            Autonomous background workers running on Vercel Serverless & Supabase Queue. Zero browser intervals, guaranteed idempotency.
+            Server-side cron & one-time workers backed by Supabase queue, retry backoff, and human approval gates.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => handleOpenLogs()}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-surface)] text-[var(--hub-ink)] text-xs font-semibold hover:bg-[var(--hub-line)]/50 cursor-pointer shadow-xs"
           >
             <Activity className="w-3.5 h-3.5 text-[var(--hub-accent)]" />
-            <span>Execution Audit Trail ({runs.length})</span>
+            <span>Run History ({runs.length})</span>
+          </button>
+          <button
+            onClick={() => setIsCreateOpen(true)}
+            disabled={!configured || !authenticated}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[var(--hub-accent)]/40 bg-[var(--hub-accent)]/10 text-[var(--hub-accent)] text-xs font-semibold hover:bg-[var(--hub-accent)]/20 cursor-pointer disabled:opacity-50"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>New Schedule</span>
           </button>
           <button
             onClick={loadData}
@@ -295,6 +240,23 @@ export const AutomationsPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Honest Server Configuration / Auth Diagnostic Banner */}
+      {statusMessage && (
+        <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-3">
+          <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <div className="font-bold">
+              {!configured
+                ? 'Automation Database Not Configured'
+                : !authenticated
+                ? 'Authentication Required'
+                : 'Automation Engine Notice'}
+            </div>
+            <p className="leading-relaxed">{statusMessage}</p>
+          </div>
+        </div>
+      )}
+
       {actionMessage && (
         <div className="p-3.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-600 dark:text-blue-400 font-medium flex items-center justify-between">
           <span>{actionMessage}</span>
@@ -304,135 +266,255 @@ export const AutomationsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Automations Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {automations.map((auto) => {
-          const autoRuns = runs.filter((r) => r.automation_id === auto.id);
-          const lastRun = autoRuns[0];
-          const isDispatching = dispatchingId === auto.id;
+      {/* Human Approval Queue */}
+      {pendingApprovals.length > 0 && (
+        <div className="bg-[var(--hub-surface)] border border-amber-500/40 rounded-xl p-5 shadow-xs space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="font-heading font-bold text-sm text-[var(--hub-ink)] flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-amber-500" />
+              <span>Pending Human Approvals ({pendingApprovals.length})</span>
+            </h3>
+            <Badge variant="amber">Confirmation Required</Badge>
+          </div>
+          <div className="space-y-2">
+            {pendingApprovals.map((job) => (
+              <div
+                key={job.id}
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)]"
+              >
+                <div className="space-y-0.5">
+                  <div className="text-xs font-bold text-[var(--hub-ink)]">
+                    Action: <code className="font-mono">{job.action_type}</code>
+                  </div>
+                  <div className="text-[11px] text-[var(--hub-muted)]">
+                    Source: {job.trigger_source} • Queued {new Date(job.created_at).toLocaleString()}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleReviewJob(job.id, 'approve_job')}
+                    disabled={reviewingJobId === job.id}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 cursor-pointer disabled:opacity-50"
+                  >
+                    <ThumbsUp className="w-3.5 h-3.5" />
+                    <span>Approve & Run</span>
+                  </button>
+                  <button
+                    onClick={() => handleReviewJob(job.id, 'reject_job')}
+                    disabled={reviewingJobId === job.id}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-red-500/30 text-red-500 text-xs font-semibold hover:bg-red-500/10 cursor-pointer disabled:opacity-50"
+                  >
+                    <ThumbsDown className="w-3.5 h-3.5" />
+                    <span>Reject</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
-          return (
-            <div
-              key={auto.id}
-              className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs flex flex-col justify-between space-y-4 hover:border-[var(--hub-accent)]/50 transition-colors"
-            >
-              <div className="space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-[var(--hub-accent)]/10 text-[var(--hub-accent)] flex items-center justify-center font-bold">
-                      {auto.action_type.includes('google') ? (
-                        <Calendar className="w-4 h-4" />
-                      ) : auto.action_type.includes('neo') ? (
-                        <Brain className="w-4 h-4" />
-                      ) : (
-                        <Zap className="w-4 h-4" />
-                      )}
-                    </div>
-                    <div>
-                      <h3 className="font-heading font-bold text-sm text-[var(--hub-ink)]">{auto.name}</h3>
-                      <div className="flex items-center gap-1.5 text-[11px] text-[var(--hub-muted)] mt-0.5">
-                        <Clock className="w-3 h-3" />
-                        <span>Schedule: {auto.trigger_config?.cron_expression || '0 * * * *'} ({auto.trigger_config?.timezone || 'Asia/Kolkata'})</span>
+      {/* Automations Grid */}
+      {automations.length === 0 && !isLoading ? (
+        <div className="bg-[var(--hub-surface)] border border-dashed border-[var(--hub-line)] rounded-xl p-8 text-center space-y-2">
+          <Clock className="w-7 h-7 text-[var(--hub-muted)] mx-auto" />
+          <div className="text-sm font-bold text-[var(--hub-ink)]">No Scheduled Automations Loaded</div>
+          <p className="text-xs text-[var(--hub-muted)] max-w-md mx-auto">
+            {configured && authenticated
+              ? 'Create your first recurring cron or one-time automation schedule using the "New Schedule" button above.'
+              : 'Connect your Supabase session and verify server environment configuration to manage scheduled automations.'}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {automations.map((auto) => {
+            const autoRuns = runs.filter((r) => r.automation_id === auto.id);
+            const lastRun = autoRuns[0];
+            const isDispatching = dispatchingId === auto.id;
+            const cronLabel =
+              auto.trigger_type === 'one_time'
+                ? `One-time: ${auto.scheduled_for || auto.trigger_config?.scheduled_for || 'Unscheduled'}`
+                : `${auto.cron_expression || auto.trigger_config?.cron_expression || '0 * * * *'} (${
+                    auto.timezone || auto.trigger_config?.timezone || 'Asia/Kolkata'
+                  })`;
+
+            return (
+              <div
+                key={auto.id}
+                className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs flex flex-col justify-between space-y-4 hover:border-[var(--hub-accent)]/50 transition-colors"
+              >
+                <div className="space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-[var(--hub-accent)]/10 text-[var(--hub-accent)] flex items-center justify-center font-bold">
+                        {auto.action_type.includes('google') ? (
+                          <Calendar className="w-4 h-4" />
+                        ) : auto.action_type.includes('neo') ? (
+                          <Brain className="w-4 h-4" />
+                        ) : (
+                          <Zap className="w-4 h-4" />
+                        )}
                       </div>
+                      <div>
+                        <h3 className="font-heading font-bold text-sm text-[var(--hub-ink)]">{auto.name}</h3>
+                        <div className="flex items-center gap-1.5 text-[11px] text-[var(--hub-muted)] mt-0.5">
+                          <Clock className="w-3 h-3" />
+                          <span>{cronLabel}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      {auto.requires_approval && <Badge variant="purple">Approval Gate</Badge>}
+                      <Badge
+                        variant={
+                          auto.status === 'active'
+                            ? 'emerald'
+                            : auto.status === 'paused' || auto.status === 'completed'
+                            ? 'amber'
+                            : auto.status === 'needs_authorization'
+                            ? 'purple'
+                            : 'red'
+                        }
+                      >
+                        {auto.status.replace('_', ' ').toUpperCase()}
+                      </Badge>
                     </div>
                   </div>
 
-                  {/* Status Badge */}
-                  <Badge
-                    variant={
-                      auto.status === 'active'
-                        ? 'emerald'
-                        : auto.status === 'paused'
-                        ? 'amber'
-                        : auto.status === 'needs_authorization'
-                        ? 'purple'
-                        : 'red'
-                    }
+                  {auto.description && (
+                    <p className="text-xs text-[var(--hub-muted)] leading-relaxed">{auto.description}</p>
+                  )}
+                </div>
+
+                <div className="bg-[var(--hub-line)]/20 rounded-lg p-3 text-xs space-y-1.5 border border-[var(--hub-line)]/40">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[var(--hub-muted)]">Next Scheduled Run:</span>
+                    <span className="font-medium text-[var(--hub-ink)]">
+                      {auto.next_run_at || auto.trigger_config?.next_run_at
+                        ? new Date(auto.next_run_at || auto.trigger_config.next_run_at!).toLocaleString()
+                        : 'Pending first tick'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[var(--hub-muted)]">Last Server Run:</span>
+                    <span className="font-medium flex items-center gap-1.5">
+                      {lastRun?.status === 'completed' ? (
+                        <span className="text-emerald-500 font-semibold flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" /> {lastRun.duration_ms}ms
+                        </span>
+                      ) : lastRun?.status === 'failed' ? (
+                        <span className="text-red-500 font-semibold flex items-center gap-1">
+                          <XCircle className="w-3 h-3" /> Failed
+                        </span>
+                      ) : (
+                        <span className="text-[var(--hub-muted)]">No runs yet</span>
+                      )}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-[var(--hub-line)]/50">
+                  <button
+                    onClick={() => handleOpenLogs(auto.id, lastRun)}
+                    className="text-xs text-[var(--hub-accent)] font-semibold hover:underline flex items-center gap-1 cursor-pointer"
                   >
-                    {auto.status.replace('_', ' ').toUpperCase()}
-                  </Badge>
-                </div>
+                    <span>View Run Logs</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
 
-                <p className="text-xs text-[var(--hub-muted)] leading-relaxed">{auto.description}</p>
-              </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleToggleStatus(auto)}
+                      className="p-1.5 rounded-lg border border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-line)]/40 cursor-pointer"
+                      title={auto.status === 'active' ? 'Pause Automation' : 'Resume Automation'}
+                    >
+                      {auto.status === 'active' ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                    </button>
 
-              {/* Last Run Metrics */}
-              <div className="bg-[var(--hub-line)]/20 rounded-lg p-3 text-xs space-y-1.5 border border-[var(--hub-line)]/40">
-                <div className="flex items-center justify-between">
-                  <span className="text-[var(--hub-muted)]">Last Server Execution:</span>
-                  <span className="font-medium text-[var(--hub-ink)]">
-                    {lastRun?.completed_at ? new Date(lastRun.completed_at).toLocaleTimeString() : 'Never'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[var(--hub-muted)]">Run Result & Latency:</span>
-                  <span className="font-medium flex items-center gap-1.5">
-                    {lastRun?.status === 'completed' ? (
-                      <span className="text-emerald-500 font-semibold flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" /> {lastRun.duration_ms}ms
-                      </span>
-                    ) : lastRun?.status === 'failed' ? (
-                      <span className="text-red-500 font-semibold flex items-center gap-1">
-                        <XCircle className="w-3 h-3" /> Failed
-                      </span>
-                    ) : (
-                      <span className="text-[var(--hub-muted)]">Idle</span>
-                    )}
-                  </span>
+                    <button
+                      onClick={() => handleRunNow(auto)}
+                      disabled={isDispatching}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer disabled:opacity-50"
+                    >
+                      <Play className={`w-3 h-3 ${isDispatching ? 'animate-spin' : ''}`} />
+                      <span>{isDispatching ? 'Dispatching...' : 'Run Now'}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
+            );
+          })}
+        </div>
+      )}
 
-              {/* Action Buttons */}
-              <div className="flex items-center justify-between pt-2 border-t border-[var(--hub-line)]/50">
-                <button
-                  onClick={() => handleOpenLogs(auto.id, lastRun)}
-                  className="text-xs text-[var(--hub-accent)] font-semibold hover:underline flex items-center gap-1 cursor-pointer"
-                >
-                  <span>View Run Logs</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-
+      {/* Durable Queue & Retry Inspector */}
+      {activeOrFailedQueue.length > 0 && (
+        <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-3">
+          <h3 className="font-heading font-bold text-sm text-[var(--hub-ink)] flex items-center gap-2">
+            <RotateCcw className="w-4 h-4 text-[var(--hub-accent)]" />
+            <span>Queued & Retry Jobs ({activeOrFailedQueue.length})</span>
+          </h3>
+          <div className="divide-y divide-[var(--hub-line)] text-xs">
+            {activeOrFailedQueue.map((q) => (
+              <div key={q.id} className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant={
+                        q.status === 'retry_scheduled'
+                          ? 'amber'
+                          : q.status === 'failed'
+                          ? 'red'
+                          : 'blue'
+                      }
+                    >
+                      {q.status.toUpperCase()}
+                    </Badge>
+                    <span className="font-mono font-semibold text-[var(--hub-ink)]">{q.action_type}</span>
+                    <span className="text-[var(--hub-muted)]">
+                      Retry {q.retry_count}/{q.max_retries}
+                    </span>
+                  </div>
+                  {q.error_message && (
+                    <div className="text-[11px] text-red-500">{q.error_message}</div>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleToggleStatus(auto)}
-                    className="p-1.5 rounded-lg border border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-line)]/40 cursor-pointer"
-                    title={auto.status === 'active' ? 'Pause Automation' : 'Resume Automation'}
-                  >
-                    {auto.status === 'active' ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                  </button>
-
-                  <button
-                    onClick={() => handleRunNow(auto)}
-                    disabled={isDispatching}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer disabled:opacity-50"
-                  >
-                    <Play className={`w-3 h-3 ${isDispatching ? 'animate-spin' : ''}`} />
-                    <span>{isDispatching ? 'Dispatching...' : 'Run Now'}</span>
-                  </button>
+                  <span className="text-[11px] text-[var(--hub-muted)]">
+                    Scheduled: {new Date(q.scheduled_for).toLocaleString()}
+                  </span>
+                  {(q.status === 'failed' || q.status === 'retry_scheduled') && (
+                    <button
+                      onClick={() => handleReviewJob(q.id, 'retry_job')}
+                      disabled={reviewingJobId === q.id}
+                      className="px-2.5 py-1 rounded border border-[var(--hub-accent)] text-[var(--hub-accent)] font-semibold hover:bg-[var(--hub-accent)]/10 cursor-pointer"
+                    >
+                      Retry Now
+                    </button>
+                  )}
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Execution History Table */}
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
-              <Activity className="w-4 h-4 text-[var(--hub-accent)]" />
-              <span>Real-Time Execution Logs (Supabase)</span>
-            </h3>
-            <p className="text-xs text-[var(--hub-muted)] mt-0.5">
-              Verified serverless run history. Every execution is backed by database records with timing and payload traces.
-            </p>
-          </div>
+        <div>
+          <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
+            <Activity className="w-4 h-4 text-[var(--hub-accent)]" />
+            <span>Execution Run Audit Trail (Supabase)</span>
+          </h3>
+          <p className="text-xs text-[var(--hub-muted)] mt-0.5">
+            Every server execution produces an immutable run row with latency metrics and output payloads.
+          </p>
         </div>
 
         {runs.length === 0 ? (
           <div className="p-8 text-center text-xs text-[var(--hub-muted)]">
-            No execution logs recorded yet. Click "Run Now" on any automation to trigger a verified server execution.
+            No verified execution runs recorded yet.
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -449,13 +531,13 @@ export const AutomationsPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--hub-line)]">
-                {runs.slice(0, 10).map((run) => (
+                {runs.slice(0, 12).map((run) => (
                   <tr key={run.id} className="hover:bg-[var(--hub-line)]/20 transition-colors">
                     <td className="py-2.5 px-3 font-mono text-[11px] text-[var(--hub-ink)]">
                       {run.id.substring(0, 8)}...
                     </td>
                     <td className="py-2.5 px-3 text-[var(--hub-ink)] font-medium">
-                      <span className="capitalize">{run.trigger_source.replace('_', ' ')}</span>
+                      <span className="capitalize">{run.trigger_source.replace(/_/g, ' ')}</span>
                     </td>
                     <td className="py-2.5 px-3">
                       <Badge
@@ -473,11 +555,11 @@ export const AutomationsPage: React.FC = () => {
                       </Badge>
                     </td>
                     <td className="py-2.5 px-3 font-mono text-[var(--hub-ink)]">
-                      {run.duration_ms ? `${run.duration_ms}ms` : '—'}
+                      {typeof run.duration_ms === 'number' ? `${run.duration_ms}ms` : '—'}
                     </td>
                     <td className="py-2.5 px-3 text-[var(--hub-muted)]">{run.retry_count}</td>
                     <td className="py-2.5 px-3 text-[var(--hub-muted)]">
-                      {new Date(run.created_at).toLocaleTimeString()}
+                      {new Date(run.created_at).toLocaleString()}
                     </td>
                     <td className="py-2.5 px-3 text-right">
                       <button
@@ -497,6 +579,136 @@ export const AutomationsPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Create Schedule Modal */}
+      {isCreateOpen && (
+        <Modal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} title="Create Server Automation Schedule">
+          <form onSubmit={handleCreateSchedule} className="space-y-4 text-xs">
+            <div>
+              <label className="block font-bold text-[var(--hub-ink)] mb-1">Automation Name</label>
+              <input
+                type="text"
+                required
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="e.g., Daily 7 AM Briefing"
+                className="w-full px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)]"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-[var(--hub-ink)] mb-1">Description</label>
+              <input
+                type="text"
+                value={newDescription}
+                onChange={(e) => setNewDescription(e.target.value)}
+                placeholder="What this server job performs"
+                className="w-full px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)]"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold text-[var(--hub-ink)] mb-1">Server Action</label>
+                <select
+                  value={newActionType}
+                  onChange={(e) => setNewActionType(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)]"
+                >
+                  <option value="task_deadline_scan">Task & Meeting Deadline Scan</option>
+                  <option value="morning_briefing">AI Executive Briefing</option>
+                  <option value="neosapien_mcp">NeoSapien Wearable MCP Sync</option>
+                  <option value="google_calendar">Google Calendar Sync</option>
+                  <option value="google_gmail">Google Gmail Scan</option>
+                  <option value="isolated_scheduled_check">Isolated Verification Check</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-[var(--hub-ink)] mb-1">Schedule Type</label>
+                <select
+                  value={newTriggerType}
+                  onChange={(e) => setNewTriggerType(e.target.value as 'cron' | 'one_time')}
+                  className="w-full px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)]"
+                >
+                  <option value="cron">Recurring (5-Field Cron, IST)</option>
+                  <option value="one_time">One-Time Scheduled Run</option>
+                </select>
+              </div>
+            </div>
+
+            {newTriggerType === 'cron' ? (
+              <div>
+                <label className="block font-bold text-[var(--hub-ink)] mb-1">Cron Expression (Asia/Kolkata)</label>
+                <input
+                  type="text"
+                  required
+                  value={newCronExpr}
+                  onChange={(e) => setNewCronExpr(e.target.value)}
+                  placeholder="0 7 * * *"
+                  className="w-full px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] font-mono text-[var(--hub-ink)]"
+                />
+                <div className="flex gap-2 mt-1.5 flex-wrap">
+                  {[
+                    { label: 'Daily 7 AM', val: '0 7 * * *' },
+                    { label: 'Hourly', val: '0 * * * *' },
+                    { label: 'Every 2h', val: '0 */2 * * *' },
+                    { label: 'Mon 9 AM', val: '0 9 * * 1' },
+                  ].map((p) => (
+                    <button
+                      type="button"
+                      key={p.val}
+                      onClick={() => setNewCronExpr(p.val)}
+                      className="px-2 py-0.5 rounded bg-[var(--hub-line)]/40 text-[var(--hub-muted)] hover:text-[var(--hub-ink)] cursor-pointer"
+                    >
+                      {p.label} ({p.val})
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <label className="block font-bold text-[var(--hub-ink)] mb-1">Run At (Local Time)</label>
+                <input
+                  type="datetime-local"
+                  required
+                  value={newScheduledFor}
+                  onChange={(e) => setNewScheduledFor(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)]"
+                />
+              </div>
+            )}
+
+            <label className="flex items-center gap-2 pt-1 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={newRequiresApproval}
+                onChange={(e) => setNewRequiresApproval(e.target.checked)}
+              />
+              <span className="text-[var(--hub-ink)] font-medium">
+                Require human confirmation in Approval Queue before executing
+              </span>
+            </label>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsCreateOpen(false)}
+                className="px-3 py-1.5 rounded-lg border border-[var(--hub-line)] text-[var(--hub-muted)] cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isCreating}
+                className="px-4 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white font-semibold cursor-pointer disabled:opacity-50"
+              >
+                {isCreating ? 'Saving...' : 'Create Schedule'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
 
       {/* Execution Details Drawer / Modal */}
       {isLogsDrawerOpen && (

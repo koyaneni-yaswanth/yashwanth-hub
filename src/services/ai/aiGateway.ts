@@ -3,11 +3,25 @@ import type {
   AIMode,
   AIComparisonResult,
   AIUsageLog,
+  AIConversation,
+  AIProposedAction,
+  Task,
+  EventItem,
+  Note,
 } from '../../types';
 import { db } from '../../db';
-import { generateId } from '../../lib/utils';
+import { generateId, getTodayISO } from '../../lib/utils';
 import { SUPPORTED_MODELS, getRecommendedModel } from './aiModels';
 import { NeoSapienMemoryService } from '../neoSapienMemoryService';
+import { SupabaseAuthService } from '../auth/supabaseAuthService';
+import { SyncQueueService } from '../sync/syncQueueService';
+import { AutomationService } from '../automationService';
+import {
+  AI_TOOL_DEFINITIONS,
+  buildDeterministicGroundedResponse,
+  type AIToolSpec,
+  type WorkspaceSnapshot,
+} from '../../../api/_lib/aiTools';
 
 export interface AISendOptions {
   provider?: AIProvider;
@@ -16,133 +30,452 @@ export interface AISendOptions {
   complexity?: 'simple' | 'moderate' | 'complex';
   systemPrompt?: string;
   contextData?: any;
+  projectId?: string;
+  history?: Array<{ role: string; content: string }>;
 }
 
 export interface AIResponse {
   text: string;
   provider: AIProvider;
   modelId: string;
+  providerMode?: 'server_llm' | 'grounded_deterministic' | 'grounded_fallback_after_error' | 'client_override';
+  providerNotice?: string;
   latencyMs: number;
   tokensInput: number;
   tokensOutput: number;
   estimatedCostUSD: number;
+  toolCalls?: Array<{ tool: string; args?: Record<string, any>; summary?: string }>;
+  proposedActions?: AIProposedAction[];
+  citations?: string[];
+  verifiedFacts?: string[];
+  estimates?: string[];
+  recommendations?: string[];
+  unknowns?: string[];
+  configuredProviders?: Record<string, boolean>;
 }
 
 export class AIGateway {
-  private static getStoredKey(provider: AIProvider): string {
+  private static getOptionalClientOverrideKey(provider: AIProvider): string {
     if (typeof window === 'undefined') return '';
     return localStorage.getItem(`yash_ai_key_${provider}`) || localStorage.getItem('yash_ai_key') || '';
   }
 
+  /**
+   * Builds a permission-aware workspace snapshot across Dexie tables for AI grounding.
+   */
+  public static async buildWorkspaceSnapshot(
+    provider: AIProvider,
+    projectIdScope?: string
+  ): Promise<WorkspaceSnapshot> {
+    const todayISO = getTodayISO();
+    const privacy = NeoSapienMemoryService.getPrivacySettings();
+    const allowNeo =
+      provider === 'gemini'
+        ? privacy.allowGeminiAccess
+        : provider === 'openai'
+        ? privacy.allowOpenAIAccess
+        : provider === 'anthropic'
+        ? privacy.allowClaudeAccess
+        : true;
+
+    const [tasks, projects, notes, meetings, events, documents, robotics, neoMemories] =
+      await Promise.all([
+        db.tasks.toArray(),
+        db.projects.toArray(),
+        db.notes.toArray(),
+        db.meetings.toArray(),
+        db.events.toArray(),
+        db.documents.toArray(),
+        db.robotics_records.toArray().catch(() => []),
+        allowNeo ? db.neo_memories.toArray() : Promise.resolve([]),
+      ]);
+
+    return {
+      todayISO,
+      projectIdScope,
+      tasks,
+      projects,
+      notes,
+      meetings,
+      events,
+      documents: documents.map((d) => ({
+        id: d.id,
+        title: d.title,
+        file_name: d.file_name,
+        area: d.area,
+        notes: d.notes,
+        updated_at: d.updated_at,
+      })),
+      robotics_records: robotics,
+      neo_memories: neoMemories,
+    };
+  }
+
+  /**
+   * Discovers structured Chief of Staff tools and server LLM provider readiness.
+   */
+  public static async discoverTools(): Promise<{
+    tools: AIToolSpec[];
+    configuredProviders: Record<string, boolean>;
+    source: 'server' | 'local_manifest';
+  }> {
+    try {
+      const resp = await fetch('/api/ai/chat?action=tools');
+      if (resp.ok) {
+        const contentType = resp.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const data = await resp.json();
+          if (Array.isArray(data.tools)) {
+            return {
+              tools: data.tools,
+              configuredProviders: data.configuredProviders || {},
+              source: 'server',
+            };
+          }
+        }
+      }
+    } catch {
+      // Fallback below when Vite runs without /api serverless proxy
+    }
+
+    return {
+      tools: AI_TOOL_DEFINITIONS,
+      configuredProviders: { gemini: false, openai: false, anthropic: false },
+      source: 'local_manifest',
+    };
+  }
+
+  /**
+   * Primary V2 entry point: calls server /api/ai/chat first, falling back cleanly to
+   * grounded deterministic workspace reasoning (or optional local override if configured).
+   */
   public static async executePrompt(
     userPrompt: string,
     options: AISendOptions
   ): Promise<AIResponse> {
     const startTime = performance.now();
     const mode = options.mode || 'personal';
-    const complexity = options.complexity || 'simple';
+    const complexity = options.complexity || 'moderate';
 
-    // 1. Determine Provider & Model
     const selectedModel =
       options.modelId
         ? SUPPORTED_MODELS.find((m) => m.modelId === options.modelId) || getRecommendedModel(mode, complexity)
         : getRecommendedModel(mode, complexity);
 
     const provider = options.provider || selectedModel.provider;
-    const apiKey = this.getStoredKey(provider);
+    const workspaceSnapshot = await this.buildWorkspaceSnapshot(provider, options.projectId);
 
-    // If no API key is configured or local_heuristic is chosen, use intelligent local heuristic engine
-    if (!apiKey || provider === 'local_heuristic') {
-      const fallbackText = await this.executeLocalHeuristic(userPrompt, mode, options.contextData);
-      const latencyMs = Math.round(performance.now() - startTime);
-      return {
-        text: fallbackText,
-        provider: 'local_heuristic',
-        modelId: 'heuristic-engine-v2',
-        latencyMs,
-        tokensInput: 0,
-        tokensOutput: 0,
-        estimatedCostUSD: 0,
-      };
+    // 1. Primary path: Server-side /api/ai/chat (keeps keys off client & executes tool calling)
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const jwt = await SupabaseAuthService.getAccessToken();
+      if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
+
+      const resp = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          prompt: userPrompt,
+          provider,
+          modelId: selectedModel.modelId,
+          mode,
+          projectId: options.projectId,
+          history: options.history || [],
+          systemPrompt: options.systemPrompt,
+          workspaceSnapshot,
+        }),
+      });
+
+      const contentType = resp.headers.get('content-type') || '';
+      if (resp.ok && contentType.includes('application/json')) {
+        const data = await resp.json();
+        const tokensIn = Number(data.tokensInput || 0);
+        const tokensOut = Number(data.tokensOutput || 0);
+        const latencyMs = Number(data.latencyMs || Math.round(performance.now() - startTime));
+        const estimatedCost =
+          (tokensIn / 1000) * selectedModel.costPer1kInputTokensUSD +
+          (tokensOut / 1000) * selectedModel.costPer1kOutputTokensUSD;
+
+        if (tokensIn > 0 || tokensOut > 0) {
+          const logEntry: AIUsageLog = {
+            id: generateId(),
+            provider: (data.provider || provider) as AIProvider,
+            modelId: data.modelId || selectedModel.modelId,
+            taskMode: mode,
+            tokensInput: tokensIn,
+            tokensOutput: tokensOut,
+            latencyMs,
+            estimatedCostUSD: estimatedCost,
+            timestamp: new Date().toISOString(),
+          };
+          await db.ai_logs.add(logEntry).catch(() => {});
+        }
+
+        return {
+          text: data.text,
+          provider: (data.provider || provider) as AIProvider,
+          modelId: data.modelId || selectedModel.modelId,
+          providerMode: data.providerMode,
+          providerNotice: data.providerNotice || data.providerError,
+          latencyMs,
+          tokensInput: tokensIn,
+          tokensOutput: tokensOut,
+          estimatedCostUSD: estimatedCost,
+          toolCalls: data.tool_calls || [],
+          proposedActions: (data.proposed_actions || []) as AIProposedAction[],
+          citations: data.citations || [],
+          verifiedFacts: data.verified_facts,
+          estimates: data.estimates,
+          recommendations: data.recommendations,
+          unknowns: data.unknowns,
+          configuredProviders: data.configuredProviders,
+        };
+      }
+    } catch {
+      // Static Vite dev without Vercel API proxy falls through gracefully below
     }
 
+    // 2. Optional manual Settings override key (only if explicitly entered by user in Settings)
+    const overrideKey = this.getOptionalClientOverrideKey(provider);
+    if (overrideKey && provider === 'gemini') {
+      try {
+        const direct = await this.callGeminiDirectOverride(
+          overrideKey,
+          selectedModel.modelId,
+          userPrompt,
+          options.systemPrompt,
+          workspaceSnapshot
+        );
+        const latencyMs = Math.round(performance.now() - startTime);
+        const estimatedCost =
+          (direct.tokensIn / 1000) * selectedModel.costPer1kInputTokensUSD +
+          (direct.tokensOut / 1000) * selectedModel.costPer1kOutputTokensUSD;
+
+        await db.ai_logs
+          .add({
+            id: generateId(),
+            provider: 'gemini',
+            modelId: selectedModel.modelId,
+            taskMode: mode,
+            tokensInput: direct.tokensIn,
+            tokensOutput: direct.tokensOut,
+            latencyMs,
+            estimatedCostUSD: estimatedCost,
+            timestamp: new Date().toISOString(),
+          })
+          .catch(() => {});
+
+        return {
+          text: direct.text,
+          provider: 'gemini',
+          modelId: selectedModel.modelId,
+          providerMode: 'client_override',
+          latencyMs,
+          tokensInput: direct.tokensIn,
+          tokensOutput: direct.tokensOut,
+          estimatedCostUSD: estimatedCost,
+        };
+      } catch {
+        // Fall through cleanly to grounded deterministic synthesis
+      }
+    }
+
+    // 3. Deterministic Grounded Engine over real workspace data (zero fabricated facts)
+    const grounded = buildDeterministicGroundedResponse(
+      userPrompt,
+      workspaceSnapshot,
+      options.projectId
+    );
+    return {
+      text: grounded.text,
+      provider: 'local_heuristic',
+      modelId: 'grounded-chief-of-staff-v2',
+      providerMode: 'grounded_deterministic',
+      providerNotice:
+        'Using local grounded Chief of Staff reasoning over verified workspace records (server LLM API keys not active).',
+      latencyMs: Math.round(performance.now() - startTime),
+      tokensInput: 0,
+      tokensOutput: 0,
+      estimatedCostUSD: 0,
+      toolCalls: grounded.tool_calls,
+      proposedActions: grounded.proposed_actions as AIProposedAction[],
+      citations: grounded.citations,
+      verifiedFacts: grounded.verified_facts,
+      estimates: grounded.estimates,
+      recommendations: grounded.recommendations,
+      unknowns: grounded.unknowns,
+    };
+  }
+
+  /**
+   * Executes an approved Level-2 Action Preview cleanly in Dexie + SyncQueue
+   * and verifies creation by immediate database readback.
+   */
+  public static async executeApprovedAction(
+    action: AIProposedAction
+  ): Promise<{ success: boolean; verifiedRecordId?: string; message: string }> {
+    const now = new Date().toISOString();
+    const payload = action.payload || {};
+
     try {
-      let resultText = '';
-      let tokensIn = 0;
-      let tokensOut = 0;
-
-      // 1.5 Permission-Aware NeoSapien Personal Memory Retrieval Layer
-      const neoContext = await NeoSapienMemoryService.buildAIRetrievalContext(userPrompt, provider);
-      let augmentedSystemPrompt = options.systemPrompt || '';
-      if (neoContext.allowed && neoContext.contextSnippet) {
-        augmentedSystemPrompt = `${augmentedSystemPrompt ? `${augmentedSystemPrompt}\n\n` : ''}${neoContext.contextSnippet}\n\nWhen citing information from Neo memories, always include the source reference formatted as [Neo Memory: "Title" (Date)].`;
+      if (action.type === 'create_task') {
+        const taskId = generateId();
+        const taskRecord: Task = {
+          id: taskId,
+          text: String(payload.text || action.title),
+          description: payload.description ? String(payload.description) : undefined,
+          area: String(payload.area || 'PAWAN SHAKTI'),
+          priority: (payload.priority || 'high') as Task['priority'],
+          due_date: payload.due_date ? String(payload.due_date) : undefined,
+          project_id: payload.project_id ? String(payload.project_id) : undefined,
+          starred: payload.priority === 'urgent' || payload.priority === 'high',
+          done: false,
+          created_at: now,
+          updated_at: now,
+        };
+        await db.tasks.add(taskRecord);
+        const verified = await db.tasks.get(taskId);
+        if (!verified) {
+          return { success: false, message: 'Write verification failed: task not found after save.' };
+        }
+        await SyncQueueService.enqueueChange('tasks', taskId, 'INSERT', taskRecord).catch(() => {});
+        return {
+          success: true,
+          verifiedRecordId: verified.id,
+          message: `Verified saved task "${verified.text}" (ID: ${verified.id.slice(0, 8)}).`,
+        };
       }
 
-      // 2. Dispatch to designated provider
-      if (provider === 'gemini') {
-        const resp = await this.callGemini(apiKey, selectedModel.modelId, userPrompt, augmentedSystemPrompt);
-        resultText = resp.text;
-        tokensIn = resp.tokensIn;
-        tokensOut = resp.tokensOut;
-      } else if (provider === 'openai') {
-        const resp = await this.callOpenAI(apiKey, selectedModel.modelId, userPrompt, augmentedSystemPrompt);
-        resultText = resp.text;
-        tokensIn = resp.tokensIn;
-        tokensOut = resp.tokensOut;
-      } else if (provider === 'anthropic') {
-        const resp = await this.callAnthropic(apiKey, selectedModel.modelId, userPrompt, augmentedSystemPrompt);
-        resultText = resp.text;
-        tokensIn = resp.tokensIn;
-        tokensOut = resp.tokensOut;
+      if (action.type === 'schedule_event') {
+        const eventId = generateId();
+        const eventRecord: EventItem = {
+          id: eventId,
+          title: String(payload.title || action.title),
+          date: String(payload.date || getTodayISO()),
+          start_time: payload.start_time ? String(payload.start_time) : '10:00',
+          kind: (payload.kind || 'Deadline') as EventItem['kind'],
+          area: String(payload.area || 'Personal'),
+          notes: payload.notes ? String(payload.notes) : undefined,
+          created_at: now,
+          updated_at: now,
+        };
+        await db.events.add(eventRecord);
+        const verified = await db.events.get(eventId);
+        if (!verified) {
+          return { success: false, message: 'Write verification failed: event not found after save.' };
+        }
+        await SyncQueueService.enqueueChange('events', eventId, 'INSERT', eventRecord).catch(() => {});
+        return {
+          success: true,
+          verifiedRecordId: verified.id,
+          message: `Verified scheduled event "${verified.title}" on ${verified.date}.`,
+        };
       }
 
-      const latencyMs = Math.round(performance.now() - startTime);
-      const estimatedCost =
-        (tokensIn / 1000) * selectedModel.costPer1kInputTokensUSD +
-        (tokensOut / 1000) * selectedModel.costPer1kOutputTokensUSD;
+      if (action.type === 'log_decision' && payload.project_id) {
+        const project = await db.projects.get(String(payload.project_id));
+        if (!project) {
+          return { success: false, message: 'Target project not found for decision logging.' };
+        }
+        const decisionId = generateId();
+        const nextDecisions = [
+          {
+            id: decisionId,
+            title: String(payload.title || action.title),
+            decision: String(payload.content || action.description),
+            rationale: payload.rationale ? String(payload.rationale) : undefined,
+            decided_at: getTodayISO(),
+            author: 'Yashwanth (via Chief of Staff)',
+          },
+          ...(project.decisions || []),
+        ];
+        const nextHistory = [
+          {
+            id: generateId(),
+            action: 'Decision Logged',
+            details: String(payload.title || action.title),
+            timestamp: now,
+            actor: 'AI Chief of Staff (Approved)',
+          },
+          ...(project.activity_history || []),
+        ];
+        await db.projects.update(project.id, {
+          decisions: nextDecisions,
+          activity_history: nextHistory,
+          updated_at: now,
+        });
+        const verifiedProj = await db.projects.get(project.id);
+        const found = verifiedProj?.decisions?.some((d) => d.id === decisionId);
+        if (!found) {
+          return { success: false, message: 'Decision verification failed after project update.' };
+        }
+        await SyncQueueService.enqueueChange('projects', project.id, 'UPDATE', verifiedProj).catch(() => {});
+        return {
+          success: true,
+          verifiedRecordId: decisionId,
+          message: `Verified decision logged in "${project.title}".`,
+        };
+      }
 
-      // Log usage to database
-      const logEntry: AIUsageLog = {
-        id: generateId(),
-        provider,
-        modelId: selectedModel.modelId,
-        taskMode: mode,
-        tokensInput: tokensIn,
-        tokensOutput: tokensOut,
-        latencyMs,
-        estimatedCostUSD: estimatedCost,
-        timestamp: new Date().toISOString(),
-      };
-      await db.ai_logs.add(logEntry).catch(() => {});
+      if (action.type === 'create_note' || action.type === 'log_decision') {
+        const noteId = generateId();
+        const noteRecord: Note = {
+          id: noteId,
+          title: String(payload.title || action.title),
+          body: String(payload.content || action.description),
+          area: String(payload.area || 'PAWAN SHAKTI'),
+          pinned: false,
+          created_at: now,
+          updated_at: now,
+        };
+        await db.notes.add(noteRecord);
+        const verified = await db.notes.get(noteId);
+        if (!verified) {
+          return { success: false, message: 'Write verification failed: note not found after save.' };
+        }
+        await SyncQueueService.enqueueChange('notes', noteId, 'INSERT', noteRecord).catch(() => {});
+        return {
+          success: true,
+          verifiedRecordId: verified.id,
+          message: `Verified saved note "${verified.title}".`,
+        };
+      }
 
-      return {
-        text: resultText,
-        provider,
-        modelId: selectedModel.modelId,
-        latencyMs,
-        tokensInput: tokensIn,
-        tokensOutput: tokensOut,
-        estimatedCostUSD: estimatedCost,
-      };
+      if (action.type === 'trigger_automation') {
+        const res = await AutomationService.triggerServerAutomation(
+          String(payload.action_type || 'task_deadline_scan'),
+          undefined,
+          payload
+        );
+        if (!res.success) {
+          return { success: false, message: res.error || 'Automation dispatch failed.' };
+        }
+        return {
+          success: true,
+          verifiedRecordId: res.log?.id || 'queued',
+          message: res.queued
+            ? 'Automation job verified in server approval queue.'
+            : `Automation executed in ${res.log?.duration_ms ?? 0}ms.`,
+        };
+      }
+
+      return { success: false, message: `Unsupported action type: ${action.type}` };
     } catch (err: any) {
-      console.warn(`Primary AI Provider ${provider} failed, cascading to local heuristic:`, err);
-      // Fallback cascade to local heuristic
-      const fallbackText = await this.executeLocalHeuristic(userPrompt, mode, options.contextData);
-      const latencyMs = Math.round(performance.now() - startTime);
-
-      return {
-        text: `*(Provider ${provider} encountered: ${err.message || 'Connection error'}. Switched to local heuristic engine)*\n\n${fallbackText}`,
-        provider: 'local_heuristic',
-        modelId: 'heuristic-fallback',
-        latencyMs,
-        tokensInput: 0,
-        tokensOutput: 0,
-        estimatedCostUSD: 0,
-      };
+      return { success: false, message: err?.message || 'Execution error.' };
     }
   }
 
-  // Model Comparison Mode: Runs query concurrently across 2 or 3 providers
+  public static async saveConversation(conv: AIConversation): Promise<void> {
+    const existing = await db.ai_conversations.get(conv.id);
+    await db.ai_conversations.put(conv);
+    await SyncQueueService.enqueueChange(
+      'ai_conversations',
+      conv.id,
+      existing ? 'UPDATE' : 'INSERT',
+      conv
+    ).catch(() => {});
+  }
+
   public static async compareModels(
     userPrompt: string,
     modelIds: string[]
@@ -168,26 +501,33 @@ export class AIGateway {
     return results.filter(Boolean) as AIComparisonResult[];
   }
 
-  // Google Gemini API Call
-  private static async callGemini(
+  private static async callGeminiDirectOverride(
     apiKey: string,
     modelId: string,
     prompt: string,
-    systemPrompt?: string
+    systemPrompt: string | undefined,
+    snapshot: WorkspaceSnapshot
   ): Promise<{ text: string; tokensIn: number; tokensOut: number }> {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${apiKey}`;
-    const payload: any = {
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    };
-    if (systemPrompt) {
-      payload.systemInstruction = { parts: [{ text: systemPrompt }] };
-    }
+    const contextSummary = `Verified workspace snapshot (${snapshot.todayISO}): ${snapshot.tasks.length} tasks, ${snapshot.projects.length} projects, ${snapshot.notes.length} notes, ${snapshot.meetings.length} meetings.
+Open high tasks: ${JSON.stringify(snapshot.tasks.filter((t) => !t.done).slice(0, 12).map((t) => ({ text: t.text, area: t.area, due: t.due_date, priority: t.priority })))}
+Projects: ${JSON.stringify(snapshot.projects.map((p) => ({ title: p.title, area: p.area, progress: p.progress, blockers: p.blockers || [], risks: p.risks || [], verification_note: p.verification_note })))}`;
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelId)}:generateContent`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: `${systemPrompt || ''}\n${contextSummary}` }],
+          },
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        }),
+      }
+    );
 
     if (!res.ok) {
       const errJson = await res.json().catch(() => ({}));
@@ -195,200 +535,12 @@ export class AIGateway {
     }
 
     const data = await res.json();
-    const candidate = data.candidates?.[0];
-    const text = candidate?.content?.parts?.[0]?.text || 'No response generated.';
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response generated.';
     const usage = data.usageMetadata || {};
-
     return {
       text,
-      tokensIn: usage.promptTokenCount || Math.round(prompt.length / 4),
-      tokensOut: usage.candidatesTokenCount || Math.round(text.length / 4),
+      tokensIn: usage.promptTokenCount || 0,
+      tokensOut: usage.candidatesTokenCount || 0,
     };
-  }
-
-  // OpenAI Chat Completions API Call
-  private static async callOpenAI(
-    apiKey: string,
-    modelId: string,
-    prompt: string,
-    systemPrompt?: string
-  ): Promise<{ text: string; tokensIn: number; tokensOut: number }> {
-    const messages = [];
-    if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
-    messages.push({ role: 'user', content: prompt });
-
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: modelId,
-        messages,
-        temperature: 0.7,
-      }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || `OpenAI returned status ${res.status}`);
-    }
-
-    const data = await res.json();
-    const text = data.choices?.[0]?.message?.content || 'No response generated.';
-    const usage = data.usage || {};
-
-    return {
-      text,
-      tokensIn: usage.prompt_tokens || Math.round(prompt.length / 4),
-      tokensOut: usage.completion_tokens || Math.round(text.length / 4),
-    };
-  }
-
-  // Anthropic Messages API Call
-  private static async callAnthropic(
-    apiKey: string,
-    modelId: string,
-    prompt: string,
-    systemPrompt?: string
-  ): Promise<{ text: string; tokensIn: number; tokensOut: number }> {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: modelId,
-        max_tokens: 2048,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || `Anthropic returned status ${res.status}`);
-    }
-
-    const data = await res.json();
-    const text = data.content?.[0]?.text || 'No response generated.';
-    const usage = data.usage || {};
-
-    return {
-      text,
-      tokensIn: usage.input_tokens || Math.round(prompt.length / 4),
-      tokensOut: usage.output_tokens || Math.round(text.length / 4),
-    };
-  }
-
-  // Local Heuristic Intelligence Engine
-  private static async executeLocalHeuristic(
-    prompt: string,
-    mode: AIMode,
-    _contextData?: any
-  ): Promise<string> {
-    const today = new Date().toISOString().slice(0, 10);
-    const [tasks, meetings, projects, expenses] = await Promise.all([
-      db.tasks.toArray(),
-      db.meetings.toArray(),
-      db.projects.toArray(),
-      db.expenses.toArray(),
-    ]);
-
-    const openTasks = tasks.filter((t) => !t.done);
-    const overdueTasks = openTasks.filter((t) => t.due_date && t.due_date < today);
-    const activeProjects = projects.filter((p) => p.status === 'active');
-    const upcomingMeetings = meetings.filter((m) => m.date >= today && m.status === 'scheduled');
-    const monthExpenses = expenses.filter((e) => e.date.startsWith(today.slice(0, 7)));
-    const totalMonthSpend = monthExpenses.reduce((s, e) => s + e.amount, 0);
-
-    const lower = prompt.toLowerCase();
-
-    // Check NeoSapien Authorized Memory Layer
-    const neoSearchResults = await NeoSapienMemoryService.searchMemories(prompt, { limit: 3 });
-    const hasNeoMatch =
-      neoSearchResults.memories.length > 0 &&
-      (lower.includes('discuss') ||
-        lower.includes('pawan') ||
-        lower.includes('wind') ||
-        lower.includes('turbine') ||
-        lower.includes('memory') ||
-        lower.includes('meeting') ||
-        lower.includes('said') ||
-        lower.includes('talk') ||
-        lower.includes('decision') ||
-        lower.includes('commitment'));
-
-    if (hasNeoMatch) {
-      const memorySections = neoSearchResults.memories
-        .map((m) => {
-          let block = `• **[Neo Memory: "${m.title}"]** (${m.source}, ${m.capturedAt.slice(0, 10)})\n  - **Summary:** ${m.summary}`;
-          if (m.decisions.length > 0) {
-            block += `\n  - **Decisions Made:** ${m.decisions.map((d) => d.text).join('; ')}`;
-          }
-          if (m.commitments.length > 0) {
-            block += `\n  - **Commitments:** ${m.commitments.join('; ')}`;
-          }
-          if (m.actionItems.length > 0) {
-            block += `\n  - **Extracted Action Items:** ${m.actionItems
-              .map((a) => `${a.text} (Due: ${a.detectedDeadline || 'TBD'})`)
-              .join('; ')}`;
-          }
-          return block;
-        })
-        .join('\n\n');
-
-      return `### 🧠 NeoSapien Personal Memory Intelligence (${neoSearchResults.latencyMs}ms)
-
-Found **${neoSearchResults.totalCount}** authorized conversation record(s) matching your inquiry:
-
-${memorySections}
-
-*References: Powered by NeoSapien Second Brain timeline. Review and approve commitments in the Neo Memory Center.*`;
-    }
-
-    if (mode === 'engineering' || lower.includes('robot') || lower.includes('wind') || lower.includes('cad')) {
-      return `### 🛠️ Engineering & Robotics Intelligence
-
-• **Active Engineering Projects (${activeProjects.length}):**
-${activeProjects.map((p) => `  - **[${p.area}] ${p.title}** (${p.progress}% progress, Target: ${p.target_date})`).join('\n')}
-
-• **Technical Backlog:**
-${openTasks
-  .filter((t) => t.area === 'PAWAN SHAKTI' || t.area === 'IvLabs' || t.area === 'MG Automation')
-  .slice(0, 4)
-  .map((t) => `  - [${t.priority.toUpperCase()}] ${t.text}`)
-  .join('\n')}
-
-**Guidance:** Keep rotor CAD tolerances and ROS 2 coordinate frames aligned before on-site hardware integration.`;
-    }
-
-    if (mode === 'startup' || lower.includes('grant') || lower.includes('burn') || lower.includes('trl')) {
-      return `### 🌪️ Startup & Venture Health
-
-• **Monthly Hardware/Operational Spend:** ${totalMonthSpend === 0 ? '₹0' : `₹ ${totalMonthSpend.toLocaleString('en-IN')}`} across ${monthExpenses.length} transaction(s) (manually entered only).
-• **90-Day Wind Roadmap Status:** TRL 5 validation underway.
-• **Top Deliverable:** Customer pilot letter of intent (LOI) & DST grant review.`;
-    }
-
-    if (mode === 'meeting' || lower.includes('meeting') || lower.includes('call')) {
-      if (upcomingMeetings.length === 0) {
-        return `### 🗓️ Meeting Briefing\n\nNo meetings scheduled today. Enjoy an uninterrupted deep engineering sprint block!`;
-      }
-      const nextM = upcomingMeetings[0];
-      return `### 🗓️ Meeting Briefing: ${nextM.title}\n\n• **Time:** ${nextM.date} at ${nextM.start_time}\n• **Area:** ${nextM.area}\n• **Attendees:** ${nextM.attendees || 'Team'}\n• **Action items pending:** ${nextM.action_items || 'None currently registered'}`;
-    }
-
-    // Default Personal Productivity
-    return `### 🎯 Personal Executive Overview (${today})
-
-• **Open Tasks:** ${openTasks.length} (${overdueTasks.length} overdue)
-• **Upcoming Meetings:** ${upcomingMeetings.length}
-• **Active Projects:** ${activeProjects.length}
-
-**Recommended Focus:** Tackle the ${overdueTasks.length > 0 ? `${overdueTasks.length} overdue priority tasks` : 'highest impact technical milestone'} before shifting to routine communication.`;
   }
 }

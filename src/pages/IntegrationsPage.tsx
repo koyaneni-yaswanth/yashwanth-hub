@@ -29,10 +29,13 @@ import {
   Upload,
   Wrench,
   Key,
+  ShieldCheck,
+  UserCheck,
 } from 'lucide-react';
 import { db } from '../db';
 import type { GoogleServiceKey } from '../types';
 import { GoogleAuthService } from '../services/google/googleAuthService';
+import { SupabaseAuthService, type AuthState } from '../services/auth/supabaseAuthService';
 import { UnifiedSyncEngine } from '../services/sync/unifiedSyncEngine';
 import { NeoSapienService } from '../services/neoSapienService';
 import { NeoSapienMemoryService } from '../services/neoSapienMemoryService';
@@ -42,6 +45,13 @@ import { Badge } from '../components/common/Badge';
 import { IntegrationVaultService, type IntegrationStatusSummary } from '../services/integrationVaultService';
 
 export const IntegrationsPage: React.FC = () => {
+  const [authState, setAuthState] = useState<AuthState>(() => SupabaseAuthService.getState());
+  const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+  const [authMessage, setAuthMessage] = useState<string | null>(null);
+  const [isAuthBusy, setIsAuthBusy] = useState(false);
+
   const [googleConfig, setGoogleConfig] = useState(() => GoogleAuthService.getConfig());
   const [googleClientId, setGoogleClientId] = useState(() => GoogleAuthService.getEffectiveClientId());
   const [syncStatus, setSyncStatus] = useState(() => UnifiedSyncEngine.getStatus());
@@ -106,12 +116,58 @@ export const IntegrationsPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const unsubAuth = SupabaseAuthService.subscribe((next) => {
+      setAuthState(next);
+    });
     const unsub = IntegrationVaultService.subscribe((status) => {
       setVaultStatus(status);
     });
     IntegrationVaultService.initSessionRestoration().catch(() => {});
-    return unsub;
+    return () => {
+      unsubAuth();
+      unsub();
+    };
   }, []);
+
+  const handleSupabaseGoogleLogin = async () => {
+    setIsAuthBusy(true);
+    setAuthMessage(null);
+    const res = await SupabaseAuthService.signInWithGoogleOAuth();
+    if (res.error) {
+      setAuthMessage(`Google Sign-In error: ${res.error}`);
+    } else if (res.url) {
+      window.location.href = res.url;
+    }
+    setIsAuthBusy(false);
+  };
+
+  const handleSupabaseEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emailInput.trim() || !passwordInput) return;
+    setIsAuthBusy(true);
+    setAuthMessage(null);
+    if (authMode === 'signup') {
+      const res = await SupabaseAuthService.signUpWithEmail(emailInput, passwordInput);
+      setAuthMessage(res.error || res.message || null);
+    } else {
+      const res = await SupabaseAuthService.signInWithEmail(emailInput, passwordInput);
+      if (res.error) {
+        setAuthMessage(res.error);
+      } else {
+        setAuthMessage('Signed in! Restoring encrypted integration tokens...');
+        await IntegrationVaultService.initSessionRestoration(true);
+      }
+    }
+    setIsAuthBusy(false);
+  };
+
+  const handleSupabaseSignOut = async () => {
+    setIsAuthBusy(true);
+    await SupabaseAuthService.signOut();
+    IntegrationVaultService.reset();
+    setAuthMessage('Signed out of Yashwanth Hub cloud account.');
+    setIsAuthBusy(false);
+  };
 
   const handleTestGoogleTasks = async () => {
     setIsTestingGoogle(true);
@@ -344,37 +400,33 @@ export const IntegrationsPage: React.FC = () => {
         setOauthErrorMessage(res.errorMessage || 'Popup sign-in was closed or blocked.');
       }
     } catch (gisErr: any) {
-      console.warn('GIS loader error, falling back to full-page redirect:', gisErr);
-      const authUrl = GoogleAuthService.getAuthUrl(
-        trimmedId,
-        GoogleAuthService.getRedirectUri(),
-        service ? ['identity', service] : ['identity', 'calendar', 'drive', 'gmail', 'tasks', 'contacts', 'photos']
-      );
-      window.location.href = authUrl;
+      console.warn('GIS loader error, initiating PKCE code flow:', gisErr);
+      await handleConnectRedirectFallback(service);
     } finally {
       setIsConnectingGIS(false);
     }
   };
 
-  const handleConnectRedirectFallback = (service?: GoogleServiceKey) => {
+  const handleConnectRedirectFallback = async (service?: GoogleServiceKey) => {
     const trimmedId = googleClientId.trim();
     if (!trimmedId || !GoogleAuthService.isValidClientId(trimmedId)) {
-      setOauthErrorMessage('Valid Google Web Client ID is required before initiating redirect.');
+      setOauthErrorMessage('Valid Google Web Client ID is required before initiating PKCE OAuth.');
       setShowSetupGuide(true);
       return;
     }
-    const authUrl = GoogleAuthService.getAuthUrl(
+    const { url } = await GoogleAuthService.buildPkceAuthUrl(
       trimmedId,
       GoogleAuthService.getRedirectUri(),
       service ? ['identity', service] : ['identity', 'calendar', 'drive', 'gmail', 'tasks', 'contacts', 'photos']
     );
-    window.location.href = authUrl;
+    window.location.href = url;
   };
 
   const handleDisconnectGoogle = async () => {
     if (confirm('Are you sure you want to revoke access and disconnect your Google Account?')) {
       await GoogleAuthService.disconnect();
       setGoogleConfig(GoogleAuthService.getConfig());
+      await IntegrationVaultService.initSessionRestoration(true);
     }
   };
 
@@ -446,6 +498,117 @@ export const IntegrationsPage: React.FC = () => {
         </div>
       )}
 
+      {/* 0. Yashwanth Hub Cloud Account Session (Supabase Auth for RLS Isolation) */}
+      <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-[var(--hub-line)]">
+          <div className="flex items-center gap-3">
+            <ShieldCheck className="w-5 h-5 text-emerald-500" />
+            <div>
+              <h3 className="font-heading font-bold text-base text-[var(--hub-ink)]">
+                Yashwanth Hub Account Session (Supabase RLS Isolation)
+              </h3>
+              <span className="text-xs text-[var(--hub-muted)]">
+                Required so server tokens, automations, and cloud backups are strictly isolated to your user ID
+              </span>
+            </div>
+          </div>
+          <Badge variant={authState.user ? 'emerald' : authState.configured ? 'amber' : 'red'}>
+            {authState.user ? 'Authenticated' : authState.configured ? 'Signed Out' : 'Env Required'}
+          </Badge>
+        </div>
+
+        {!authState.configured ? (
+          <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-800 dark:text-amber-200 space-y-1">
+            <div className="font-bold flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>Supabase Public Client Variables Missing (`VITE_SUPABASE_ANON_KEY`)</span>
+            </div>
+            <p className="leading-relaxed opacity-90">
+              Add <code className="font-mono">VITE_SUPABASE_URL</code> and <code className="font-mono">VITE_SUPABASE_ANON_KEY</code> in Vercel Environment Variables (and <code className="font-mono">.env.local</code>) and redeploy to activate cloud authentication.
+            </p>
+          </div>
+        ) : authState.user ? (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)]">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center">
+                <UserCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="text-sm font-bold text-[var(--hub-ink)] block">
+                  {authState.user.email || 'Signed-in Founder'}
+                </span>
+                <span className="text-[11px] font-mono text-[var(--hub-muted)]">
+                  RLS User ID: {authState.user.id}
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={handleSupabaseSignOut}
+              disabled={isAuthBusy}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-500/30 text-red-600 hover:bg-red-500/10 text-xs font-semibold cursor-pointer disabled:opacity-50"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Sign Out</span>
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {authMessage && (
+              <div className="p-2.5 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs text-[var(--hub-ink)]">
+                {authMessage}
+              </div>
+            )}
+            <div className="flex flex-col sm:flex-row gap-2.5">
+              <button
+                type="button"
+                onClick={handleSupabaseGoogleLogin}
+                disabled={isAuthBusy}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-bold hover:bg-[var(--hub-accent-hover)] cursor-pointer disabled:opacity-50"
+              >
+                <Cloud className="w-4 h-4" />
+                <span>Sign In with Google (Supabase Auth)</span>
+              </button>
+              <span className="text-[11px] text-[var(--hub-muted)] self-center">or sign in with email & password:</span>
+            </div>
+            <form onSubmit={handleSupabaseEmailAuth} className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+              <input
+                type="email"
+                required
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+                placeholder="Email address"
+                className="sm:col-span-2 px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs text-[var(--hub-ink)]"
+              />
+              <input
+                type="password"
+                required
+                minLength={6}
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                placeholder="Password (min 6 chars)"
+                className="px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs text-[var(--hub-ink)]"
+              />
+              <div className="flex gap-1.5">
+                <button
+                  type="submit"
+                  disabled={isAuthBusy}
+                  className="flex-1 px-3 py-2 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs font-bold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer"
+                >
+                  {authMode === 'signin' ? 'Sign In' : 'Sign Up'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAuthMode(authMode === 'signin' ? 'signup' : 'signin')}
+                  className="px-2 py-2 rounded-lg text-[10px] text-[var(--hub-muted)] hover:text-[var(--hub-ink)] cursor-pointer"
+                >
+                  {authMode === 'signin' ? 'New?' : 'Login?'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+      </div>
+
       {/* 1. Google Account Single Identity & Connection Center */}
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
         <div className="flex items-center justify-between pb-3 border-b border-[var(--hub-line)]">
@@ -453,41 +616,50 @@ export const IntegrationsPage: React.FC = () => {
             <Cloud className="w-5 h-5 text-blue-500" />
             <div>
               <h3 className="font-heading font-bold text-base text-[var(--hub-ink)]">
-                Google Account & Identity Center
+                Google Workspace OAuth 2.0 (PKCE + Refresh Vault)
               </h3>
               <span className="text-xs text-[var(--hub-muted)]">
-                Official OAuth 2.0 PKCE with granular per-service authorization
+                Authorization Code + PKCE S256 for Calendar, Tasks, Gmail, Drive, Photos & Contacts
               </span>
             </div>
           </div>
-          <Badge variant={isConnected ? 'emerald' : 'gray'}>
-            {isConnected ? 'Connected' : 'Disconnected'}
+          <Badge variant={isConnected || vaultStatus.google.connected ? 'emerald' : 'gray'}>
+            {isConnected || vaultStatus.google.connected ? 'Connected' : 'Disconnected'}
           </Badge>
         </div>
 
-        {isConnected ? (
+        {isConnected || vaultStatus.google.connected ? (
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)]">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-teal-600 text-white font-bold flex items-center justify-center text-sm">
-                {googleConfig.email ? googleConfig.email[0].toUpperCase() : 'G'}
+                {(googleConfig.email || vaultStatus.google.accountEmail || 'G')[0].toUpperCase()}
               </div>
               <div>
                 <span className="text-sm font-bold text-[var(--hub-ink)] block">
-                  {googleConfig.email || 'Connected Google Account'}
+                  {googleConfig.email || vaultStatus.google.accountEmail || 'Connected Google Account'}
                 </span>
                 <span className="text-[11px] text-[var(--hub-muted)]">
-                  Session Token: Active • Auto-Refresh Enabled
+                  Session Token: Active • {vaultStatus.google.hasRefreshToken ? 'Server Offline Refresh Enabled' : 'Temporary 1h Access Token'}
                 </span>
               </div>
             </div>
 
-            <button
-              onClick={handleDisconnectGoogle}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-500/30 text-red-600 hover:bg-red-500/10 text-xs font-semibold cursor-pointer"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>Revoke & Disconnect</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleConnectRedirectFallback()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--hub-line)] text-[var(--hub-ink)] hover:border-[var(--hub-accent)] text-xs font-semibold cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Reconnect</span>
+              </button>
+              <button
+                onClick={handleDisconnectGoogle}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-500/30 text-red-600 hover:bg-red-500/10 text-xs font-semibold cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Revoke & Disconnect</span>
+              </button>
+            </div>
           </div>
         ) : (
           <div className="space-y-4">
@@ -512,7 +684,7 @@ export const IntegrationsPage: React.FC = () => {
                   className="text-[11px] text-[var(--hub-accent)] hover:underline flex items-center gap-1 font-semibold"
                 >
                   <HelpCircle className="w-3.5 h-3.5" />
-                  <span>{showSetupGuide ? 'Hide Setup Guide' : 'How to Fix 401 invalid_client'}</span>
+                  <span>{showSetupGuide ? 'Hide OAuth Match Guide' : 'Show Exact Redirect URIs & Fix Guide'}</span>
                 </button>
               </div>
               <div className="flex gap-2">
@@ -535,117 +707,77 @@ export const IntegrationsPage: React.FC = () => {
                 </button>
               </div>
               {clientIdSavedNotice && (
-                <div className="text-[11px] text-emerald-500 font-medium flex items-center gap-1">
+                <div className="text-[11px] text-emerald-500 font-medium flex items-center gap-1 mt-1">
                   <Check className="w-3.5 h-3.5" />
                   <span>Client ID sanitized and saved successfully.</span>
                 </div>
               )}
             </div>
 
-            {/* Google Cloud Console Setup & 401 Troubleshooting Card */}
             {showSetupGuide && (
               <div className="p-4 rounded-xl bg-[var(--hub-bg)] border border-teal-500/30 text-xs space-y-4">
                 <div className="font-bold text-sm text-[var(--hub-ink)] flex items-center gap-2">
                   <Cloud className="w-4 h-4 text-teal-500" />
-                  <span>Google Cloud Console — Setup & 401 Repair Guide</span>
+                  <span>Exact OAuth Values That Must Match (Google Cloud & Supabase)</span>
                 </div>
 
-                {/* Root Causes Section */}
-                <div className="p-3 rounded-lg bg-black/15 border border-[var(--hub-line)] space-y-2">
-                  <div className="font-bold text-[11px] text-amber-400">Root Causes: Why It Keeps Asking Repeatedly & Failing</div>
-                  <ul className="space-y-1.5 text-[11px] text-[var(--hub-muted)] list-disc list-inside leading-relaxed">
-                    <li>
-                      <strong className="text-[var(--hub-ink)]">401 invalid_client:</strong> Google rejects the Client ID if it has surrounding quotes/spaces, belongs to a deleted/different project, or the OAuth Client type was created as <em>Desktop/Android</em> instead of <strong>Web application</strong>.
-                    </li>
-                    <li>
-                      <strong className="text-[var(--hub-ink)]">Popup window closed:</strong> When Google rejects the authorization with 401 or redirect_uri mismatch, Google Identity Services immediately closes the popup modal.
-                    </li>
-                    <li>
-                      <strong className="text-[var(--hub-ink)]">Repeated Login Prompt:</strong> If the flow fails before returning valid tokens, no session or refresh token can be vaulted into <code className="text-teal-400">integration_tokens</code>, so the app remains logged out.
-                    </li>
-                  </ul>
-                </div>
+                <div className="space-y-3 text-[var(--hub-muted)] leading-relaxed">
+                  <div>
+                    1. Active <code className="text-teal-400">redirect_uri</code> sent by this browser right now:{' '}
+                    <code className="text-teal-400 font-mono">{GoogleAuthService.getRedirectUri()}</code>
+                  </div>
 
-                {/* Step-by-Step Fix */}
-                <div className="space-y-3">
-                  <div className="font-bold text-xs text-[var(--hub-ink)]">Step-by-Step Configuration in Google Cloud Console</div>
-
-                  <div className="space-y-2 text-[var(--hub-muted)] leading-relaxed">
-                    <div>
-                      1. Open{' '}
-                      <a
-                        href="https://console.cloud.google.com/apis/credentials"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[var(--hub-accent)] underline font-semibold"
-                      >
-                        Google Cloud Console Credentials
-                      </a>{' '}
-                      and ensure you have an entry under <strong>OAuth 2.0 Client IDs</strong> with <strong>Application type: Web application</strong>.
+                  <div className="space-y-1.5 pt-1">
+                    <div className="font-semibold text-[11px] text-[var(--hub-ink)]">
+                      2. Authorized JavaScript origins in Google Cloud Console:
                     </div>
-
-                    {/* Authorized JavaScript Origins */}
-                    <div className="space-y-1.5 pt-1">
-                      <div className="font-semibold text-[11px] text-[var(--hub-ink)]">
-                        2. Under <strong>Authorized JavaScript origins</strong>, add both URLs:
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {[
-                          'http://localhost:5173',
-                          'https://yashwanth-hub.vercel.app',
-                        ].map((uri) => (
-                          <div
-                            key={uri}
-                            className="flex items-center justify-between p-2 rounded-lg bg-black/20 font-mono text-[11px] text-[var(--hub-ink)]"
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {['http://localhost:5173', 'https://yashwanth-hub.vercel.app'].map((uri) => (
+                        <div
+                          key={uri}
+                          className="flex items-center justify-between p-2 rounded-lg bg-black/20 font-mono text-[11px] text-[var(--hub-ink)]"
+                        >
+                          <span className="truncate">{uri}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyText(uri, `orig-${uri}`)}
+                            className="ml-2 px-2 py-0.5 rounded bg-teal-500/20 text-teal-400 hover:bg-teal-500/30 text-[10px] flex items-center gap-1 font-sans flex-none"
                           >
-                            <span className="truncate">{uri}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleCopyText(uri, `orig-${uri}`)}
-                              className="ml-2 px-2 py-0.5 rounded bg-teal-500/20 text-teal-400 hover:bg-teal-500/30 text-[10px] flex items-center gap-1 font-sans flex-none"
-                            >
-                              {copiedKey === `orig-${uri}` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                              <span>{copiedKey === `orig-${uri}` ? 'Copied' : 'Copy'}</span>
-                            </button>
-                          </div>
-                        ))}
-                      </div>
+                            {copiedKey === `orig-${uri}` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                            <span>{copiedKey === `orig-${uri}` ? 'Copied' : 'Copy'}</span>
+                          </button>
+                        </div>
+                      ))}
                     </div>
+                  </div>
 
-                    {/* Authorized Redirect URIs */}
-                    <div className="space-y-1.5 pt-1">
-                      <div className="font-semibold text-[11px] text-[var(--hub-ink)]">
-                        3. Under <strong>Authorized redirect URIs</strong>, add all required routes:
-                      </div>
-                      <div className="grid grid-cols-1 gap-1.5">
-                        {[
-                          'http://localhost:5173/auth/callback',
-                          'https://yashwanth-hub.vercel.app/auth/callback',
-                          'https://xjhkxnfahkkgwbbtmhtk.supabase.co/auth/v1/callback',
-                          'https://yashwanth-hub.vercel.app/api/auth/google/callback',
-                          'http://localhost:5173',
-                          'https://yashwanth-hub.vercel.app',
-                        ].map((uri) => (
-                          <div
-                            key={uri}
-                            className="flex items-center justify-between p-2 rounded-lg bg-black/20 font-mono text-[11px] text-[var(--hub-ink)]"
+                  <div className="space-y-1.5 pt-1">
+                    <div className="font-semibold text-[11px] text-[var(--hub-ink)]">
+                      3. Authorized redirect URIs in Google Cloud Console (no trailing slash on origins):
+                    </div>
+                    <div className="grid grid-cols-1 gap-1.5">
+                      {[
+                        'https://yashwanth-hub.vercel.app',
+                        'https://yashwanth-hub.vercel.app/api/auth/google/callback',
+                        'https://xjhkxnfahkkgwbbtmhtk.supabase.co/auth/v1/callback',
+                        'http://localhost:5173',
+                        'http://localhost:5173/api/auth/google/callback',
+                      ].map((uri) => (
+                        <div
+                          key={uri}
+                          className="flex items-center justify-between p-2 rounded-lg bg-black/20 font-mono text-[11px] text-[var(--hub-ink)]"
+                        >
+                          <span className="truncate">{uri}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyText(uri, `red-${uri}`)}
+                            className="ml-2 px-2 py-0.5 rounded bg-teal-500/20 text-teal-400 hover:bg-teal-500/30 text-[10px] flex items-center gap-1 font-sans flex-none"
                           >
-                            <span className="truncate">{uri}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleCopyText(uri, `red-${uri}`)}
-                              className="ml-2 px-2 py-0.5 rounded bg-teal-500/20 text-teal-400 hover:bg-teal-500/30 text-[10px] flex items-center gap-1 font-sans flex-none"
-                            >
-                              {copiedKey === `red-${uri}` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                              <span>{copiedKey === `red-${uri}` ? 'Copied' : 'Copy'}</span>
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="pt-1">
-                      4. In <strong>OAuth consent screen → Test users</strong>, verify <code className="text-teal-400">koyaneniyaswanth@gmail.com</code> is added so Google allows logins during testing.
+                            {copiedKey === `red-${uri}` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                            <span>{copiedKey === `red-${uri}` ? 'Copied' : 'Copy'}</span>
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -658,7 +790,7 @@ export const IntegrationsPage: React.FC = () => {
                 className="flex-1 flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-bold hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
               >
                 <Cloud className="w-4 h-4" />
-                <span>Use Full-Page Redirect (Recommended)</span>
+                <span>Connect Google Workspace (PKCE Offline Sync)</span>
               </button>
 
               <button
@@ -672,7 +804,7 @@ export const IntegrationsPage: React.FC = () => {
                     <span>Opening GIS Popup...</span>
                   </>
                 ) : (
-                  <span>GIS Popup Sign-In</span>
+                  <span>Quick GIS Popup (1h)</span>
                 )}
               </button>
             </div>

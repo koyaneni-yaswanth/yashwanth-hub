@@ -1,32 +1,100 @@
 /**
  * Yashwanth Hub Server-Side Automation Engine: Verification & Smoke Test Script
- * 
- * Verifies:
- * 1. Creation and registration of an automation record.
- * 2. Execution dispatch via serverless runner with real timing and output.
- * 3. Database persistence of the executed run in automation_runs.
- * 4. Idempotency locking (duplicate idempotency_key returns cached run without re-executing).
- * 5. Authorization diagnostic handling (sets needs_authorization on missing credentials).
+ * Uses live server DB if SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY are configured,
+ * otherwise runs cleanly against an explicit isolated test DB adapter so no fake HTTP bypass exists in production routes.
  */
 
 import assert from 'node:assert/strict';
-import { supabaseServer } from '../api/_lib/db.ts';
+import crypto from 'node:crypto';
+import { isServerSupabaseConfigured, supabaseServer } from '../api/_lib/db.ts';
 import { executeAutomationRun } from '../api/_lib/runner.ts';
-import dispatchHandler from '../api/automations/dispatch.ts';
+import { createDispatchHandler } from '../api/automations/dispatch.ts';
+
+function createLocalTestDb() {
+  const tables: Record<string, any[]> = {
+    automations: [],
+    automation_queue: [],
+    automation_runs: [],
+    notifications: [],
+    integration_tokens: [],
+    tasks: [],
+    meetings: [],
+  };
+
+  return {
+    from(table: string) {
+      if (!tables[table]) tables[table] = [];
+      const rows = tables[table];
+      const filters: Array<(r: any) => boolean> = [];
+      let op: 'select' | 'insert' | 'update' | 'upsert' = 'select';
+      let payload: any = null;
+      let singleMode = false;
+
+      const b: any = {
+        select: () => b,
+        insert: (d: any) => { op = 'insert'; payload = d; return b; },
+        update: (d: any) => { op = 'update'; payload = d; return b; },
+        upsert: (d: any) => { op = 'upsert'; payload = d; return b; },
+        eq: (c: string, v: any) => { filters.push((r) => r[c] === v); return b; },
+        in: (c: string, vals: any[]) => { filters.push((r) => vals.includes(r[c])); return b; },
+        lte: (c: string, v: any) => { filters.push((r) => String(r[c] ?? '') <= String(v)); return b; },
+        order: () => b,
+        limit: () => b,
+        single: () => { singleMode = true; return exec(); },
+        then: (res: any, rej: any) => exec().then(res, rej),
+      };
+
+      async function exec() {
+        const match = (r: any) => filters.every((fn) => fn(r));
+        if (op === 'insert') {
+          const item = { id: payload.id || crypto.randomUUID(), created_at: new Date().toISOString(), ...payload };
+          rows.push(item);
+          return { data: singleMode ? item : [item], error: null };
+        }
+        if (op === 'upsert') {
+          const idx = rows.findIndex((r) => r.id === payload.id);
+          const item = { id: payload.id || crypto.randomUUID(), created_at: new Date().toISOString(), ...payload };
+          if (idx >= 0) rows[idx] = { ...rows[idx], ...item };
+          else rows.push(item);
+          return { data: singleMode ? item : [item], error: null };
+        }
+        if (op === 'update') {
+          const m = rows.filter(match);
+          m.forEach((r) => Object.assign(r, payload));
+          return { data: singleMode ? m[0] || null : m, error: null };
+        }
+        const res = rows.filter(match);
+        if (singleMode) return res.length ? { data: res[0], error: null } : { data: null, error: { message: 'Not found' } };
+        return { data: res, error: null };
+      }
+
+      return b;
+    },
+  };
+}
 
 async function runSmokeTest() {
   console.log('=== YASHWANTH HUB AUTOMATION ENGINE SMOKE TEST ===\n');
-
+  const liveDb = isServerSupabaseConfigured();
+  const dbAdapter = liveDb ? supabaseServer : createLocalTestDb();
   const testUserId = '00000000-0000-0000-0000-000000000001';
-  const testAutomationId = `smoke_auto_${Date.now()}`;
+
+  console.log(
+    liveDb
+      ? 'Mode: LIVE Supabase Service Role DB'
+      : 'Mode: Isolated Local Test DB Adapter (SUPABASE_SERVICE_ROLE_KEY not configured locally)\n'
+  );
+
   const testIdempotencyKey = `idemp_smoke_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
+  const dispatch = createDispatchHandler(
+    dbAdapter,
+    async () => ({ authenticated: true, userId: testUserId, email: 'smoke@yashwanth-hub.local' })
+  );
+
   try {
-    // -------------------------------------------------------------------------
-    // TEST 1: Register Test Automation Definition
-    // -------------------------------------------------------------------------
-    console.log('[1/5] Registering test automation in public.automations...');
-    const { data: createdAuto, error: createErr } = await supabaseServer
+    console.log('[1/5] Registering test automation...');
+    const { data: createdAuto } = await dbAdapter
       .from('automations')
       .upsert({
         id: 'a0000000-0000-0000-0000-000000000099',
@@ -42,119 +110,80 @@ async function runSmokeTest() {
       })
       .select()
       .single();
+    console.log('  ✔ Automation registered. ID:', createdAuto.id);
 
-    if (createErr) {
-      console.warn('  ⚠️ Note: Supabase live table warning (using memory mock/fallback):', createErr.message);
-    } else {
-      console.log('  ✔ Automation registered successfully. ID:', createdAuto.id);
-    }
+    console.log('\n[2/5] Dispatching automation run...');
+    const invokeDispatch = async (req: any) =>
+      new Promise<{ status: number; body: any }>((resolve) => {
+        let code = 200;
+        dispatch(req, {
+          setHeader: () => {},
+          status: (c: number) => {
+            code = c;
+            return {
+              json: (body: any) => resolve({ status: code, body }),
+              end: () => resolve({ status: code, body: null }),
+            };
+          },
+        });
+      });
 
-    // -------------------------------------------------------------------------
-    // TEST 2: Trigger Execution Through Serverless Dispatcher
-    // -------------------------------------------------------------------------
-    console.log('\n[2/5] Dispatching automation run via /api/automations/dispatch...');
-    const mockReq = {
+    const first = await invokeDispatch({
       method: 'POST',
-      headers: {
-        'idempotency-key': testIdempotencyKey,
-      },
+      headers: { authorization: 'Bearer test', 'idempotency-key': testIdempotencyKey },
       body: {
         automation_id: 'a0000000-0000-0000-0000-000000000099',
         action_type: 'task_deadline_scan',
         input_payload: { lead_time_minutes: 45 },
         idempotency_key: testIdempotencyKey,
       },
-    };
+    });
+    assert.equal(first.status, 200);
+    assert.ok(first.body.run_id);
+    assert.ok(typeof first.body.duration_ms === 'number');
+    console.log(`  ✔ Executed in ${first.body.duration_ms}ms (status: "${first.body.status}")`);
 
-    let dispatchResponseData: any = null;
-    let dispatchStatusCode = 200;
-
-    const mockRes = {
-      setHeader: () => {},
-      status: (code: number) => {
-        dispatchStatusCode = code;
-        return {
-          json: (data: any) => {
-            dispatchResponseData = data;
-          },
-          end: () => {},
-        };
-      },
-    };
-
-    await dispatchHandler(mockReq, mockRes);
-
-    assert.equal(dispatchStatusCode, 200, `Expected status 200 from dispatch, got ${dispatchStatusCode}`);
-    assert.ok(dispatchResponseData, 'Expected response data from dispatcher');
-    assert.ok(dispatchResponseData.run_id, 'Expected run_id generated by dispatcher');
-    assert.ok(typeof dispatchResponseData.duration_ms === 'number', 'Expected valid numeric duration_ms');
-    console.log(`  ✔ First dispatch completed in ${dispatchResponseData.duration_ms}ms with status: "${dispatchResponseData.status}"`);
-
-    // -------------------------------------------------------------------------
-    // TEST 3: Check Database for Executed Run Record
-    // -------------------------------------------------------------------------
-    console.log('\n[3/5] Verifying run persistence and metrics in automation_runs...');
-    const { data: runInDb, error: runFetchErr } = await supabaseServer
+    console.log('\n[3/5] Verifying run persistence in automation_runs...');
+    const { data: runInDb } = await dbAdapter
       .from('automation_runs')
       .select('*')
-      .eq('id', dispatchResponseData.run_id)
+      .eq('id', first.body.run_id)
       .single();
+    assert.equal(runInDb.status, 'completed');
+    assert.equal(runInDb.idempotency_key, testIdempotencyKey);
+    console.log('  ✔ Verified run persistence record.');
 
-    if (!runFetchErr && runInDb) {
-      assert.equal(runInDb.status, 'completed', 'Run status in database must be completed');
-      assert.ok(runInDb.duration_ms >= 0, 'Run duration must be positive');
-      assert.equal(runInDb.idempotency_key, testIdempotencyKey, 'Idempotency key must match');
-      console.log('  ✔ Database verification succeeded. Record confirmed in PostgreSQL.');
-    } else {
-      console.log('  ✔ Execution run object verified with live metrics.');
-    }
+    console.log('\n[4/5] Testing Idempotency Lock...');
+    const second = await invokeDispatch({
+      method: 'POST',
+      headers: { authorization: 'Bearer test', 'idempotency-key': testIdempotencyKey },
+      body: {
+        automation_id: 'a0000000-0000-0000-0000-000000000099',
+        action_type: 'task_deadline_scan',
+        idempotency_key: testIdempotencyKey,
+      },
+    });
+    assert.equal(second.body.idempotent, true);
+    assert.equal(second.body.run_id, first.body.run_id);
+    console.log('  ✔ Idempotency lock verified.');
 
-    // -------------------------------------------------------------------------
-    // TEST 4: Verify Idempotency Lock
-    // -------------------------------------------------------------------------
-    console.log('\n[4/5] Testing Idempotency Lock (re-dispatching with identical key)...');
-    let secondDispatchData: any = null;
-    const mockRes2 = {
-      setHeader: () => {},
-      status: (code: number) => ({
-        json: (data: any) => {
-          secondDispatchData = data;
-        },
-        end: () => {},
-      }),
-    };
-
-    await dispatchHandler(mockReq, mockRes2);
-
-    assert.ok(secondDispatchData.idempotent, 'Dispatcher must identify duplicate idempotency_key');
-    console.log('  ✔ Idempotency lock confirmed. Duplicate run prevented and cached record returned.');
-
-    // -------------------------------------------------------------------------
-    // TEST 5: Verify Diagnostic Handling on Missing Credentials
-    // -------------------------------------------------------------------------
-    console.log('\n[5/5] Verifying diagnostic status handling for Google/NeoSapien actions...');
-    const unauthedJob = {
-      run_id: `test_run_${Date.now()}`,
-      automation_id: 'a0000000-0000-0000-0000-000000000003',
-      user_id: 'unauthorized_user_test',
-      action_type: 'google_calendar',
-      action_config: {},
-      max_retries: 0,
-    };
-
-    const unauthedResult = await executeAutomationRun(unauthedJob);
-    assert.equal(
-      unauthedResult.status,
-      'needs_authorization',
-      'Missing Google credentials must set status to needs_authorization'
+    console.log('\n[5/5] Verifying diagnostic handling on missing Google credentials...');
+    const unauthed = await executeAutomationRun(
+      {
+        run_id: `test_run_${Date.now()}`,
+        automation_id: 'a0000000-0000-0000-0000-000000000003',
+        user_id: 'unauthorized_user_test',
+        action_type: 'google_calendar',
+        action_config: {},
+        max_retries: 0,
+      },
+      dbAdapter
     );
-    console.log('  ✔ Diagnostic verified: missing credentials gracefully flagged as needs_authorization.');
-
-    console.log('\n=================================================');
-    console.log('🎉 ALL 5 SMOKE TEST ASSERTIONS PASSED WITH 100% SUCCESS');
-    console.log('=================================================\n');
+    assert.equal(unauthed.status, 'needs_authorization');
+    console.log('  ✔ Missing credentials accurately flagged as needs_authorization.\n');
+    console.log('🎉 ALL 5 SMOKE TEST ASSERTIONS PASSED!');
   } catch (err: any) {
-    console.error('\n❌ Smoke test assertion failed:', err);
+    console.error('\n❌ Smoke test failed:', err);
     process.exit(1);
   }
 }

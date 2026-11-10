@@ -11,11 +11,15 @@ import {
   Bell,
   Search,
   Plus,
+  UserCheck,
+  LogIn,
+  Mic,
 } from 'lucide-react';
 import { db } from '../../db';
 import { TurbineLogo } from '../common/TurbineLogo';
 import { useTheme } from '../../context/ThemeContext';
 import { useSync } from '../../context/SyncContext';
+import { SupabaseAuthService, type AuthState } from '../../services/auth/supabaseAuthService';
 import type { Area, NavigationTab } from '../../types';
 
 interface HeaderProps {
@@ -41,6 +45,11 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const { isDark, toggleTheme } = useTheme();
   const { status, syncNow } = useSync();
+  const [authState, setAuthState] = React.useState<AuthState>(() => SupabaseAuthService.getState());
+
+  React.useEffect(() => {
+    return SupabaseAuthService.subscribe(setAuthState);
+  }, []);
 
   // Unread notifications query
   const unreadNotifs = useLiveQuery(
@@ -175,9 +184,11 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={onOpenQuickCapture}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer shadow-xs"
-              title="Universal Quick Capture (Ctrl+Q)"
+              title="Voice & Quick Capture (Ctrl+Q)"
+              aria-label="Open voice and quick capture"
             >
-              <Plus className="w-4 h-4" />
+              <Mic className="w-3.5 h-3.5 opacity-90" />
+              <Plus className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Capture</span>
             </button>
           )}
@@ -201,6 +212,38 @@ export const Header: React.FC<HeaderProps> = ({
               ▾
             </div>
           </div>
+
+          {/* Auth Session Indicator */}
+          {authState.configured && (
+            <button
+              onClick={() => onNavigate('integrations')}
+              title={
+                authState.user
+                  ? `Signed in as ${authState.user.email || authState.user.id}`
+                  : 'Sign in to Yashwanth Hub cloud session'
+              }
+              aria-label={authState.user ? `Signed in as ${authState.user.email}` : 'Sign in'}
+              className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors cursor-pointer ${
+                authState.user
+                  ? 'bg-teal-500/10 text-teal-600 dark:text-teal-300 border-teal-500/20 hover:bg-teal-500/20'
+                  : 'bg-amber-500/10 text-amber-600 dark:text-amber-300 border-amber-500/20 hover:bg-amber-500/20'
+              }`}
+            >
+              {authState.user ? (
+                <>
+                  <UserCheck className="w-3.5 h-3.5" />
+                  <span className="max-w-[96px] truncate">
+                    {authState.user.email?.split('@')[0] || 'Signed In'}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>Sign In</span>
+                </>
+              )}
+            </button>
+          )}
 
           {/* Sync Status Badge */}
           {getSyncBadge()}

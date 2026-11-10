@@ -2,21 +2,21 @@
 // Endpoint: /api/integrations/neosapien
 // Target MCP Endpoint: https://api.neosapien.xyz/mcp
 
-import { supabaseServer } from '../_lib/db.ts';
+import crypto from 'node:crypto';
+import {
+  isServerSupabaseConfigured,
+  resolveAuthenticatedUser,
+  supabaseServer,
+} from '../_lib/db.ts';
 
 const NEOSAPIEN_MCP_ENDPOINT = 'https://api.neosapien.xyz/mcp';
 
 export async function getNeoSapienToken(userId: string, req: any): Promise<string | null> {
-  // 1. Authorization header passed by client
-  const authHeader = req.headers?.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const raw = authHeader.slice(7).trim();
-    if (raw && !raw.startsWith('sbp_') && !raw.startsWith('eyJ')) {
-      return raw;
-    }
+  const explicitNeoHeader = req?.headers?.['x-neosapien-token'] || req?.headers?.['X-NeoSapien-Token'];
+  if (typeof explicitNeoHeader === 'string' && explicitNeoHeader.trim()) {
+    return explicitNeoHeader.trim();
   }
 
-  // 2. Query integration_tokens vault for user
   const { data: tokenRecord } = await supabaseServer
     .from('integration_tokens')
     .select('*')
@@ -29,8 +29,7 @@ export async function getNeoSapienToken(userId: string, req: any): Promise<strin
     if (token) return token;
   }
 
-  // 3. Fallback to server environment variables
-  return process.env.NEOSAPIEN_API_KEY || process.env.NEOSAPIEN_BEARER_TOKEN || null;
+  return (process.env.NEOSAPIEN_API_KEY || process.env.NEOSAPIEN_BEARER_TOKEN || '').trim() || null;
 }
 
 export async function executeMcpJsonRpc(endpoint: string, token: string, method: string, params: any = {}) {
@@ -45,13 +44,15 @@ export async function executeMcpJsonRpc(endpoint: string, token: string, method:
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      Accept: 'application/json, text/event-stream',
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(10000),
   });
 
   if (!resp.ok) {
-    const errText = await resp.text();
+    const errText = await resp.text().catch(() => '');
     throw new Error(`MCP Server responded with HTTP ${resp.status}: ${errText || resp.statusText}`);
   }
 
@@ -61,31 +62,41 @@ export async function executeMcpJsonRpc(endpoint: string, token: string, method:
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-NeoSapien-Token');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
-  const authHeader = req.headers?.authorization;
-  let userId = '00000000-0000-0000-0000-000000000001';
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.slice(7).trim();
-    try {
-      const { data: { user } } = await supabaseServer.auth.getUser(token);
-      if (user) userId = user.id;
-    } catch {}
+  if (!isServerSupabaseConfigured()) {
+    return res.status(503).json({
+      success: false,
+      connected: false,
+      error: 'Server Database Not Configured',
+      message: 'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in environment variables.',
+    });
   }
 
-  const action = req.query.action || req.body?.action || 'handshake';
+  const auth = await resolveAuthenticatedUser(req);
+  if (!auth.authenticated || !auth.userId) {
+    return res.status(401).json({
+      success: false,
+      connected: false,
+      error: 'Unauthorized',
+      message: auth.error || 'Valid Supabase user session token is required.',
+    });
+  }
+
+  const userId = auth.userId;
+  const action = req.query?.action || req.body?.action || 'handshake';
   const token = await getNeoSapienToken(userId, req);
 
   if (!token) {
     return res.status(401).json({
       success: false,
       connected: false,
-      error: 'Unauthorized',
-      message: 'NeoSapien API key or OAuth token missing. Save token in Settings -> Integrations.',
+      error: 'NeoSapien Token Missing',
+      message: 'NeoSapien API key or OAuth token missing. Save token in Integrations -> NeoSapien.',
     });
   }
 
@@ -98,12 +109,12 @@ export default async function handler(req: any, res: any) {
       try {
         rpcResult = await executeMcpJsonRpc(NEOSAPIEN_MCP_ENDPOINT, token, 'tools/list');
       } catch (err: any) {
-        // Log failed attempt in sync history
         await supabaseServer.from('neosapien_sync_history').insert({
           user_id: userId,
-          method: 'mcp_handshake',
-          status: 'error',
-          error_message: err.message,
+          sync_method: 'mcp',
+          status: 'failed',
+          records_imported: 0,
+          error_message: err?.message || 'Handshake failed',
           created_at: new Date().toISOString(),
         });
 
@@ -111,37 +122,36 @@ export default async function handler(req: any, res: any) {
           success: false,
           connected: false,
           error: 'MCP Handshake Failed',
-          message: err.message,
+          message: err?.message || 'Unable to reach NeoSapien MCP',
           endpoint: NEOSAPIEN_MCP_ENDPOINT,
         });
       }
 
       const discoveredTools = rpcResult?.result?.tools || [];
       const latencyMs = Date.now() - startTime;
+      const nowISO = new Date().toISOString();
 
-      // Persist live connection record in neosapien_connections
       await supabaseServer.from('neosapien_connections').upsert(
         {
           user_id: userId,
           provider: 'neosapien',
           mcp_endpoint: NEOSAPIEN_MCP_ENDPOINT,
           status: 'connected',
-          discovered_tools: discoveredTools,
-          last_ping_at: new Date().toISOString(),
-          latency_ms: latencyMs,
-          updated_at: new Date().toISOString(),
+          capabilities: discoveredTools,
+          last_sync_at: nowISO,
+          metadata: { latency_ms: latencyMs },
+          updated_at: nowISO,
         },
         { onConflict: 'user_id,provider' }
       );
 
-      // Log successful handshake in neosapien_sync_history
       await supabaseServer.from('neosapien_sync_history').insert({
         user_id: userId,
-        method: 'mcp_handshake',
+        sync_method: 'mcp',
         status: 'success',
-        items_synced: discoveredTools.length,
-        duration_ms: latencyMs,
-        created_at: new Date().toISOString(),
+        records_imported: discoveredTools.length,
+        details: `MCP handshake discovered ${discoveredTools.length} tools in ${latencyMs}ms.`,
+        created_at: nowISO,
       });
 
       return res.status(200).json({
@@ -152,7 +162,7 @@ export default async function handler(req: any, res: any) {
         toolsCount: discoveredTools.length,
         tools: discoveredTools,
         latencyMs,
-        timestamp: new Date().toISOString(),
+        timestamp: nowISO,
       });
     }
 
@@ -175,34 +185,45 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // 3. ACTION: Synchronize Task Context to NeoSapien
+    // 3. ACTION: Synchronize Task Context into neosapien_memories (exact schema columns)
     if (action === 'sync_task') {
       const { task_id, title, description, done, area } = req.body || {};
       const contextSummary = `Task [${done ? 'COMPLETED' : 'ACTIVE'}]: ${title}. ${description || ''} (Area: ${area || 'Personal'})`;
+      const sourceRecordId = `task_${task_id || Date.now()}`;
+      const contentHash = crypto.createHash('sha256').update(`${sourceRecordId}:${contextSummary}`).digest('hex').slice(0, 24);
+      const nowISO = new Date().toISOString();
 
-      // Log context synchronization in neosapien_memories table
-      const { data: memoryRecord } = await supabaseServer
+      const { data: memoryRecord, error: memErr } = await supabaseServer
         .from('neosapien_memories')
-        .insert({
-          user_id: userId,
-          original_neo_id: `task_${task_id || Date.now()}`,
-          title: `Task Update: ${title || 'Untitled'}`,
-          summary: contextSummary,
-          transcript: contextSummary,
-          associated_area: area || 'Personal',
-          source_type: 'task_sync',
-          sync_method: 'mcp',
-          captured_at: new Date().toISOString(),
-          created_at: new Date().toISOString(),
-        })
+        .upsert(
+          {
+            user_id: userId,
+            source_record_id: sourceRecordId,
+            title: `Task Update: ${title || 'Untitled'}`,
+            content_hash: contentHash,
+            source: 'mcp_sync',
+            platform: 'other',
+            summary: contextSummary,
+            transcript: contextSummary,
+            associated_area: area || 'Personal',
+            captured_at: nowISO,
+            imported_at: nowISO,
+            updated_at: nowISO,
+          },
+          { onConflict: 'user_id,source_record_id' }
+        )
         .select()
         .single();
+
+      if (memErr) {
+        return res.status(400).json({ success: false, error: memErr.message });
+      }
 
       return res.status(200).json({
         success: true,
         synchronized: true,
         memory: memoryRecord,
-        timestamp: new Date().toISOString(),
+        timestamp: nowISO,
       });
     }
 
@@ -215,7 +236,7 @@ export default async function handler(req: any, res: any) {
     return res.status(500).json({
       success: false,
       error: 'NeoSapien Integration Error',
-      message: err.message || 'Error communicating with NeoSapien MCP endpoint.',
+      message: err?.message || 'Error communicating with NeoSapien MCP endpoint.',
     });
   }
 }

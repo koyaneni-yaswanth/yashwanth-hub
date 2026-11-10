@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "node --test tests/neosapien_integration.test.mjs tests/native_capacitor_integration.test.mjs tests/hub_automations_constraints.test.mjs tests/google_oauth_resilience.test.mjs",
+    "test": "node --experimental-strip-types --test tests/neosapien_integration.test.mjs tests/native_capacitor_integration.test.mjs tests/hub_automations_constraints.test.mjs tests/google_oauth_resilience.test.mjs tests/v2_auth_and_rls.test.mjs tests/v2_automation_engine.test.mjs tests/v2_ai_and_nlp.test.mjs tests/v2_security_and_truth.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

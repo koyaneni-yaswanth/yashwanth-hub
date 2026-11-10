@@ -1,18 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db';
 import type { Task, EventItem, Note, Expense, Area } from '../../types';
 import { generateId, getTodayISO } from '../../lib/utils';
+import { SyncQueueService } from '../../services/sync/syncQueueService';
+import {
+  parseQuickCaptureInput,
+  type CaptureType,
+} from '../../services/voiceCaptureParser';
 import {
   Sparkles,
-  CheckCircle2,
   Calendar,
-  FileText,
   IndianRupee,
-  Lightbulb,
   X,
   ArrowRight,
   Tag,
   Check,
+  Mic,
+  MicOff,
+  FolderKanban,
+  AlertCircle,
 } from 'lucide-react';
 
 interface QuickCaptureModalProps {
@@ -22,18 +29,6 @@ interface QuickCaptureModalProps {
   onSuccess?: (type: string, message: string) => void;
 }
 
-type CaptureType = 'task' | 'event' | 'note' | 'expense' | 'idea';
-
-interface ParsedEntity {
-  type: CaptureType;
-  title: string;
-  date?: string;
-  time?: string;
-  area: string;
-  amount?: number;
-  priority: 'low' | 'medium' | 'high' | 'urgent';
-}
-
 export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
   isOpen,
   onClose,
@@ -41,80 +36,55 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
   onSuccess,
 }) => {
   const [rawText, setRawText] = useState('');
-  const [selectedType, setSelectedType] = useState<CaptureType>('task');
+  const [manualType, setManualType] = useState<CaptureType | undefined>(undefined);
+  const [editedTitle, setEditedTitle] = useState('');
+  const [editedDate, setEditedDate] = useState(getTodayISO());
+  const [editedTime, setEditedTime] = useState('');
+  const [editedArea, setEditedArea] = useState('PAWAN SHAKTI');
+  const [editedProjectId, setEditedProjectId] = useState<string>('');
+  const [hasManualEdits, setHasManualEdits] = useState(false);
+
+  const [isListening, setIsListening] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Heuristic NLP parser
-  const parseInput = (text: string): ParsedEntity => {
-    const lower = text.toLowerCase();
-    const todayStr = getTodayISO();
+  const recognitionRef = useRef<any>(null);
+  const allProjects = useLiveQuery(() => db.projects.toArray(), []) || [];
 
-    let type: CaptureType = selectedType;
-    let title = text.trim();
-    let area = areas[0]?.name || 'Pawan Shakti';
-    let date = todayStr;
-    let time = '';
-    let amount: number | undefined;
-    let priority: 'low' | 'medium' | 'high' | 'urgent' = 'medium';
+  const speechSupported =
+    typeof window !== 'undefined' &&
+    Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
 
-    // Auto-detect type if not manually overridden by user pill selection
-    if (lower.includes('₹') || lower.includes(' rs') || lower.includes('rs.') || lower.includes('inr')) {
-      type = 'expense';
-      const amtMatch = text.match(/(?:₹|rs\.?|inr)\s*(\d+(?:\.\d+)?)/i);
-      if (amtMatch) amount = parseFloat(amtMatch[1]);
-    } else if (lower.includes('meeting') || lower.includes('call') || lower.includes('sync with') || lower.includes('at ') && (lower.includes('am') || lower.includes('pm'))) {
-      type = 'event';
-    } else if (lower.startsWith('note:') || lower.startsWith('log:') || lower.includes('research paper')) {
-      type = 'note';
-    } else if (lower.startsWith('idea:')) {
-      type = 'idea';
+  const parsed = parseQuickCaptureInput(rawText, {
+    projects: allProjects,
+    areas,
+    todayISO: getTodayISO(),
+    manualType,
+  });
+
+  // Sync extracted suggestions into confirmation fields until manually overridden
+  useEffect(() => {
+    if (!hasManualEdits) {
+      setEditedTitle(parsed.title);
+      setEditedDate(parsed.date);
+      setEditedTime(parsed.time);
+      setEditedArea(parsed.area);
+      setEditedProjectId(parsed.projectId || '');
     }
+  }, [rawText, manualType, parsed.title, parsed.date, parsed.time, parsed.area, parsed.projectId, hasManualEdits]);
 
-    // Detect Priority
-    if (lower.includes('urgent') || lower.includes('asap') || lower.includes('critical')) {
-      priority = 'urgent';
-    } else if (lower.includes('high priority') || lower.includes('important')) {
-      priority = 'high';
+  useEffect(() => {
+    if (!isOpen && isListening) {
+      try {
+        recognitionRef.current?.stop();
+      } catch {
+        // Ignore stop errors
+      }
+      setIsListening(false);
     }
+  }, [isOpen, isListening]);
 
-    // Detect Date keywords
-    if (lower.includes('tomorrow')) {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      date = tomorrow.toISOString().split('T')[0];
-    } else if (lower.includes('next week')) {
-      const nextWeek = new Date();
-      nextWeek.setDate(nextWeek.getDate() + 7);
-      date = nextWeek.toISOString().split('T')[0];
-    }
-
-    // Detect Time
-    const timeMatch = text.match(/\b(\d{1,2}(?::\d{2})?\s*(?:am|pm))\b/i);
-    if (timeMatch) {
-      time = timeMatch[1].toUpperCase();
-    }
-
-    // Detect Area from hashtags or keywords
-    if (lower.includes('#robotics') || lower.includes('piper') || lower.includes('drone') || lower.includes('radar')) {
-      area = 'Robotics Lab';
-    } else if (lower.includes('#startup') || lower.includes('#wind') || lower.includes('pawan') || lower.includes('v3f')) {
-      area = 'Pawan Shakti';
-    } else if (lower.includes('#personal') || lower.includes('#routine') || lower.includes('gym')) {
-      area = 'Personal';
-    } else if (lower.includes('#mg') || lower.includes('automation')) {
-      area = 'MG Automation';
-    }
-
-    // Clean title of tags
-    title = title.replace(/#[a-zA-Z0-9_-]+/g, '').trim();
-
-    return { type, title, date, time, area, amount, priority };
-  };
-
-  const parsed = parseInput(rawText);
-
-  // Keyboard shortcut ESC to close
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) onClose();
@@ -123,75 +93,141 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
     return () => window.removeEventListener('keydown', handleKey);
   }, [isOpen, onClose]);
 
-  // Handle Commit to Dexie
+  const toggleVoiceInput = () => {
+    setVoiceError(null);
+    if (!speechSupported) {
+      setVoiceError('Browser Web Speech recognition is unavailable here. Type or paste your transcript directly below.');
+      return;
+    }
+
+    if (isListening) {
+      try {
+        recognitionRef.current?.stop();
+      } catch {
+        // Safe stop
+      }
+      setIsListening(false);
+      return;
+    }
+
+    try {
+      const SpeechCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      const recognition = new SpeechCtor();
+      recognition.lang = 'en-IN';
+      recognition.continuous = false;
+      recognition.interimResults = true;
+
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognition.onresult = (event: any) => {
+        let transcript = '';
+        for (let i = 0; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        setHasManualEdits(false);
+        setRawText(transcript.trim());
+      };
+
+      recognition.onerror = (err: any) => {
+        setIsListening(false);
+        setVoiceError(`Voice input error: ${err?.error || 'microphone permission denied'}`);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err: any) {
+      setIsListening(false);
+      setVoiceError(err?.message || 'Unable to start speech recognition.');
+    }
+  };
+
   const handleCommit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!parsed.title) return;
+    const finalTitle = (editedTitle || parsed.title).trim();
+    if (!finalTitle) return;
 
     setIsSubmitting(true);
     const nowISO = new Date().toISOString();
+    const activeType = parsed.type;
+    const finalArea = editedArea || parsed.area;
+    const finalDate = editedDate || parsed.date || getTodayISO();
+    const finalTime = editedTime || parsed.time;
+    const finalProjectId = editedProjectId || parsed.projectId || undefined;
 
     try {
-      if (parsed.type === 'task') {
+      if (activeType === 'task') {
         const newTask: Task = {
           id: generateId(),
-          text: parsed.title,
-          area: parsed.area,
+          text: finalTitle,
+          area: finalArea,
           priority: parsed.priority,
-          due_date: parsed.date,
+          due_date: finalDate,
+          project_id: finalProjectId,
           starred: parsed.priority === 'urgent' || parsed.priority === 'high',
           done: false,
           created_at: nowISO,
           updated_at: nowISO,
         };
         await db.tasks.add(newTask);
-      } else if (parsed.type === 'event') {
+        SyncQueueService.enqueueChange('tasks', newTask.id, 'INSERT', newTask).catch(() => {});
+      } else if (activeType === 'event') {
         const newEvent: EventItem = {
           id: generateId(),
-          title: parsed.title,
-          date: parsed.date || getTodayISO(),
-          start_time: parsed.time || '10:00 AM',
+          title: finalTitle,
+          date: finalDate,
+          start_time: finalTime || '10:00',
           kind: 'Meeting',
-          area: parsed.area,
+          area: finalArea,
+          project_id: finalProjectId,
           created_at: nowISO,
           updated_at: nowISO,
         };
         await db.events.add(newEvent);
-      } else if (parsed.type === 'expense') {
+        SyncQueueService.enqueueChange('events', newEvent.id, 'INSERT', newEvent).catch(() => {});
+      } else if (activeType === 'expense') {
         const newExpense: Expense = {
           id: generateId(),
           amount: parsed.amount || 0,
           category: 'Parts',
-          note: parsed.title,
-          date: parsed.date || getTodayISO(),
-          area: parsed.area,
+          note: finalTitle,
+          date: finalDate,
+          area: finalArea,
           created_at: nowISO,
           updated_at: nowISO,
         };
         await db.expenses.add(newExpense);
+        SyncQueueService.enqueueChange('expenses', newExpense.id, 'INSERT', newExpense).catch(() => {});
       } else {
-        // Note or Idea
         const newNote: Note = {
           id: generateId(),
-          title: parsed.title,
-          body: `Captured via Universal Quick Capture on ${new Date().toLocaleString()}`,
-          area: parsed.area,
+          title: finalTitle,
+          body: `Captured via Quick Capture on ${new Date().toLocaleString()}${rawText !== finalTitle ? `\n\nTranscript: ${rawText}` : ''}`,
+          area: finalArea,
           pinned: false,
           created_at: nowISO,
           updated_at: nowISO,
         };
         await db.notes.add(newNote);
+        SyncQueueService.enqueueChange('notes', newNote.id, 'INSERT', newNote).catch(() => {});
       }
 
-      setSuccessMessage(`Saved as ${parsed.type.toUpperCase()}`);
-      if (onSuccess) onSuccess(parsed.type, parsed.title);
+      setSuccessMessage(`Saved verified ${activeType.toUpperCase()}`);
+      if (onSuccess) onSuccess(activeType, finalTitle);
 
       setTimeout(() => {
         setSuccessMessage(null);
         setRawText('');
+        setManualType(undefined);
+        setHasManualEdits(false);
         setIsSubmitting(false);
         onClose();
-      }, 700);
+      }, 650);
     } catch (err) {
       console.error('Quick capture commit error:', err);
       setIsSubmitting(false);
@@ -201,8 +237,8 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-      <div className="w-full max-w-xl rounded-2xl bg-[var(--hub-card)] border border-[var(--hub-line)] shadow-2xl overflow-hidden animate-scale-up">
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-xl rounded-2xl bg-[var(--hub-surface)] border border-[var(--hub-line)] shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--hub-line)] bg-[var(--hub-bg)]">
           <div className="flex items-center gap-2">
@@ -211,44 +247,67 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold text-[var(--hub-ink)] font-heading">
-                Universal Quick Capture
+                Voice & Natural-Language Quick Capture
               </h3>
               <p className="text-[11px] text-[var(--hub-muted)]">
-                Type naturally — task, event, expense, note or idea with NLP parsing
+                Speak or type — extracts intent, project link & due date with confirmation before save
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-card)] transition-colors cursor-pointer"
+            aria-label="Close quick capture"
+            className="p-1.5 rounded-lg text-[var(--hub-muted)] hover:text-[var(--hub-ink)] cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Input Body */}
         <form onSubmit={handleCommit} className="p-5 space-y-4">
-          <div>
+          <div className="relative">
             <textarea
               autoFocus
               rows={3}
               value={rawText}
-              onChange={(e) => setRawText(e.target.value)}
-              placeholder="e.g. Review Pawan Shakti gearbox test tomorrow at 3pm #startup&#10;or: Buy 10k potentiometer ₹150 for robotics arm"
-              className="w-full px-4 py-3 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] text-sm text-[var(--hub-ink)] placeholder-[var(--hub-muted)] focus:outline-none focus:border-[var(--hub-accent)] font-medium leading-relaxed resize-none"
+              onChange={(e) => {
+                setHasManualEdits(false);
+                setRawText(e.target.value);
+              }}
+              placeholder="Speak or type: e.g. Create a task to test Pawan Shakti generator tomorrow at 4pm&#10;or: Meet Dr. Rao Friday 11am #robotics"
+              className="w-full px-4 py-3 pr-12 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] text-sm text-[var(--hub-ink)] placeholder-[var(--hub-muted)] focus:outline-none focus:border-[var(--hub-accent)] font-medium leading-relaxed resize-none"
             />
+            <button
+              type="button"
+              onClick={toggleVoiceInput}
+              title={isListening ? 'Stop voice capture' : 'Start voice dictation'}
+              aria-label={isListening ? 'Stop voice dictation' : 'Start voice dictation'}
+              className={`absolute right-2.5 bottom-2.5 p-2 rounded-lg transition-colors cursor-pointer ${
+                isListening
+                  ? 'bg-red-500 text-white animate-pulse'
+                  : 'bg-[var(--hub-surface)] border border-[var(--hub-line)] text-[var(--hub-accent)] hover:border-[var(--hub-accent)]'
+              }`}
+            >
+              {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            </button>
           </div>
 
-          {/* Type Selector Pills */}
+          {voiceError && (
+            <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-700 dark:text-amber-300 flex items-center gap-2">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>{voiceError}</span>
+            </div>
+          )}
+
+          {/* Type Selector */}
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[11px] font-semibold text-[var(--hub-muted)] mr-1">Type:</span>
+            <span className="text-[11px] font-semibold text-[var(--hub-muted)] mr-1">Intent:</span>
             {(['task', 'event', 'expense', 'note', 'idea'] as CaptureType[]).map((t) => (
               <button
                 key={t}
                 type="button"
-                onClick={() => setSelectedType(t)}
+                onClick={() => setManualType(t)}
                 className={`px-3 py-1 rounded-lg text-xs font-semibold capitalize transition-colors cursor-pointer ${
-                  selectedType === t
+                  parsed.type === t
                     ? 'bg-[var(--hub-accent)] text-white shadow-xs'
                     : 'bg-[var(--hub-bg)] border border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
                 }`}
@@ -258,46 +317,104 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
             ))}
           </div>
 
-          {/* Natural Language Preview Card */}
+          {/* Editable Confirmation Preview Before Save */}
           {rawText.trim() && (
-            <div className="p-3.5 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] space-y-2">
+            <div className="p-3.5 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] space-y-2.5 text-xs">
               <div className="flex items-center justify-between text-[11px] font-bold text-[var(--hub-muted)]">
-                <span>PARSED CONFIRMATION PREVIEW</span>
-                <span className="capitalize text-teal-400 font-mono">Intent: {parsed.type}</span>
+                <span>CONFIRM BEFORE SAVING</span>
+                <span className="capitalize text-teal-500 font-mono">
+                  Detected Intent: {parsed.type}
+                </span>
               </div>
 
-              <div className="text-xs text-[var(--hub-ink)] font-semibold truncate">
-                {parsed.title}
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-[var(--hub-muted)] mb-0.5">
+                  Title (Editable)
+                </label>
+                <input
+                  type="text"
+                  value={editedTitle}
+                  onChange={(e) => {
+                    setHasManualEdits(true);
+                    setEditedTitle(e.target.value);
+                  }}
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-surface)] text-[var(--hub-ink)] font-semibold"
+                />
               </div>
 
-              <div className="flex items-center gap-3 text-[11px] text-[var(--hub-muted)] flex-wrap pt-1 border-t border-[var(--hub-line)]">
-                <span className="flex items-center gap-1">
-                  <Calendar className="w-3 h-3 text-teal-400" />
-                  {parsed.date} {parsed.time && `• ${parsed.time}`}
-                </span>
-                <span className="flex items-center gap-1">
-                  <Tag className="w-3 h-3 text-indigo-400" />
-                  {parsed.area}
-                </span>
-                {parsed.amount && (
-                  <span className="flex items-center gap-1 text-emerald-400 font-bold font-mono">
-                    <IndianRupee className="w-3 h-3" />
-                    {parsed.amount}
-                  </span>
-                )}
-                {parsed.priority !== 'medium' && (
-                  <span className="px-1.5 py-0.2 rounded bg-rose-500/10 text-rose-400 font-bold uppercase text-[9px]">
-                    {parsed.priority}
-                  </span>
-                )}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div>
+                  <label className="flex items-center gap-1 text-[10px] font-bold uppercase text-[var(--hub-muted)] mb-0.5">
+                    <FolderKanban className="w-3 h-3" /> Project
+                  </label>
+                  <select
+                    value={editedProjectId}
+                    onChange={(e) => {
+                      setHasManualEdits(true);
+                      setEditedProjectId(e.target.value);
+                      const proj = allProjects.find((p) => p.id === e.target.value);
+                      if (proj) setEditedArea(proj.area);
+                    }}
+                    className="w-full px-2 py-1 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-surface)] text-[var(--hub-ink)]"
+                  >
+                    <option value="">No project link</option>
+                    {allProjects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.title.slice(0, 26)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="flex items-center gap-1 text-[10px] font-bold uppercase text-[var(--hub-muted)] mb-0.5">
+                    <Tag className="w-3 h-3" /> Area
+                  </label>
+                  <select
+                    value={editedArea}
+                    onChange={(e) => {
+                      setHasManualEdits(true);
+                      setEditedArea(e.target.value);
+                    }}
+                    className="w-full px-2 py-1 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-surface)] text-[var(--hub-ink)]"
+                  >
+                    {areas.map((a) => (
+                      <option key={a.id} value={a.name}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="flex items-center gap-1 text-[10px] font-bold uppercase text-[var(--hub-muted)] mb-0.5">
+                    <Calendar className="w-3 h-3" /> Date
+                  </label>
+                  <input
+                    type="date"
+                    value={editedDate}
+                    onChange={(e) => {
+                      setHasManualEdits(true);
+                      setEditedDate(e.target.value);
+                    }}
+                    className="w-full px-2 py-1 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-surface)] text-[var(--hub-ink)]"
+                  />
+                </div>
               </div>
+
+              {parsed.amount !== undefined && (
+                <div className="flex items-center gap-1 text-emerald-500 font-mono font-bold">
+                  <IndianRupee className="w-3 h-3" />
+                  <span>Detected Amount: ₹{parsed.amount}</span>
+                </div>
+              )}
             </div>
           )}
 
           {/* Action Footer */}
           <div className="flex items-center justify-between pt-2">
             <span className="text-[11px] text-[var(--hub-muted)]">
-              Press <kbd className="px-1.5 py-0.5 rounded bg-[var(--hub-bg)] border border-[var(--hub-line)] font-mono text-[10px]">Esc</kbd> to cancel
+              {speechSupported ? 'Click mic for voice dictation • Esc closes' : 'Voice dictation unsupported in this browser • Esc closes'}
             </span>
 
             <div className="flex items-center gap-2">
@@ -312,7 +429,7 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
               <button
                 type="submit"
                 disabled={!rawText.trim() || isSubmitting}
-                className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors shadow-sm cursor-pointer disabled:opacity-50"
               >
                 {successMessage ? (
                   <>
@@ -321,7 +438,7 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
                   </>
                 ) : (
                   <>
-                    <span>Confirm & Commit</span>
+                    <span>Confirm & Save</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}

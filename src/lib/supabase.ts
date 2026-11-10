@@ -1,8 +1,9 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 // Environment variables or local overrides configured in Settings
-const envUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const viteEnv = (import.meta as { env?: Record<string, string | undefined> }).env;
+const envUrl = viteEnv?.VITE_SUPABASE_URL || '';
+const envKey = viteEnv?.VITE_SUPABASE_ANON_KEY || '';
 
 let cachedClient: SupabaseClient | null = null;
 let currentConfig = {

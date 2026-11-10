@@ -1,46 +1,73 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Moon,
   Sun,
-  Activity,
-  Heart,
   Clock,
   CheckCircle2,
-  Calendar,
   Flame,
   BatteryCharging,
-  Sliders,
-  Sparkles,
 } from 'lucide-react';
+import { db } from '../db';
 import { Badge } from '../components/common/Badge';
 import { StatCard } from '../components/common/StatCard';
-import { formatShortDate, getTodayISO } from '../lib/utils';
-import type { HealthRoutineRecord } from '../types';
+import { getTodayISO } from '../lib/utils';
 
 const INITIAL_ROUTINE_CHECKS = [
-  { id: 'r1', time: '06:30', title: 'Wake up & 500ml water hydration', category: 'Morning', done: true },
-  { id: 'r2', time: '07:00', title: 'Physical conditioning & mobility / run', category: 'Health', done: true },
-  { id: 'r3', time: '08:30', title: 'Deep Work Block 1: Pawan Shakti Planetary Gearbox CAD', category: 'Engineering', done: true },
-  { id: 'r4', time: '11:30', title: 'Deep Work Block 2: ROS 2 Humble CAN driver test run', category: 'Robotics', done: false },
-  { id: 'r5', time: '14:30', title: 'Startup execution & V3F evidence review sprint', category: 'Startup', done: false },
-  { id: 'r6', time: '17:30', title: 'Daily synthesis & team/advisory follow-ups', category: 'Comms', done: false },
-  { id: 'r7', time: '22:00', title: 'Screens off & evening circadian wind-down', category: 'Evening', done: false },
+  { id: 'r1', time: '06:30', title: 'Wake up & hydration', category: 'Morning', done: false },
+  { id: 'r2', time: '07:00', title: 'Physical conditioning & mobility', category: 'Health', done: false },
+  { id: 'r3', time: '08:30', title: 'Deep Work Block 1: Pawan Shakti Engineering', category: 'Engineering', done: false },
+  { id: 'r4', time: '11:30', title: 'Deep Work Block 2: Robotics Lab / Software', category: 'Robotics', done: false },
+  { id: 'r5', time: '14:30', title: 'Startup execution & blocker closure', category: 'Startup', done: false },
+  { id: 'r6', time: '17:30', title: 'Daily review & sync check', category: 'Comms', done: false },
+  { id: 'r7', time: '22:00', title: 'Screens off & sleep recovery window', category: 'Evening', done: false },
 ];
 
 export const HealthRoutinePage: React.FC = () => {
   const today = getTodayISO();
+  const storageKey = `routine_checkin_${today}`;
+
   const [routines, setRoutines] = useState(INITIAL_ROUTINE_CHECKS);
-  const [sleepHours, setSleepHours] = useState<number>(7.2);
-  const [energyLevel, setEnergyLevel] = useState<number>(8); // 1-10
-  const [deepWorkHours, setDeepWorkHours] = useState<number>(4.5);
+  const [sleepHours, setSleepHours] = useState<number>(7.0);
+  const [energyLevel, setEnergyLevel] = useState<number>(7);
+  const [deepWorkHours, setDeepWorkHours] = useState<number>(0);
+
+  useEffect(() => {
+    db.settings.get(storageKey).then((row) => {
+      if (row?.value) {
+        const val = row.value as any;
+        if (Array.isArray(val.routines)) setRoutines(val.routines);
+        if (typeof val.sleepHours === 'number') setSleepHours(val.sleepHours);
+        if (typeof val.energyLevel === 'number') setEnergyLevel(val.energyLevel);
+        if (typeof val.deepWorkHours === 'number') setDeepWorkHours(val.deepWorkHours);
+      }
+    });
+  }, [storageKey]);
+
+  const persistState = async (
+    nextRoutines: typeof INITIAL_ROUTINE_CHECKS,
+    nextSleep: number,
+    nextEnergy: number,
+    nextDeepWork: number
+  ) => {
+    await db.settings.put({
+      key: storageKey,
+      value: {
+        routines: nextRoutines,
+        sleepHours: nextSleep,
+        energyLevel: nextEnergy,
+        deepWorkHours: nextDeepWork,
+      },
+      updated_at: new Date().toISOString(),
+    });
+  };
 
   const completedCount = routines.filter((r) => r.done).length;
   const routinePercentage = Math.round((completedCount / routines.length) * 100);
 
   const toggleRoutine = (id: string) => {
-    setRoutines((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, done: !r.done } : r))
-    );
+    const next = routines.map((r) => (r.id === id ? { ...r, done: !r.done } : r));
+    setRoutines(next);
+    persistState(next, sleepHours, energyLevel, deepWorkHours);
   };
 
   return (
@@ -50,15 +77,14 @@ export const HealthRoutinePage: React.FC = () => {
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="teal" dot>Circadian & Performance Hub</Badge>
-              <Badge variant="emerald">Recovery: Optimal</Badge>
-              <Badge variant="blue">Deep Work: 4.5 hrs</Badge>
+              <Badge variant="teal" dot>Daily Check-In ({today})</Badge>
+              <Badge variant="blue">Persisted to Local Hub DB</Badge>
             </div>
             <h1 className="text-2xl sm:text-3xl font-heading font-bold text-[var(--hub-ink)] tracking-tight">
               Health, Sleep & Founder Routine Assistant
             </h1>
             <p className="text-sm text-[var(--hub-muted)] max-w-3xl leading-relaxed">
-              Personal circadian rhythm manager, cognitive deep work timer, sleep recovery analytics, and high-performance daily routine tracking for engineering leadership.
+              Log today's sleep, energy rating, deep work hours, and routine execution checkpoints. All check-ins persist across refreshes.
             </p>
           </div>
 
@@ -66,28 +92,41 @@ export const HealthRoutinePage: React.FC = () => {
             <BatteryCharging className="w-6 h-6 text-emerald-500" />
             <div>
               <span className="text-[10px] text-[var(--hub-muted)] uppercase tracking-wider block font-bold">
-                Energy Status
+                Self-Rated Energy
               </span>
-              <span className="text-sm font-bold text-[var(--hub-ink)]">
-                {energyLevel} / 10 Peak State
-              </span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={energyLevel}
+                  onChange={(e) => {
+                    const v = Math.min(10, Math.max(1, Number(e.target.value) || 1));
+                    setEnergyLevel(v);
+                    persistState(routines, sleepHours, v, deepWorkHours);
+                  }}
+                  aria-label="Self-rated energy level"
+                  className="w-12 px-1.5 py-0.5 rounded border border-[var(--hub-line)] bg-[var(--hub-surface)] text-sm font-bold text-[var(--hub-ink)]"
+                />
+                <span className="text-xs font-bold text-[var(--hub-muted)]">/ 10</span>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* KPI Stats */}
+      {/* Interactive Check-In KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
         <StatCard
-          label="Last Night Sleep"
-          value={`${sleepHours} Hours`}
-          subtext="Bedtime: 23:15 • Wake: 06:30"
+          label="Logged Sleep"
+          value={`${sleepHours} hrs`}
+          subtext="Daily self-logged check-in"
           icon={<Moon className="w-5 h-5 text-indigo-500" />}
         />
         <StatCard
-          label="Deep Engineering Work"
-          value={`${deepWorkHours} Hours`}
-          subtext="Target: 5.0 hrs / day"
+          label="Deep Work"
+          value={`${deepWorkHours} hrs`}
+          subtext="Target: 4.0-5.0 hrs / day"
           icon={<Flame className="w-5 h-5 text-amber-500" />}
         />
         <StatCard
@@ -97,11 +136,47 @@ export const HealthRoutinePage: React.FC = () => {
           icon={<CheckCircle2 className="w-5 h-5 text-emerald-500" />}
         />
         <StatCard
-          label="Circadian Alignment"
-          value="Synchronized"
-          subtext="Morning sunlight achieved"
+          label="Check-In Date"
+          value={today}
+          subtext="Saved automatically per date"
           icon={<Sun className="w-5 h-5 text-yellow-500" />}
         />
+      </div>
+
+      {/* Persisted Check-in Sliders / Inputs */}
+      <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+        <label className="flex items-center justify-between gap-3">
+          <span className="font-bold text-[var(--hub-ink)]">Adjust Logged Sleep (hrs)</span>
+          <input
+            type="number"
+            step={0.5}
+            min={0}
+            max={16}
+            value={sleepHours}
+            onChange={(e) => {
+              const v = Math.max(0, Number(e.target.value) || 0);
+              setSleepHours(v);
+              persistState(routines, v, energyLevel, deepWorkHours);
+            }}
+            className="w-24 px-2.5 py-1.5 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)] font-mono font-bold"
+          />
+        </label>
+        <label className="flex items-center justify-between gap-3">
+          <span className="font-bold text-[var(--hub-ink)]">Adjust Deep Work (hrs)</span>
+          <input
+            type="number"
+            step={0.5}
+            min={0}
+            max={16}
+            value={deepWorkHours}
+            onChange={(e) => {
+              const v = Math.max(0, Number(e.target.value) || 0);
+              setDeepWorkHours(v);
+              persistState(routines, sleepHours, energyLevel, v);
+            }}
+            className="w-24 px-2.5 py-1.5 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)] font-mono font-bold"
+          />
+        </label>
       </div>
 
       {/* Daily Routine Checklist */}

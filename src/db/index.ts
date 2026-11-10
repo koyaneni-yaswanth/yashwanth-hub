@@ -29,6 +29,8 @@ import type {
   IntegrationEventRecord,
   QuarantinedRecord,
   DataAuditLog,
+  AIConversation,
+  RoboticsProjectRecord,
 } from '../types';
 import { generateId, getTodayISO } from '../lib/utils';
 
@@ -62,6 +64,8 @@ export class YashwanthHubDatabase extends Dexie {
   integration_events!: Table<IntegrationEventRecord, string>;
   quarantine!: Table<QuarantinedRecord, string>;
   data_audit_logs!: Table<DataAuditLog, string>;
+  ai_conversations!: Table<AIConversation, string>;
+  robotics_records!: Table<RoboticsProjectRecord, string>;
 
   constructor() {
     super('YashwanthHubDB');
@@ -110,6 +114,11 @@ export class YashwanthHubDatabase extends Dexie {
     this.version(6).stores({
       quarantine: 'id, entity_type, original_id, source, quarantined_at',
       data_audit_logs: 'id, timestamp, action, entity_type, record_id',
+    });
+
+    this.version(7).stores({
+      ai_conversations: 'id, title, agent_id, project_id, updated_at',
+      robotics_records: 'id, project, category, status, created_at',
     });
   }
 }
@@ -311,60 +320,132 @@ export async function initializeDatabase() {
 async function seedProjects() {
   const now = new Date().toISOString();
   const today = getTodayISO();
-  const nextMonth = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
+  const ninetyDays = new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10);
+  const sixtyDays = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
 
   const sampleProjects: Project[] = [
     {
       id: generateId(),
-      title: 'Small Wind Turbine TRL 6 Prototype Demonstration',
-      description: 'Design freeze, fabrication of axial flux generator, blade aero-pitch testing, and 4-week field validation run.',
+      title: 'PAWAN SHAKTI — TRL 4 Benchtop to TRL 5 Integrated Test',
+      description:
+        'Verified baseline: TRL 4 benchtop prototype (wooden frame, PLA blades, planetary gearbox, published Indian patent "Compact Wind Turbine with Planetary Gears"). Closed-loop integrated testing and structural upgrade pending.',
       area: 'PAWAN SHAKTI',
       status: 'active',
       priority: 'urgent',
       start_date: today,
-      target_date: nextMonth,
-      progress: 45,
+      target_date: ninetyDays,
+      progress: 35,
+      verification_note:
+        'Ground truth baseline: TRL 4 benchtop only. Closed-loop electrical + aerodynamic test, continuous >= 1 Hz P-v curve CSV, and customer LOIs are NOT yet completed.',
       milestones: [
-        { id: generateId(), title: 'Rotor aerodynamic analysis & NACA 4412 airfoils', target_date: today, done: true },
-        { id: generateId(), title: 'Axial flux PM stator coil winding & testing bench', target_date: today, done: true },
-        { id: generateId(), title: 'IEC 61400-2 braking caliper and overspeed test', target_date: nextMonth, done: false },
-        { id: generateId(), title: 'Customer field pilot installation & LOI signature', target_date: nextMonth, done: false },
+        { id: generateId(), title: 'Publish Indian Patent: Compact Wind Turbine with Planetary Gears', target_date: today, done: true },
+        { id: generateId(), title: 'TRL 4 separate subcomponent benchtop fabrication (wood + PLA baseline)', target_date: today, done: true },
+        { id: generateId(), title: 'Closed-loop integrated bench test with continuous >= 1 Hz P-v curve CSV', target_date: ninetyDays, done: false },
+        { id: generateId(), title: 'Upgrade primary frame/blades from wood/PLA & capture IEC 61400-2 safety dossier', target_date: ninetyDays, done: false },
       ],
-      tags: ['TRL-6', 'Aerodynamics', 'Hardware'],
+      goals: [
+        { id: generateId(), title: 'Achieve verified TRL 5 integrated bench/wind-tunnel demonstration', target_metric: 'Integrated P-v curve >= 1 Hz CSV', status: 'in_progress', truth_tag: 'target' },
+        { id: generateId(), title: 'Eliminate wooden frame & PLA structural compliance risks before outdoor run', target_metric: 'Engineering metal/composite chassis BOM', status: 'planned', truth_tag: 'target' },
+      ],
+      decisions: [
+        {
+          id: generateId(),
+          title: 'Planetary gear architecture patented in India',
+          decision: 'Retain compact planetary gearbox topology as primary torque-speed transmission baseline.',
+          rationale: 'Backed by published Indian patent specification.',
+          decided_at: today,
+          author: 'Yashwanth',
+        },
+      ],
+      risks: [
+        {
+          id: generateId(),
+          title: 'Unverified structural durability of wood frame and PLA blades at high RPM',
+          severity: 'high',
+          mitigation: 'Replace wood/PLA prior to outdoor overspeed testing; run rotor dynamic balance first.',
+          status: 'open',
+          created_at: now,
+        },
+        {
+          id: generateId(),
+          title: 'No continuous >= 1 Hz time-series P-v logging yet',
+          severity: 'high',
+          mitigation: 'Wire synchronized tachometer + electrical load DAQ logging CSV before TRL 5 claim.',
+          status: 'open',
+          created_at: now,
+        },
+      ],
+      blockers: [
+        {
+          id: generateId(),
+          title: 'Closed-loop integrated aerodynamic + generator bench test has not been executed',
+          owner: 'Yashwanth',
+          impact: 'Prevents claiming TRL 5 evidence or external technical validation.',
+          status: 'open',
+          created_at: now,
+        },
+      ],
+      activity_history: [
+        {
+          id: generateId(),
+          action: 'Baseline Seeded',
+          details: 'Initialized from verified TRL 4 baseline (docs/CURRENT_PROJECT_BASELINE.md).',
+          timestamp: now,
+          actor: 'System',
+        },
+      ],
+      tags: ['TRL-4-Baseline', 'Target-TRL-5', 'Patent-Published', 'Wind-Hardware'],
       created_at: now,
       updated_at: now,
     },
     {
       id: generateId(),
-      title: 'Autonomous Mobile Robot (AMR) Visual SLAM Navigation',
-      description: 'ROS 2 Humble navigation stack integration with OAK-D spatial depth cameras, IMU sensor fusion, and dynamic obstacle avoidance.',
+      title: 'Robotics Lab — AgileX PiPER, 3-Drone Swarm & AWR2944 mmWave',
+      description: 'Active robotics engineering workspace covering manipulator control (AgileX PiPER), multi-UAV coordination, and TI AWR2944 radar perception.',
       area: 'IvLabs',
       status: 'active',
       priority: 'high',
       start_date: today,
-      target_date: nextMonth,
-      progress: 60,
+      target_date: sixtyDays,
+      progress: 40,
+      verification_note: 'Engineering workspace active; record every hardware run in Experiments Log with exact parameters.',
       milestones: [
-        { id: generateId(), title: 'OAK-D stereo camera calibration & point-cloud filtering', target_date: today, done: true },
-        { id: generateId(), title: 'Nav2 waypoint follower tuning & costmap recovery', target_date: nextMonth, done: false },
+        { id: generateId(), title: 'AgileX PiPER workspace & CAN-bus motion bring-up checklist', target_date: today, done: false },
+        { id: generateId(), title: 'AWR2944 mmWave radar frame capture & range-Doppler verification', target_date: sixtyDays, done: false },
+        { id: generateId(), title: '3-Drone swarm SITL + hardware-in-loop safety geofence test', target_date: sixtyDays, done: false },
       ],
-      tags: ['Robotics', 'ROS2', 'SLAM', 'IvLabs'],
+      goals: [
+        { id: generateId(), title: 'Maintain reproducible experiment logs for PiPER, Swarm, and AWR2944 runs', status: 'in_progress', truth_tag: 'target' },
+      ],
+      decisions: [],
+      risks: [
+        {
+          id: generateId(),
+          title: 'Hardware safety incident during multi-axis arm or UAV tether tests',
+          severity: 'high',
+          mitigation: 'Enforce hardware e-stop verification, prop guards / workspace fence checklist before arming.',
+          status: 'open',
+          created_at: now,
+        },
+      ],
+      blockers: [],
+      tags: ['Robotics', 'PiPER', 'Swarm', 'AWR2944'],
       created_at: now,
       updated_at: now,
     },
     {
       id: generateId(),
-      title: 'Industrial PLC Automated Control Cabinet Suite',
-      description: '24V DC signal isolation, emergency stop safety relays, client factory commissioning for packaging line.',
+      title: 'MG Automation — Industrial PLC Control Panel Delivery',
+      description: 'Client PLC panel wiring schematics, 24V DC isolation checks, and commissioning documentation.',
       area: 'MG Automation',
       status: 'active',
       priority: 'medium',
       start_date: today,
-      target_date: nextMonth,
-      progress: 30,
+      target_date: sixtyDays,
+      progress: 25,
       milestones: [
-        { id: generateId(), title: 'Single line wiring diagrams & electrical cabinet CAD', target_date: today, done: true },
-        { id: generateId(), title: 'Factory on-site commissioning & safety sign-off', target_date: nextMonth, done: false },
+        { id: generateId(), title: 'Single-line electrical schematic & BOM review', target_date: today, done: false },
+        { id: generateId(), title: 'Factory commissioning sign-off & handover checklist', target_date: sixtyDays, done: false },
       ],
       tags: ['Automation', 'PLC', 'Industrial'],
       created_at: now,

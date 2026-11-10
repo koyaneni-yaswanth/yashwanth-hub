@@ -2,7 +2,7 @@
 // Endpoint: /api/integrations/sync
 // Triggers an immediate bi-directional sync across Google Tasks and NeoSapien MCP.
 
-import { supabaseServer } from '../_lib/db.ts';
+import { isServerSupabaseConfigured, supabaseServer } from '../_lib/db.ts';
 import { getUserIdFromRequest, getAuthenticatedGoogleOAuthClient } from './google-tasks.ts';
 import { getNeoSapienToken, executeMcpJsonRpc } from './neosapien.ts';
 import { google } from 'googleapis';
@@ -16,7 +16,23 @@ export default async function handler(req: any, res: any) {
     return res.status(200).end();
   }
 
+  if (!isServerSupabaseConfigured()) {
+    return res.status(503).json({
+      success: false,
+      error: 'Server Database Not Configured',
+      message: 'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in environment variables.',
+    });
+  }
+
   const userId = await getUserIdFromRequest(req);
+  if (!userId) {
+    return res.status(401).json({
+      success: false,
+      error: 'Unauthorized',
+      message: 'Valid Supabase Bearer session is required.',
+    });
+  }
+
   const startTime = Date.now();
 
   const results: {
@@ -138,10 +154,10 @@ export default async function handler(req: any, res: any) {
 
       await supabaseServer.from('neosapien_sync_history').insert({
         user_id: userId,
-        method: 'sync_now_cron',
+        sync_method: 'manual',
         status: 'success',
-        items_synced: tools.length,
-        duration_ms: Date.now() - startTime,
+        records_imported: tools.length,
+        details: `Manual sync discovered ${tools.length} NeoSapien MCP tools in ${Date.now() - startTime}ms.`,
         created_at: new Date().toISOString(),
       });
     } else {
@@ -158,8 +174,9 @@ export default async function handler(req: any, res: any) {
     results.errors.push(`NeoSapien MCP: ${err.message}`);
   }
 
-  return res.status(200).json({
-    success: true,
+  const bothDisconnected = !results.googleTasks?.connected && !results.neoSapien?.connected;
+  return res.status(bothDisconnected && results.errors.length > 0 ? 502 : 200).json({
+    success: results.errors.length === 0 || !bothDisconnected,
     results,
     durationMs: Date.now() - startTime,
     timestamp: new Date().toISOString(),

@@ -27,6 +27,61 @@ export interface ProjectMilestone {
   done: boolean;
 }
 
+export interface ProjectGoal {
+  id: string;
+  title: string;
+  target_metric?: string;
+  status: 'planned' | 'in_progress' | 'achieved' | 'blocked';
+  truth_tag?: 'verified_fact' | 'target' | 'estimate';
+}
+
+export interface ProjectDecision {
+  id: string;
+  title: string;
+  decision: string;
+  rationale?: string;
+  decided_at: string;
+  author?: string;
+}
+
+export interface ProjectRisk {
+  id: string;
+  title: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  mitigation: string;
+  status: 'open' | 'mitigated' | 'accepted';
+  created_at: string;
+}
+
+export interface ProjectBlocker {
+  id: string;
+  title: string;
+  owner?: string;
+  impact: string;
+  status: 'open' | 'resolved';
+  created_at: string;
+  resolved_at?: string;
+}
+
+export interface ProjectProgressReport {
+  id: string;
+  title: string;
+  summary: string;
+  verified_facts: string[];
+  unknowns: string[];
+  next_actions: string[];
+  generated_at: string;
+  generated_by: 'user' | 'ai_chief_of_staff';
+}
+
+export interface ProjectActivityItem {
+  id: string;
+  action: string;
+  details: string;
+  timestamp: string;
+  actor: string;
+}
+
 export interface Project {
   id: string;
   title: string;
@@ -38,6 +93,13 @@ export interface Project {
   target_date: string;
   progress: number; // 0 - 100
   milestones: ProjectMilestone[];
+  goals?: ProjectGoal[];
+  decisions?: ProjectDecision[];
+  risks?: ProjectRisk[];
+  blockers?: ProjectBlocker[];
+  progress_reports?: ProjectProgressReport[];
+  activity_history?: ProjectActivityItem[];
+  verification_note?: string;
   repository_url?: string;
   tags?: string[];
   created_at: string;
@@ -685,4 +747,58 @@ export interface HealthRoutineRecord {
   notes?: string;
 }
 
+// ==========================================
+// AI CHIEF OF STAFF CONVERSATION & TOOL MODELS
+// ==========================================
 
+export interface AIProposedAction {
+  id: string;
+  type: 'create_task' | 'schedule_event' | 'create_note' | 'log_decision' | 'trigger_automation';
+  title: string;
+  description: string;
+  payload: Record<string, any>;
+  status: 'pending' | 'approved' | 'rejected' | 'executed';
+  verified_record_id?: string;
+  error?: string;
+}
+
+export interface AIToolInvocationTrace {
+  tool: string;
+  args?: Record<string, any>;
+  summary?: string;
+}
+
+export interface AIChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+  provider?: string;
+  modelId?: string;
+  mode?: 'personal' | 'work' | 'startup' | 'research' | 'project_manager';
+  citations?: string[];
+  verified_facts?: string[];
+  estimates?: string[];
+  recommendations?: string[];
+  unknowns?: string[];
+  tool_calls?: AIToolInvocationTrace[];
+  proposed_actions?: AIProposedAction[];
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    estimatedCostUsd?: number;
+  };
+}
+
+export interface AIConversation {
+  id: string;
+  title: string;
+  agent_id: string;
+  mode: 'personal' | 'work' | 'startup' | 'research' | 'project_manager';
+  project_id?: string;
+  messages: AIChatMessage[];
+  total_tokens: number;
+  total_cost_usd: number;
+  created_at: string;
+  updated_at: string;
+}

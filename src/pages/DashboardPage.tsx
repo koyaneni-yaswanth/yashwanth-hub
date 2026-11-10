@@ -505,7 +505,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               Low-Wind Planetary Gearbox System
             </h4>
             <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
-              1:10 Planetary gear mechanism optimized for low cut-in speeds (~1 m² swept area). Secured ANRF ₹25L grant and filed patent 2025/399.
+              Verified TRL 4 benchtop prototype with published Indian patent ("Compact Wind Turbine with Planetary Gears"). Closed-loop P-v testing toward TRL 5 target in progress.
             </p>
             <div className="p-2.5 rounded-xl bg-teal-500/10 border border-teal-500/20 flex items-center justify-between text-xs">
               <span className="font-semibold text-teal-800 dark:text-teal-200">V3F Assessment</span>
@@ -532,23 +532,23 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 <Bot className="w-4 h-4" />
                 <span>Robotics Lab</span>
               </span>
-              <Badge variant="purple">3 Systems Active</Badge>
+              <Badge variant="purple">Experiment Logbook</Badge>
             </div>
             <h4 className="font-heading font-bold text-base text-[var(--hub-ink)]">
               PiPER, Drone Swarm & mmWave Radar
             </h4>
             <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
-              AgileX PiPER 6-DOF (ROS 2 / Isaac Sim), 3-drone swarm with SIYI HM30 mesh & Jetson Orin Nano, and TI AWR2944 77GHz radar EKF tracking.
+              Persistent hardware & software experiment workspace for AgileX PiPER, 3-drone swarm coordination, and TI AWR2944 mmWave perception.
             </p>
             <div className="flex items-center gap-1.5 flex-wrap pt-1">
               <span className="text-[11px] px-2 py-0.5 rounded-md bg-[var(--hub-bg)] border border-[var(--hub-line)] font-mono">
-                SocketCAN 500Hz
+                ROS 2 / CAN
               </span>
               <span className="text-[11px] px-2 py-0.5 rounded-md bg-[var(--hub-bg)] border border-[var(--hub-line)] font-mono">
-                Isaac Sim 4.0
+                Swarm Notes
               </span>
               <span className="text-[11px] px-2 py-0.5 rounded-md bg-[var(--hub-bg)] border border-[var(--hub-line)] font-mono">
-                VLA AI
+                mmWave Spec
               </span>
             </div>
           </div>
@@ -568,20 +568,20 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-1.5 text-xs font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider">
                 <Heart className="w-4 h-4" />
-                <span>Founder Health</span>
+                <span>Founder Routine</span>
               </span>
-              <Badge variant="red">Peak Performance</Badge>
+              <Badge variant="gray">Daily Check-In</Badge>
             </div>
             <h4 className="font-heading font-bold text-base text-[var(--hub-ink)]">
-              Circadian Sleep & Deep Work Blocks
+              Sleep, Energy & Deep Work Log
             </h4>
             <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
-              7.2h nightly sleep tracking, 4.5h deep engineering blocks (CAD & ROS 2 tests), and evening screen wind-down protocol.
+              Log your daily sleep hours, deep engineering blocks, and operating checklist cleanly across sessions.
             </p>
             <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-between text-xs">
-              <span className="font-semibold text-rose-800 dark:text-rose-200">Today's Deep Work</span>
+              <span className="font-semibold text-rose-800 dark:text-rose-200">Check-In Status</span>
               <span className="font-mono font-bold text-rose-700 dark:text-rose-300">
-                4.5h Target • 8/10 Energy
+                Open Daily Tracker
               </span>
             </div>
           </div>

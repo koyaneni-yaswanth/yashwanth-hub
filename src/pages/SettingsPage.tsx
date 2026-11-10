@@ -165,15 +165,15 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
     setTimeout(() => setGoogleSyncStatus(null), 3000);
   };
 
-  const handleConnectRedirectFallback = () => {
+  const handleConnectRedirectFallback = async () => {
     const cleaned = GoogleAuthService.cleanClientId(googleClientId);
     if (!cleaned || !GoogleAuthService.isValidClientId(cleaned)) {
       alert('Valid Google Web Client ID is required. Format: [id].apps.googleusercontent.com');
       return;
     }
     GoogleAuthService.saveClientId(cleaned);
-    const authUrl = GoogleAuthService.getAuthUrl(cleaned, GoogleAuthService.getRedirectUri());
-    window.location.href = authUrl;
+    const { url } = await GoogleAuthService.buildPkceAuthUrl(cleaned, GoogleAuthService.getRedirectUri());
+    window.location.href = url;
   };
 
   const handleConnectGoogle = async () => {
@@ -188,7 +188,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
     }
     GoogleAuthService.saveClientId(cleaned);
 
-    // If running in native mobile app (Android / iOS):
     if (CapacitorService.isNative()) {
       const client = getSupabaseClient();
       if (client) {
@@ -205,12 +204,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
             return;
           }
         } catch (e) {
-          console.warn('Supabase OAuth attempt failed, falling back to direct auth URL:', e);
+          console.warn('Supabase OAuth attempt failed, falling back to PKCE Google Auth URL:', e);
         }
       }
 
-      // Fallback direct Google OAuth opened via system browser to avoid webview 403
-      const nativeAuthUrl = GoogleAuthService.getAuthUrl(cleaned, 'com.yaswanth.hub://auth/callback');
+      const { url: nativeAuthUrl } = await GoogleAuthService.buildPkceAuthUrl(cleaned, 'com.yaswanth.hub://auth/callback');
       window.open(nativeAuthUrl, '_system');
       return;
     }
@@ -222,10 +220,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
         return;
       }
     } catch {
-      // Fallback to standard redirect
+      // Fallback to PKCE redirect
     }
 
-    const authUrl = GoogleAuthService.getAuthUrl(cleaned, GoogleAuthService.getRedirectUri());
+    const { url: authUrl } = await GoogleAuthService.buildPkceAuthUrl(cleaned, GoogleAuthService.getRedirectUri());
     window.location.href = authUrl;
   };
 
@@ -623,26 +621,31 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
           Connect your Google account via official OAuth 2.0 to enable two-way calendar sync, automated Google Meet conference links, Drive document referencing, and Gmail follow-up detection without auto-sending.
         </p>
 
-        <div>
-          <label className="block text-xs font-bold text-[var(--hub-ink)] mb-1">
-            Google OAuth 2.0 Web Client ID
-          </label>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={googleClientId}
-              onChange={(e) => setGoogleClientId(e.target.value)}
-              placeholder="123456789-abcdefg.apps.googleusercontent.com"
-              className="flex-1 py-2 px-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs text-[var(--hub-ink)] font-mono"
-            />
-            <button
-              onClick={handleSaveClientId}
-              className="px-4 py-2 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer"
-            >
-              Save
-            </button>
+        <details className="rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)]/40 p-3 text-xs">
+          <summary className="cursor-pointer font-semibold text-[var(--hub-muted)] hover:text-[var(--hub-ink)]">
+            Developer Override: Custom Google OAuth Web Client ID
+          </summary>
+          <div className="pt-2.5 mt-2 border-t border-[var(--hub-line)]">
+            <label className="block text-xs font-bold text-[var(--hub-ink)] mb-1">
+              Google OAuth 2.0 Web Client ID
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={googleClientId}
+                onChange={(e) => setGoogleClientId(e.target.value)}
+                placeholder="123456789-abcdefg.apps.googleusercontent.com"
+                className="flex-1 py-2 px-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs text-[var(--hub-ink)] font-mono"
+              />
+              <button
+                onClick={handleSaveClientId}
+                className="px-4 py-2 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer"
+              >
+                Save
+              </button>
+            </div>
           </div>
-        </div>
+        </details>
 
         {googleSyncStatus && (
           <div className="p-3 rounded-lg bg-teal-500/10 border border-teal-500/30 text-xs text-teal-900 dark:text-teal-200">
@@ -955,10 +958,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
 
       {/* 6. Supabase Cloud Sync */}
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
             <Cloud className="w-4 h-4 text-blue-500" />
-            <span>Future Cloud Sync (Supabase Backend)</span>
+            <span>Cloud Sync Status (Supabase)</span>
           </h3>
           <div className="flex items-center gap-2">
             <Badge variant={isSupabaseConfigured() ? 'emerald' : 'gray'}>
@@ -967,88 +970,94 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
             {queueCount > 0 && (
               <Badge variant="amber">{queueCount} pending sync</Badge>
             )}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-bold text-[var(--hub-ink)] mb-1">
-              Supabase Project URL
-            </label>
-            <input
-              type="text"
-              value={supabaseUrl}
-              onChange={(e) => setSupabaseUrl(e.target.value)}
-              placeholder="https://xyzcompany.supabase.co"
-              className="w-full py-2 px-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs text-[var(--hub-ink)] font-mono"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-[var(--hub-ink)] mb-1">
-              Anon Public API Key
-            </label>
-            <input
-              type="password"
-              value={supabaseKey}
-              onChange={(e) => setSupabaseKey(e.target.value)}
-              placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
-              className="w-full py-2 px-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs text-[var(--hub-ink)] font-mono"
-            />
-          </div>
-        </div>
-
-        {testResult && (
-          <div
-            className={`p-3 rounded-lg text-xs flex items-center gap-2 ${
-              testResult.success
-                ? 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-200 border border-emerald-500/30'
-                : 'bg-red-500/10 text-red-800 dark:text-red-200 border border-red-500/30'
-            }`}
-          >
-            {testResult.success ? (
-              <CheckCircle2 className="w-4 h-4 flex-none" />
-            ) : (
-              <AlertTriangle className="w-4 h-4 flex-none" />
+            {isSupabaseConfigured() && (
+              <button
+                onClick={() => syncNow()}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer"
+              >
+                <RefreshCw className="w-3 h-3 text-emerald-600" />
+                <span>Sync Now ({status})</span>
+              </button>
             )}
-            <span>{testResult.message}</span>
           </div>
-        )}
-
-        <div className="flex flex-wrap items-center gap-3 pt-2">
-          <button
-            onClick={handleSaveSupabase}
-            className="px-4 py-2 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer"
-          >
-            Save Credentials
-          </button>
-
-          <button
-            onClick={handleTestSupabase}
-            disabled={isTesting}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isTesting ? 'animate-spin' : ''}`} />
-            <span>{isTesting ? 'Testing...' : 'Test Connection'}</span>
-          </button>
-
-          {isSupabaseConfigured() && (
-            <button
-              onClick={() => syncNow()}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer"
-            >
-              <Cloud className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Sync Now ({status})</span>
-            </button>
-          )}
-
-          <button
-            onClick={() => setIsSchemaModalOpen(true)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer"
-          >
-            <Code2 className="w-3.5 h-3.5 text-blue-600" />
-            <span>View Production SQL Schema</span>
-          </button>
         </div>
+
+        <details className="rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)]/40 p-3 text-xs">
+          <summary className="cursor-pointer font-semibold text-[var(--hub-muted)] hover:text-[var(--hub-ink)]">
+            Advanced Developer Overrides (Supabase URL / Anon Key & SQL Schema)
+          </summary>
+          <div className="space-y-3 pt-3 mt-2 border-t border-[var(--hub-line)]">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-[var(--hub-ink)] mb-1">
+                  Supabase Project URL
+                </label>
+                <input
+                  type="text"
+                  value={supabaseUrl}
+                  onChange={(e) => setSupabaseUrl(e.target.value)}
+                  placeholder="https://xyzcompany.supabase.co"
+                  className="w-full py-2 px-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs text-[var(--hub-ink)] font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-[var(--hub-ink)] mb-1">
+                  Anon Public API Key
+                </label>
+                <input
+                  type="password"
+                  value={supabaseKey}
+                  onChange={(e) => setSupabaseKey(e.target.value)}
+                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
+                  className="w-full py-2 px-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs text-[var(--hub-ink)] font-mono"
+                />
+              </div>
+            </div>
+
+            {testResult && (
+              <div
+                className={`p-3 rounded-lg text-xs flex items-center gap-2 ${
+                  testResult.success
+                    ? 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-200 border border-emerald-500/30'
+                    : 'bg-red-500/10 text-red-800 dark:text-red-200 border border-red-500/30'
+                }`}
+              >
+                {testResult.success ? (
+                  <CheckCircle2 className="w-4 h-4 flex-none" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 flex-none" />
+                )}
+                <span>{testResult.message}</span>
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              <button
+                onClick={handleSaveSupabase}
+                className="px-4 py-2 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer"
+              >
+                Save Credentials
+              </button>
+
+              <button
+                onClick={handleTestSupabase}
+                disabled={isTesting}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isTesting ? 'animate-spin' : ''}`} />
+                <span>{isTesting ? 'Testing...' : 'Test Connection'}</span>
+              </button>
+
+              <button
+                onClick={() => setIsSchemaModalOpen(true)}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer"
+              >
+                <Code2 className="w-3.5 h-3.5 text-blue-600" />
+                <span>View Production SQL Schema</span>
+              </button>
+            </div>
+          </div>
+        </details>
       </div>
 
       {/* 7. System Diagnostics */}

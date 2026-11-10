@@ -16,6 +16,7 @@ import { DeviceFleetService } from './services/deviceFleetService';
 import { RealtimeSyncManager } from './services/sync/realtimeSyncManager';
 import { CapacitorService } from './services/native/capacitorService';
 import { IntegrationVaultService } from './services/integrationVaultService';
+import { SupabaseAuthService } from './services/auth/supabaseAuthService';
 
 // Pages
 import { DashboardPage } from './pages/DashboardPage';
@@ -57,37 +58,103 @@ function HubMain() {
   const [isDbReady, setIsDbReady] = useState(false);
   const [oauthError, setOauthError] = useState<{ message: string; hint?: string } | null>(null);
 
-  // Initialize IndexedDB, Fleet Identity, Realtime and Reminder Engine
+  // Initialize IndexedDB, Supabase Auth Session, Fleet Identity, Realtime and Reminder Engine
   useEffect(() => {
-    // Initialize native Capacitor integrations
+    let lastAuthUserId: string | null = null;
+    let authInitialized = false;
+
     CapacitorService.init().catch(() => {});
     CapacitorService.setOAuthCallbackHandler(() => {
       setCurrentTab('integrations');
     });
 
-    initializeDatabase().then(() => {
-      setIsDbReady(true);
-      // Register current device in fleet and start heartbeat
-      DeviceFleetService.registerCurrentDevice().catch(() => {});
-      // Initialize universal Realtime subscriptions
-      RealtimeSyncManager.init();
-      // Run initial intelligence reminder check
-      ReminderEngine.runIntelligenceScan().catch(() => {});
-      // Query integration_tokens in Supabase to restore Google & NeoSapien connections
-      IntegrationVaultService.initSessionRestoration().catch(() => {});
+    const unsubscribeAuth = SupabaseAuthService.subscribe((authState) => {
+      if (authState.loading) return;
+      const nextUserId = authState.user?.id ?? null;
+      if (authInitialized && nextUserId !== lastAuthUserId) {
+        if (nextUserId) {
+          IntegrationVaultService.initSessionRestoration(true).catch(() => {});
+        } else {
+          IntegrationVaultService.reset();
+        }
+      }
+      lastAuthUserId = nextUserId;
     });
 
-    // Check for Google OAuth Token or Error in URL hash or search parameters
+    const boot = async () => {
+      await initializeDatabase();
+      setIsDbReady(true);
+
+      const authState = await SupabaseAuthService.init().catch(() => SupabaseAuthService.getState());
+      lastAuthUserId = authState.user?.id ?? null;
+      authInitialized = true;
+
+      DeviceFleetService.registerCurrentDevice().catch(() => {});
+      RealtimeSyncManager.init();
+      ReminderEngine.runIntelligenceScan().catch(() => {});
+      IntegrationVaultService.initSessionRestoration().catch(() => {});
+    };
+    boot();
+
+    // Parse URL callbacks & navigation deep links
     const hash = window.location.hash;
     const search = window.location.search;
+    const searchParams = new URLSearchParams(search);
+    const hashParams = new URLSearchParams(hash.replace(/^#/, ''));
 
-    if (search.includes('google_connected=true')) {
-      IntegrationVaultService.initSessionRestoration().then(() => {
+    const requestedTab = searchParams.get('tab') as NavigationTab | null;
+    if (requestedTab) {
+      setCurrentTab(requestedTab);
+    }
+
+    const googleServerErr = searchParams.get('google_error');
+    const googleServerDesc = searchParams.get('google_error_desc');
+    const hasGooglePkceContext =
+      (typeof sessionStorage !== 'undefined' && Boolean(sessionStorage.getItem('yash_google_pkce_verifier'))) ||
+      (searchParams.get('state') || '').startsWith('g_');
+    const isGoogleImplicitHash =
+      hashParams.has('access_token') && !hashParams.has('refresh_token') && !hashParams.has('provider_token');
+
+    if (googleServerErr) {
+      const parsedErr = GoogleAuthService.parseOAuthCallback(`error=${encodeURIComponent(googleServerErr)}`);
+      setOauthError({
+        message: googleServerDesc || parsedErr.errorMessage || `Google OAuth error: ${googleServerErr}`,
+        hint: parsedErr.resolutionHint,
+      });
+      setCurrentTab('integrations');
+      window.history.replaceState(null, '', window.location.pathname);
+    } else if (searchParams.get('google_connected') === 'true') {
+      IntegrationVaultService.initSessionRestoration(true).then(() => {
         setCurrentTab('integrations');
       });
       window.history.replaceState(null, '', window.location.pathname);
-    } else if (hash.includes('access_token=') || hash.includes('error=') || search.includes('error=')) {
-      const rawStr = hash.includes('access_token=') || hash.includes('error=') ? hash : search;
+    } else if (searchParams.has('code') && !searchParams.has('neo_code') && hasGooglePkceContext) {
+      const parsed = GoogleAuthService.parseOAuthCallback(
+        search,
+        typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('yash_google_oauth_state') : null
+      );
+      if (parsed.success && parsed.flow === 'code' && parsed.code) {
+        GoogleAuthService.exchangeAuthorizationCode(parsed.code, parsed.state).then((ex) => {
+          if (!ex.success) {
+            setOauthError({
+              message: ex.error || 'Failed to exchange Google authorization code.',
+              hint: ex.hint,
+            });
+          } else {
+            IntegrationVaultService.initSessionRestoration(true).catch(() => {});
+          }
+          setCurrentTab('integrations');
+        });
+      } else {
+        setOauthError({
+          message: parsed.errorMessage || 'Google OAuth code callback invalid.',
+          hint: parsed.resolutionHint,
+        });
+        setCurrentTab('integrations');
+      }
+      window.history.replaceState(null, '', window.location.pathname);
+    } else if (isGoogleImplicitHash || hashParams.has('error') || (searchParams.has('error') && hasGooglePkceContext)) {
+      const rawStr = isGoogleImplicitHash || hashParams.has('error') ? hash : search;
       const res = GoogleAuthService.parseOAuthCallback(rawStr);
 
       if (res.success && res.token) {
@@ -112,7 +179,6 @@ function HubMain() {
               picture: profile.picture,
             });
           }
-          // Vault token in Supabase integration_tokens table for serverless cron & cross-device persistence
           GoogleAuthService.syncTokenToServer(res.token!, expiresAt, profile?.email).catch(() => {});
         });
         setCurrentTab('integrations');
@@ -124,8 +190,10 @@ function HubMain() {
         setCurrentTab('integrations');
       }
       window.history.replaceState(null, '', window.location.pathname);
-    } else if (search.includes('neo_code=')) {
+    } else if (searchParams.has('neo_code')) {
       setCurrentTab('integrations');
+    } else if (requestedTab) {
+      window.history.replaceState(null, '', window.location.pathname);
     }
 
     // Global Keyboard Shortcuts (Ctrl+K for Command Palette, Ctrl+Q for Quick Capture)
@@ -141,6 +209,7 @@ function HubMain() {
     window.addEventListener('keydown', handleKeyDown);
 
     return () => {
+      unsubscribeAuth();
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
@@ -208,6 +277,7 @@ function HubMain() {
             currentArea={currentArea}
             areas={areas}
             onNavigateToTasks={() => setCurrentTab('tasks')}
+            onNavigateToAI={() => setCurrentTab('ai-assistant')}
           />
         );
       case 'learning-career':
@@ -382,7 +452,7 @@ function HubMain() {
             </div>
 
             <div className="p-3.5 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs space-y-2">
-              <div className="font-bold text-[var(--hub-ink)]">Current Registered Origins:</div>
+              <div className="font-bold text-[var(--hub-ink)]">Expected Google Cloud Console URIs:</div>
               <p className="text-[var(--hub-muted)]">
                 Authorized JavaScript Origin:{' '}
                 <code className="text-teal-400 font-mono px-1 py-0.5 rounded bg-black/20">
@@ -390,9 +460,15 @@ function HubMain() {
                 </code>
               </p>
               <p className="text-[var(--hub-muted)]">
-                Authorized Redirect URI:{' '}
+                PKCE SPA Redirect URI:{' '}
                 <code className="text-teal-400 font-mono px-1 py-0.5 rounded bg-black/20">
                   {typeof window !== 'undefined' ? window.location.origin : 'https://yashwanth-hub.vercel.app'}
+                </code>
+              </p>
+              <p className="text-[var(--hub-muted)]">
+                Server Callback URI:{' '}
+                <code className="text-teal-400 font-mono px-1 py-0.5 rounded bg-black/20">
+                  {typeof window !== 'undefined' ? `${window.location.origin}/api/auth/google/callback` : 'https://yashwanth-hub.vercel.app/api/auth/google/callback'}
                 </code>
               </p>
             </div>

@@ -5,6 +5,7 @@ import { StatusBar, Style } from '@capacitor/status-bar';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { getSupabaseClient } from '../../lib/supabase';
 import { GoogleAuthService } from '../google/googleAuthService';
+import { SyncQueueService } from '../sync/syncQueueService';
 import type { Task, EventItem } from '../../types';
 
 export interface BackButtonHandlerContext {
@@ -31,7 +32,6 @@ export class CapacitorService {
     return Capacitor.getPlatform() as 'android' | 'ios' | 'web';
   }
 
-  // Update back button context dynamically from UI state
   public static setBackButtonContext(ctx: BackButtonHandlerContext) {
     this.backButtonContext = ctx;
   }
@@ -46,10 +46,8 @@ export class CapacitorService {
     this.isInitialized = true;
 
     try {
-      // 1. Android Notification Channel & Permissions
       await this.initNotificationChannels();
 
-      // 2. Hide Splash Screen smoothly once UI is ready
       setTimeout(async () => {
         try {
           await SplashScreen.hide();
@@ -58,18 +56,28 @@ export class CapacitorService {
         }
       }, 500);
 
-      // 3. Listen for Deep-Linking App URL open (OAuth callbacks)
       App.addListener('appUrlOpen', async (data) => {
         console.log('Native Deep Link received:', data.url);
         await this.handleDeepLinkUrl(data.url);
       });
 
-      // 4. Android Hardware & Gesture Back Button Handling
       App.addListener('backButton', ({ canGoBack }) => {
         this.handleHardwareBackButton(canGoBack);
       });
 
-      // 5. Check if the app was launched directly from an OAuth deep link
+      App.addListener('appStateChange', ({ isActive }) => {
+        if (isActive && (typeof navigator === 'undefined' || navigator.onLine)) {
+          SyncQueueService.flushQueue().catch(() => {});
+        }
+      });
+
+      LocalNotifications.addListener('localNotificationActionPerformed', (event) => {
+        const targetTab = event.notification?.extra?.actionLink;
+        if (typeof targetTab === 'string' && targetTab && this.backButtonContext?.navigateTab) {
+          this.backButtonContext.navigateTab(targetTab);
+        }
+      });
+
       const launchUrl = await App.getLaunchUrl();
       if (launchUrl?.url) {
         console.log('App launched with URL:', launchUrl.url);
@@ -95,7 +103,7 @@ export class CapacitorService {
     }
   }
 
-  // Configure Android Notification Channel
+  // Configure Android Notification Channel (uses OS default notification sound cleanly)
   private static async initNotificationChannels(): Promise<void> {
     if (this.getPlatform() !== 'android') return;
     try {
@@ -105,7 +113,6 @@ export class CapacitorService {
         description: 'Proactive alerts for meetings, commitments and overdue tasks',
         importance: 5,
         visibility: 1,
-        sound: 'beep.wav',
         vibration: true,
         lights: true,
         lightColor: '#0b6e6e',
@@ -173,9 +180,20 @@ export class CapacitorService {
       const params = new URLSearchParams(rawParams);
       const accessToken = params.get('access_token');
       const refreshToken = params.get('refresh_token');
+      const authCode = params.get('code');
+      const authState = params.get('state') || undefined;
       const expiresIn = Number(params.get('expires_in')) || 3600;
 
-      // 2. Handle Supabase Session if tokens are present
+      // 2. Handle PKCE Authorization Code exchange if returned to custom native URI
+      if (authCode && authState?.startsWith('g_')) {
+        try {
+          await GoogleAuthService.exchangeAuthorizationCode(authCode, authState);
+        } catch (err) {
+          console.warn('Native PKCE code exchange error:', err);
+        }
+      }
+
+      // 3. Handle Supabase Session if tokens are present
       if (accessToken && refreshToken) {
         const client = getSupabaseClient();
         if (client) {
@@ -191,8 +209,8 @@ export class CapacitorService {
         }
       }
 
-      // 3. Handle Google Workspace token in GoogleAuthService
-      if (accessToken) {
+      // 4. Handle direct access token in GoogleWorkspaceConfig fallback
+      if (accessToken && !refreshToken) {
         const expiresAt = Date.now() + expiresIn * 1000;
         const config = GoogleAuthService.getConfig();
         GoogleAuthService.saveConfig({
@@ -205,7 +223,6 @@ export class CapacitorService {
           gmailSyncEnabled: true,
         });
 
-        // Fetch profile
         try {
           const profile = await GoogleAuthService.fetchUserProfile(accessToken);
           if (profile) {
@@ -221,7 +238,6 @@ export class CapacitorService {
         }
       }
 
-      // 4. Notify app listeners
       if (this.onOAuthCallbackHandler) {
         this.onOAuthCallbackHandler(url);
       }
@@ -282,7 +298,7 @@ export class CapacitorService {
             channelId: 'yashwanth_reminders',
             schedule: scheduleAt ? { at: scheduleAt } : undefined,
             extra: { actionLink },
-            smallIcon: 'ic_stat_icon_config_sample',
+            smallIcon: 'ic_stat_hub',
             iconColor: '#0b6e6e',
           },
         ],

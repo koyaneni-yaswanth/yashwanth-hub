@@ -29,7 +29,10 @@ export interface RunnerResult {
 /**
  * Main Runner Entrypoint: Executes an automation run with retry management
  */
-export async function executeAutomationRun(job: AutomationJobInput): Promise<RunnerResult> {
+export async function executeAutomationRun(
+  job: AutomationJobInput,
+  dbClient: any = supabaseServer
+): Promise<RunnerResult> {
   const startTime = Date.now();
   const maxRetries = job.max_retries ?? 3;
   let retryCount = 0;
@@ -39,7 +42,7 @@ export async function executeAutomationRun(job: AutomationJobInput): Promise<Run
   let runStatus: 'completed' | 'failed' | 'needs_authorization' = 'completed';
 
   // 1. Mark run as 'running' in database
-  await supabaseServer
+  await dbClient
     .from('automation_runs')
     .update({
       status: 'running',
@@ -47,34 +50,32 @@ export async function executeAutomationRun(job: AutomationJobInput): Promise<Run
     })
     .eq('id', job.run_id);
 
-  // 2. Retry loop with exponential backoff
+  // 2. Retry loop (0 when driven by durable automation_queue scheduler)
   while (retryCount <= maxRetries) {
     try {
-      const execResult = await dispatchActionHandler(job);
+      const execResult = await dispatchActionHandler(job, dbClient);
       outputPayload = execResult.output;
       recordsAffected = execResult.recordsAffected || 0;
       runStatus = 'completed';
       lastError = null;
-      break; // Success, exit retry loop
+      break;
     } catch (err: any) {
       lastError = err;
       const errorMessage = err.message || String(err);
 
-      // Check if this is an authorization prerequisite issue
       if (
         errorMessage.includes('needs_authorization') ||
         errorMessage.includes('Google Workspace account not connected') ||
         errorMessage.includes('NeoSapien authorization token missing')
       ) {
         runStatus = 'needs_authorization';
-        // Mark automation status as needs_authorization in parent table
         if (job.automation_id) {
-          await supabaseServer
+          await dbClient
             .from('automations')
             .update({ status: 'needs_authorization' })
             .eq('id', job.automation_id);
         }
-        break; // Do not retry authorization failures
+        break;
       }
 
       retryCount++;
@@ -91,12 +92,13 @@ export async function executeAutomationRun(job: AutomationJobInput): Promise<Run
   const errorLogText = lastError ? (lastError.stack || lastError.message || String(lastError)) : null;
 
   // 3. Update database record with final status and execution metrics
-  await supabaseServer
+  await dbClient
     .from('automation_runs')
     .update({
       status: runStatus === 'needs_authorization' ? 'failed' : runStatus,
       completed_at: new Date().toISOString(),
       duration_ms: durationMs,
+      records_affected: recordsAffected,
       output_payload: outputPayload || { error: errorLogText, status: runStatus },
       error_log: errorLogText,
       retry_count: Math.min(retryCount, maxRetries),
@@ -117,42 +119,64 @@ export async function executeAutomationRun(job: AutomationJobInput): Promise<Run
 /**
  * Internal router executing the specific action logic
  */
-async function dispatchActionHandler(job: AutomationJobInput): Promise<{ output: any; recordsAffected: number }> {
+async function dispatchActionHandler(
+  job: AutomationJobInput,
+  dbClient: any = supabaseServer
+): Promise<{ output: any; recordsAffected: number }> {
   const { action_type, user_id, action_config, input_payload } = job;
   const config = { ...action_config, ...input_payload };
 
   switch (action_type) {
-    // --------------------------------------------------------------------------
-    // 1. Google Workspace Automations (Calendar & Gmail via official googleapis)
-    // --------------------------------------------------------------------------
     case 'google_calendar':
     case 'google_gmail':
     case 'google_workspace': {
-      return await executeGoogleWorkspaceAction(user_id, action_type, config);
+      return await executeGoogleWorkspaceAction(user_id, action_type, config, dbClient);
     }
 
-    // --------------------------------------------------------------------------
-    // 2. NeoSapien Wearable MCP Integration
-    // --------------------------------------------------------------------------
     case 'neosapien_mcp':
     case 'neosapien_sync': {
-      return await executeNeoSapienMcpAction(user_id, config);
+      return await executeNeoSapienMcpAction(user_id, config, dbClient);
     }
 
-    // --------------------------------------------------------------------------
-    // 3. AI Gateway (Executive Briefing & Synthesis)
-    // --------------------------------------------------------------------------
     case 'morning_briefing':
     case 'ai_briefing':
     case 'custom_agent': {
-      return await executeAIGatewayAction(user_id, config);
+      return await executeAIGatewayAction(user_id, config, dbClient);
     }
 
-    // --------------------------------------------------------------------------
-    // 4. Task & Meeting Intelligence Scanner
-    // --------------------------------------------------------------------------
     case 'task_deadline_scan': {
-      return await executeTaskDeadlineScanAction(user_id, config);
+      return await executeTaskDeadlineScanAction(user_id, config, dbClient);
+    }
+
+    case 'isolated_scheduled_check':
+    case 'health_ping': {
+      const checkedAt = new Date().toISOString();
+      const noteTitle = String(config.notification_title || 'Scheduled Automation Verification Check');
+      const noteMsg = String(
+        config.notification_message || `Isolated check executed cleanly via server runner at ${checkedAt}.`
+      );
+      if (config.write_notification !== false && user_id) {
+        await dbClient.from('notifications').insert({
+          user_id,
+          title: noteTitle,
+          message: noteMsg,
+          type: 'system',
+          priority: 'low',
+          action_link: 'automations',
+          read: false,
+          created_at: checkedAt,
+        });
+      }
+      return {
+        output: {
+          checkedAt,
+          run_id: job.run_id,
+          automation_id: job.automation_id,
+          trigger_source: job.trigger_source || 'manual',
+          marker: config.marker || 'ok',
+        },
+        recordsAffected: 1,
+      };
     }
 
     default:
@@ -162,18 +186,24 @@ async function dispatchActionHandler(job: AutomationJobInput): Promise<{ output:
 
 /**
  * 1. GOOGLE WORKSPACE ACTION (Calendar / Gmail)
- * Queries integration_tokens for user, sets up googleapis OAuth2 client, and runs real API calls.
  */
-async function executeGoogleWorkspaceAction(userId: string, actionType: string, config: any) {
-  // Query server-side integration_tokens table
-  const { data: tokenRecord, error } = await supabaseServer
+async function executeGoogleWorkspaceAction(
+  userId: string,
+  actionType: string,
+  config: any,
+  dbClient: any = supabaseServer
+) {
+  const { data: tokenRecord, error } = await dbClient
     .from('integration_tokens')
     .select('*')
     .eq('user_id', userId)
     .eq('provider', 'google')
     .single();
 
-  if (error || !tokenRecord || (!tokenRecord.encrypted_refresh_token && !tokenRecord.encrypted_access_token)) {
+  const accessToken = tokenRecord?.access_token || tokenRecord?.encrypted_access_token;
+  const refreshToken = tokenRecord?.refresh_token || tokenRecord?.encrypted_refresh_token;
+
+  if (error || !tokenRecord || (!refreshToken && !accessToken)) {
     throw new Error(
       'Google Workspace account not connected or refresh token missing. Status set to needs_authorization. Please connect in Settings -> Integrations.'
     );
@@ -189,8 +219,8 @@ async function executeGoogleWorkspaceAction(userId: string, actionType: string, 
   );
 
   oauth2Client.setCredentials({
-    access_token: tokenRecord.encrypted_access_token,
-    refresh_token: tokenRecord.encrypted_refresh_token,
+    access_token: accessToken,
+    refresh_token: refreshToken,
   });
 
   if (actionType === 'google_calendar') {
@@ -250,11 +280,14 @@ async function executeGoogleWorkspaceAction(userId: string, actionType: string, 
  * 2. NEOSAPIEN MCP ACTION
  * Verifies tool discovery on https://api.neosapien.xyz/mcp before calling tools
  */
-async function executeNeoSapienMcpAction(userId: string, config: any) {
+async function executeNeoSapienMcpAction(
+  userId: string,
+  config: any,
+  dbClient: any = supabaseServer
+) {
   const mcpEndpoint = config.mcp_endpoint || 'https://api.neosapien.xyz/mcp';
 
-  // 1. Check for NeoSapien tokens in database
-  const { data: conn } = await supabaseServer
+  const { data: conn } = await dbClient
     .from('neosapien_connections')
     .select('encrypted_access_token, status')
     .eq('user_id', userId)
@@ -268,7 +301,6 @@ async function executeNeoSapienMcpAction(userId: string, config: any) {
     );
   }
 
-  // 2. Tool Discovery Verification via HTTP JSON-RPC
   let availableTools: string[] = [];
   try {
     const discoverResp = await fetch(mcpEndpoint, {
@@ -296,7 +328,6 @@ async function executeNeoSapienMcpAction(userId: string, config: any) {
     console.warn('[Runner] NeoSapien MCP discovery warning:', err);
   }
 
-  // 3. Execute MCP tools/call or sync endpoint
   let importedCount = 0;
   if (token) {
     try {
@@ -310,7 +341,7 @@ async function executeNeoSapienMcpAction(userId: string, config: any) {
         const memories = syncData.memories || [];
         for (const mem of memories) {
           if (mem.id) {
-            await supabaseServer.from('neosapien_memories').upsert({
+            await dbClient.from('neosapien_memories').upsert({
               user_id: userId,
               source_record_id: mem.id,
               title: mem.title || 'Neo 1 Capture',
@@ -343,37 +374,44 @@ async function executeNeoSapienMcpAction(userId: string, config: any) {
 /**
  * 3. AI GATEWAY (Morning Briefing & Executive Synthesis)
  */
-async function executeAIGatewayAction(userId: string, config: any) {
+async function executeAIGatewayAction(
+  userId: string,
+  config: any,
+  dbClient: any = supabaseServer
+) {
   const now = new Date();
   const todayStr = now.toISOString().split('T')[0];
 
-  // Fetch live tasks and meetings from Supabase
   const [tasksRes, meetingsRes] = await Promise.all([
-    supabaseServer.from('tasks').select('*').eq('user_id', userId).eq('done', false),
-    supabaseServer.from('meetings').select('*').eq('user_id', userId).eq('date', todayStr),
+    dbClient.from('tasks').select('*').eq('user_id', userId).eq('done', false),
+    dbClient.from('meetings').select('*').eq('user_id', userId).eq('date', todayStr),
   ]);
 
   const tasks = tasksRes.data || [];
   const meetings = meetingsRes.data || [];
   const urgentTasks = tasks.filter((t: any) => t.priority === 'high' || t.priority === 'urgent');
 
-  // Server-side AI model invocation with timeout and fallback
-  const geminiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-  let aiSummary = `Executive Morning Briefing for ${todayStr}:\n- ${meetings.length} meeting(s) today.\n- ${urgentTasks.length} urgent task(s) requiring immediate attention.\n- Total backlog: ${tasks.length} items.`;
+  const geminiKey = (process.env.GEMINI_API_KEY || '').trim();
+  const geminiModel = (process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim();
+  let aiSummary = `Executive Morning Briefing for ${todayStr}:\n- ${meetings.length} meeting(s) today.\n- ${urgentTasks.length} urgent task(s) requiring immediate attention.\n- Total open tasks: ${tasks.length}.`;
 
   if (geminiKey) {
     try {
-      const prompt = `Synthesize a concise executive daily brief for Yaswanth (Founder of PAWAN SHAKTI and MG Automation robotics engineer).
+      const prompt = `Synthesize a concise executive daily brief for Yaswanth based strictly on these verified records. Do not invent facts or milestones.
 Date: ${todayStr}
+Focus Filter: ${config?.focus || 'General'}
 Meetings: ${JSON.stringify(meetings.map((m: any) => ({ title: m.title, time: m.start_time, attendees: m.attendees })))}
-High Priority Tasks: ${JSON.stringify(urgentTasks.map((t: any) => ({ text: t.text || t.title, due: t.due_date })))}
-Format as bullet points with clear next actions.`;
+High Priority Open Tasks: ${JSON.stringify(urgentTasks.map((t: any) => ({ text: t.text || t.title, due: t.due_date })))}
+Format as crisp bullet points with clear next actions.`;
 
       const aiResp = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiModel)}:generateContent`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': geminiKey,
+          },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
           }),
@@ -389,12 +427,11 @@ Format as bullet points with clear next actions.`;
         }
       }
     } catch (aiErr) {
-      console.warn('[Runner] Gemini AI brief call failed, using deterministic synthesis:', aiErr);
+      console.warn('[Runner] Gemini AI brief call failed, using deterministic summary:', aiErr);
     }
   }
 
-  // Deliver real notification to public.notifications
-  await supabaseServer.from('notifications').insert({
+  await dbClient.from('notifications').insert({
     user_id: userId,
     title: `Executive Morning Briefing — ${todayStr}`,
     message: `${meetings.length} meetings, ${urgentTasks.length} urgent tasks.`,
@@ -418,14 +455,18 @@ Format as bullet points with clear next actions.`;
 /**
  * 4. TASK DEADLINE & UPCOMING MEETING SCANNER
  */
-async function executeTaskDeadlineScanAction(userId: string, config: any) {
+async function executeTaskDeadlineScanAction(
+  userId: string,
+  config: any,
+  dbClient: any = supabaseServer
+) {
   const leadMinutes = config.lead_time_minutes || 45;
   const now = new Date();
   const todayStr = now.toISOString().split('T')[0];
 
   const [tRes, mRes] = await Promise.all([
-    supabaseServer.from('tasks').select('*').eq('user_id', userId).eq('done', false),
-    supabaseServer.from('meetings').select('*').eq('user_id', userId).eq('status', 'scheduled'),
+    dbClient.from('tasks').select('*').eq('user_id', userId).eq('done', false),
+    dbClient.from('meetings').select('*').eq('user_id', userId).eq('status', 'scheduled'),
   ]);
 
   const tasks = tRes.data || [];
@@ -435,7 +476,7 @@ async function executeTaskDeadlineScanAction(userId: string, config: any) {
   const overdueTasks = tasks.filter((t: any) => t.due_date && t.due_date < todayStr);
 
   if (overdueTasks.length > 0) {
-    await supabaseServer.from('notifications').insert({
+    await dbClient.from('notifications').insert({
       user_id: userId,
       title: 'Action Required: Overdue Tasks Detected',
       message: `You have ${overdueTasks.length} task(s) past due date. Item: "${overdueTasks[0].text || overdueTasks[0].title}"`,
@@ -455,7 +496,7 @@ async function executeTaskDeadlineScanAction(userId: string, config: any) {
       const diff = meetingMins - currentMins;
 
       if (diff > 0 && diff <= leadMinutes) {
-        await supabaseServer.from('notifications').insert({
+        await dbClient.from('notifications').insert({
           user_id: userId,
           title: `Upcoming Meeting in ${diff}m: ${m.title}`,
           message: `Join: ${m.location_or_link || 'Virtual'} | Attendees: ${m.attendees || 'Team'}`,

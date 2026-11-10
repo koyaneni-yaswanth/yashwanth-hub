@@ -3,20 +3,15 @@
 // Features: Real server-side credentials, token refresh, CRUD, and bi-directional database sync.
 
 import { google } from 'googleapis';
-import { supabaseServer } from '../_lib/db.ts';
+import {
+  isServerSupabaseConfigured,
+  resolveAuthenticatedUser,
+  supabaseServer,
+} from '../_lib/db.ts';
 
-export async function getUserIdFromRequest(req: any): Promise<string> {
-  const authHeader = req.headers?.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.slice(7).trim();
-    try {
-      const { data: { user } } = await supabaseServer.auth.getUser(token);
-      if (user) return user.id;
-    } catch {
-      // Fallback
-    }
-  }
-  return '00000000-0000-0000-0000-000000000001';
+export async function getUserIdFromRequest(req: any): Promise<string | null> {
+  const auth = await resolveAuthenticatedUser(req);
+  return auth.authenticated ? auth.userId : null;
 }
 
 export async function getAuthenticatedGoogleOAuthClient(userId: string) {
@@ -52,7 +47,6 @@ export async function getAuthenticatedGoogleOAuthClient(userId: string) {
     refresh_token: refreshToken,
   });
 
-  // Check token expiration and auto-refresh using refreshToken
   const expiresAt = tokenRecord.expires_at || tokenRecord.token_expires_at || tokenRecord.token_expiry;
   const isExpired = expiresAt ? new Date(expiresAt).getTime() < Date.now() + 60000 : false;
 
@@ -93,7 +87,23 @@ export default async function handler(req: any, res: any) {
     return res.status(200).end();
   }
 
+  if (!isServerSupabaseConfigured()) {
+    return res.status(503).json({
+      success: false,
+      error: 'Server Database Not Configured',
+      message: 'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are not configured on the server.',
+    });
+  }
+
   const userId = await getUserIdFromRequest(req);
+  if (!userId) {
+    return res.status(401).json({
+      success: false,
+      error: 'Unauthorized',
+      message: 'Valid Supabase user session token is required.',
+    });
+  }
+
   const action = req.query.action || req.body?.action || 'ping';
 
   try {

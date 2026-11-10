@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Wind,
   ShieldCheck,
@@ -17,175 +17,165 @@ import {
   ExternalLink,
   Plus,
 } from 'lucide-react';
+import { db } from '../db';
 import { Badge } from '../components/common/Badge';
 import { StatCard } from '../components/common/StatCard';
 import type { V3FAssessmentItem, V3FScore } from '../types';
 
 const INITIAL_V3F_DATA: V3FAssessmentItem[] = [
-  // 1. Founders, Governance & Compliance
   {
     id: 'v3f-1-1',
     category: 'Founders, Governance & Compliance',
     parameter: 'Founder Technical Alignment & Dedication',
-    score: 3,
-    evidence: 'VNIT Metallurgical & Materials background, deep robotics/prototyping hands-on execution, full-time founder commitment.',
-    gap: 'Need dedicated electrical & power electronics co-lead for high-efficiency grid tie-in.',
-    owner: 'Yaswanth',
-    next_action: 'Finalize advisory terms for Senior Power Electronics Mentor by Nov 12.',
+    score: 2,
+    evidence: 'Active VNIT engineering founder leading TRL 4 benchtop prototyping & automation workflows.',
+    gap: 'Dedicated electrical/power electronics validation partner and formal advisory agreements.',
+    owner: 'Yashwanth',
+    next_action: 'Document formal technical advisory commitment before submission.',
     due_date: '2026-11-12',
-    status: 'verified',
+    status: 'in_progress',
   },
   {
     id: 'v3f-1-2',
     category: 'Founders, Governance & Compliance',
     parameter: 'Corporate Structure & Cap Table Governance',
     score: 1,
-    evidence: 'Early pre-incubation enrollment draft; founder equity distribution model drafted.',
-    gap: 'Formal Private Limited incorporation and founder SHA pending institutional incubation sign-off.',
-    owner: 'Yaswanth',
-    next_action: 'Complete SPICe+ MCA filing draft with company secretary.',
+    evidence: 'Draft readiness phase; entity incorporation details pending upload.',
+    gap: 'Formal company registration documents and equity table verification.',
+    owner: 'Yashwanth',
+    next_action: 'Confirm entity registration status and upload governance documents.',
     due_date: '2026-11-14',
-    status: 'in_progress',
+    status: 'pending',
   },
   {
     id: 'v3f-1-3',
     category: 'Founders, Governance & Compliance',
-    parameter: 'Intellectual Property Protection (Patent 2025/399)',
+    parameter: 'Intellectual Property Protection',
     score: 2,
-    evidence: 'Patent application 2025/399 for low-wind speed planetary gearbox mechanism filed; official filing receipt documented.',
-    gap: 'Formal response to first examination report (FER) and PCT international filing roadmap.',
-    owner: 'Yaswanth',
-    next_action: 'Conduct prior art boundary review with patent attorney prior to V3F submission.',
+    evidence: 'Published Indian Patent: "Compact Wind Turbine with Planetary Gears" (verified baseline).',
+    gap: 'Upload filing dossier & patent publication PDF to project documents.',
+    owner: 'Yashwanth',
+    next_action: 'Attach official Indian Patent publication reference.',
     due_date: '2026-11-10',
     status: 'verified',
   },
-
-  // 2. Customer & Market
   {
     id: 'v3f-2-1',
     category: 'Customer & Market',
-    parameter: 'Beachhead Market Validation & Pain Points',
-    score: 2,
-    evidence: 'Identified off-grid telecom cell tower power backup and decentralized agricultural solar-wind hybrid microgrids.',
-    gap: 'Direct signed Letters of Intent (LOIs) from telecom tower infrastructure providers (TowerCo).',
-    owner: 'Yaswanth',
-    next_action: 'Conduct 5 structured interviews with telecom site maintenance managers.',
+    parameter: 'Beachhead Market Validation & LOIs',
+    score: 1,
+    evidence: 'Target use-cases identified (rural micro-generation / off-grid sites); NO signed customer LOIs yet.',
+    gap: 'Signed Letters of Intent or structured customer discovery transcripts.',
+    owner: 'Yashwanth',
+    next_action: 'Conduct and log verified customer discovery interviews.',
     due_date: '2026-11-11',
-    status: 'in_progress',
+    status: 'pending',
   },
   {
     id: 'v3f-2-2',
     category: 'Customer & Market',
-    parameter: 'Competitive Advantage & Levelized Cost of Energy (LCOE)',
-    score: 2,
-    evidence: 'Calculated cut-in at 2.0 m/s vs commercial standard 3.5 m/s. ~40% higher annual energy yield in low-wind corridors.',
-    gap: 'Third-party wind tunnel validation data curves across 2-8 m/s speed sweeps.',
-    owner: 'Yaswanth',
-    next_action: 'Book calibration run at regional wind tunnel facility.',
+    parameter: 'Power Curve & Annual Energy Yield Evidence',
+    score: 1,
+    evidence: 'Low cut-in aerodynamic/gearbox concept targeted; ZERO continuous >= 1 Hz P-v curve CSV captured yet.',
+    gap: 'Calibrated wind-speed vs electrical power curve measurements (>= 1 Hz CSV).',
+    owner: 'Yashwanth',
+    next_action: 'Record time-series tachometer + load voltage/current CSV on closed-loop bench.',
     due_date: '2026-11-13',
-    status: 'in_progress',
+    status: 'pending',
   },
-
-  // 3. Product & Technology
   {
     id: 'v3f-3-1',
     category: 'Product & Technology',
-    parameter: 'High-Torque Planetary Gearbox Subsystem (1:10 Ratio)',
-    score: 2,
-    evidence: 'Evaluated 3-planet and 4-planet arrangements; physical prototype machined and bench tested for torque transmission.',
-    gap: 'Vibration damping and thermal dissipation during 100-hour continuous run bench test.',
-    owner: 'Yaswanth',
-    next_action: 'Mount digital tachometer + vibration sensor logger for 24-hour endurance test.',
-    due_date: '2026-11-09',
+    parameter: 'Planetary Gearbox & Rotor Benchtop Baseline (TRL 4)',
+    score: 1,
+    evidence: 'TRL 4 separate benchtop components (wooden frame, PLA blades, planetary gearbox baseline).',
+    gap: 'Integrated closed-loop shaft + generator bench test & structural upgrade from wood/PLA.',
+    owner: 'Yashwanth',
+    next_action: 'Execute integrated closed-loop bench test without premature structural failures.',
+    due_date: '2026-11-12',
     status: 'in_progress',
   },
   {
     id: 'v3f-3-2',
     category: 'Product & Technology',
-    parameter: 'TRL 4 to TRL 5 De-risking & Validation Protocol',
-    score: 2,
-    evidence: 'Test protocols drafted covering cut-in velocity, RPM vs power curve, and braking mechanism.',
-    gap: 'Full physical test matrix log verifying repeatable power output into calibrated load cell.',
-    owner: 'Yaswanth',
-    next_action: 'Complete 4-speed bench calibration protocol and compile CSV logs.',
-    due_date: '2026-11-08',
-    status: 'in_progress',
+    parameter: 'TRL 4 to TRL 5 Validation Protocol',
+    score: 1,
+    evidence: '90-day TRL 5 target defined; closed-loop integration and instrumentation not yet completed.',
+    gap: 'Repeatable integrated bench run CSV log and structural BOM transition.',
+    owner: 'Yashwanth',
+    next_action: 'Run integrated instrumentation protocol and archive raw CSV logs.',
+    due_date: '2026-11-14',
+    status: 'pending',
   },
   {
     id: 'v3f-3-3',
     category: 'Product & Technology',
-    parameter: 'Safety & Overspeed Braking (IEC 61400-2 Compliance)',
-    score: 1,
-    evidence: 'Conceptual design for aerodynamic tip-stall and mechanical disc caliper brake.',
-    gap: 'Detailed failure modes and effects analysis (FMEA) and physical fail-safe test.',
-    owner: 'Yaswanth',
-    next_action: 'Finalize IEC 61400-2 safety risk register sheet with engineering sign-off.',
-    due_date: '2026-11-10',
+    parameter: 'Safety & Overspeed Braking (IEC 61400-2)',
+    score: 0,
+    evidence: 'Safety requirements identified; braking mechanism & FMEA not yet experimentally verified.',
+    gap: 'FMEA register, rotor dynamic balance check, and emergency braking test.',
+    owner: 'Yashwanth',
+    next_action: 'Draft and review IEC 61400-2 safety register prior to high-RPM spin tests.',
+    due_date: '2026-11-13',
     status: 'pending',
   },
-
-  // 4. GTM & Brand
   {
     id: 'v3f-4-1',
     category: 'GTM & Brand',
-    parameter: 'Pilot Deployment Strategy & Channel Partnerships',
+    parameter: 'Pilot Deployment Strategy',
     score: 1,
-    evidence: 'Outreach target list compiled; pre-incubation pilot demo sites scoped.',
-    gap: 'Formal field test agreement for first live commercial site installation.',
-    owner: 'Yaswanth',
-    next_action: 'Finalize 1-page pilot partnership proposal sheet.',
-    due_date: '2026-11-12',
-    status: 'in_progress',
+    evidence: 'Pilot outreach scoped; no confirmed external deployment site agreement yet.',
+    gap: 'TRL 5 bench validation prerequisite before formal pilot site commitments.',
+    owner: 'Yashwanth',
+    next_action: 'Hold commercial claims until closed-loop TRL 5 evidence is documented.',
+    due_date: '2026-11-14',
+    status: 'pending',
   },
-
-  // 5. Finance & Funding
   {
     id: 'v3f-5-1',
     category: 'Finance & Funding',
-    parameter: 'Grant Capital Sourcing (ANRF Secured)',
-    score: 3,
-    evidence: 'Secured ANRF R&D grant support (₹25L) with sanctioned milestones; BIRAC BIG / DST application pipelines prepared.',
-    gap: 'Tranche disbursement release documentation and dedicated project account.',
-    owner: 'Yaswanth',
-    next_action: 'Submit ANRF milestone report for Q1 tranche release.',
+    parameter: 'Grant & Seed Capital Pipeline (Unverified)',
+    score: 0,
+    evidence: 'No verified grant sanction letter or treasury balance attached in Hub records yet.',
+    gap: 'Upload confirmed sanction / bank balance documentation if/when received.',
+    owner: 'Yashwanth',
+    next_action: 'Prepare transparent R&D BOM & milestone budget aligned to TRL 5 tasks.',
     due_date: '2026-11-14',
-    status: 'verified',
+    status: 'pending',
   },
   {
     id: 'v3f-5-2',
     category: 'Finance & Funding',
-    parameter: 'Bill of Materials (BOM) & Volume Cost Projections',
-    score: 2,
-    evidence: 'Detailed BOM for prototype (₹1,20,500) with volume projections at 50 units (₹64,200) and 500 units (₹38,400).',
-    gap: 'Vendor quotation freeze for mass-produced planetary gear sets and custom stator coils.',
-    owner: 'Yaswanth',
-    next_action: 'Obtain 3 formal supplier quotes for CNC gear batches.',
+    parameter: 'Engineering Bill of Materials (BOM) Estimates',
+    score: 1,
+    evidence: 'Draft planning estimates prepared; formal vendor quotes for upgraded chassis & stator still pending.',
+    gap: 'Verified supplier quotes & unit-cost confirmation.',
+    owner: 'Yashwanth',
+    next_action: 'Collect 3 verified supplier quotes for metal frame, blades, and coil winding.',
     due_date: '2026-11-11',
     status: 'in_progress',
   },
-
-  // 6. Traction & Execution
   {
     id: 'v3f-6-1',
     category: 'Traction & Execution',
-    parameter: '90-Day Execution Discipline & Gate Reviews',
-    score: 2,
-    evidence: 'Active 90-day TRL milestone plan with weekly checkpoints and gate review criteria.',
-    gap: 'Full photographic and telemetry evidence repository indexed for assessor review.',
-    owner: 'Yaswanth',
-    next_action: 'Upload high-resolution test photos and raw sensor CSVs to V3F submission drive.',
-    due_date: '2026-11-13',
+    parameter: '90-Day TRL 5 Execution Discipline',
+    score: 1,
+    evidence: 'Project tracker initialized in Yashwanth Hub against verified TRL 4 baseline.',
+    gap: 'Photo, CSV telemetry, and blocker closure evidence logged weekly.',
+    owner: 'Yashwanth',
+    next_action: 'Log every test run directly in Projects -> Pawan Shakti Workspace.',
+    due_date: '2026-11-15',
     status: 'in_progress',
   },
 ];
 
 const BOM_DATA = [
-  { item: 'Planetary Gearbox Assembly (1:10 ratio, 3-planet)', prototype: 38000, vol50: 18500, vol500: 9800, source: 'Custom CNC / Gear Grinding' },
-  { item: 'Axial Flux PM Generator (Stator + N52 Neodymium Rotors)', prototype: 28000, vol50: 15200, vol500: 9200, source: 'In-house Winding + Sintered NdFeB' },
-  { item: 'Aerodynamic Spiral / Pitch Blades (~1 m² profile)', prototype: 19500, vol50: 10400, vol500: 5900, source: 'PETG-CF / Molded Resin Core' },
-  { item: 'Chassis & Nacelle Structure (Modular 3030 Extrusions & Plates)', prototype: 14000, vol50: 8200, vol500: 4800, source: '6061-T6 Aluminum Laser Cut' },
-  { item: 'Power Electronics (Synchronous Rectifier + MPPT Boost + Logger)', prototype: 11000, vol50: 6500, vol500: 4500, source: 'Custom SMD PCB + INA226/ESP32' },
-  { item: 'Bearings, Slip Ring & Hardware (Double-row Angular Contact)', prototype: 10000, vol50: 5400, vol500: 4200, source: 'SKF / Industrial Capsule Slip Ring' },
+  { item: 'Planetary Gearbox Assembly (Estimated target)', prototype: 38000, vol50: 18500, vol500: 9800, source: 'Planning Estimate (Quote Pending)' },
+  { item: 'Axial Flux PM Generator Assembly (Estimated target)', prototype: 28000, vol50: 15200, vol500: 9200, source: 'Planning Estimate (Quote Pending)' },
+  { item: 'Composite / Structural Blades (Upgrading from PLA)', prototype: 19500, vol50: 10400, vol500: 5900, source: 'Target Upgrade Material (Unquoted)' },
+  { item: 'Metal Structural Frame (Upgrading from Wood)', prototype: 14000, vol50: 8200, vol500: 4800, source: 'Target Upgrade Material (Unquoted)' },
+  { item: 'DAQ & Power Electronics (Tachometer + Load Logger)', prototype: 11000, vol50: 6500, vol500: 4500, source: 'Instrumentation Estimate' },
+  { item: 'Bearings & Mechanical Hardware', prototype: 10000, vol50: 5400, vol500: 4200, source: 'Standard Component Estimate' },
 ];
 
 export const StartupCommandPage: React.FC = () => {
@@ -194,16 +184,35 @@ export const StartupCommandPage: React.FC = () => {
   const [filterCategory, setFilterCategory] = useState<string>('All');
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
 
-  // V3F Scoring Metrics
+  useEffect(() => {
+    db.settings.get('v3f_assessment_v2').then((saved) => {
+      if (saved?.value && Array.isArray(saved.value) && saved.value.length > 0) {
+        setAssessmentItems(saved.value as V3FAssessmentItem[]);
+      }
+    });
+  }, []);
+
   const numericItems = assessmentItems.filter((i) => typeof i.score === 'number');
   const totalScore = numericItems.reduce((sum, item) => sum + (item.score as number), 0);
-  const maxPossibleScore = numericItems.length * 3;
+  const maxPossibleScore = Math.max(1, numericItems.length * 3);
   const scorePercentage = Math.round((totalScore / maxPossibleScore) * 100);
 
-  const handleScoreChange = (id: string, newScore: V3FScore) => {
-    setAssessmentItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, score: newScore } : item))
+  const handleScoreChange = async (id: string, newScore: V3FScore) => {
+    const next = assessmentItems.map((item) =>
+      item.id === id
+        ? {
+            ...item,
+            score: newScore,
+            status: (newScore === 3 ? 'verified' : newScore === 0 ? 'pending' : 'in_progress') as V3FAssessmentItem['status'],
+          }
+        : item
     );
+    setAssessmentItems(next);
+    await db.settings.put({
+      key: 'v3f_assessment_v2',
+      value: next,
+      updated_at: new Date().toISOString(),
+    });
   };
 
   const filteredItems = filterCategory === 'All'
@@ -212,35 +221,34 @@ export const StartupCommandPage: React.FC = () => {
 
   const categories = Array.from(new Set(assessmentItems.map((i) => i.category)));
 
-  // Countdown to 15 November 2026
   const targetDate = new Date('2026-11-15T23:59:59+05:30').getTime();
   const now = Date.now();
   const diffDays = Math.max(0, Math.ceil((targetDate - now) / (1000 * 60 * 60 * 24)));
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Header & Strategic Overview */}
+      {/* Header & Grounded Strategic Overview */}
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-6 shadow-xs">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="teal" dot>Pawan Shakti Low-Wind Systems</Badge>
-              <Badge variant="amber">TRL 4 Prototype Validation</Badge>
-              <Badge variant="blue">Patent App 2025/399</Badge>
-              <Badge variant="emerald">ANRF R&D Grant Secured (₹25L)</Badge>
+              <Badge variant="teal" dot>PAWAN SHAKTI Baseline</Badge>
+              <Badge variant="amber">Current: TRL 4 Benchtop (Wood/PLA)</Badge>
+              <Badge variant="blue">Indian Patent Published</Badge>
+              <Badge variant="gray">Funding: Unverified / Draft</Badge>
             </div>
             <h1 className="text-2xl sm:text-3xl font-heading font-bold text-[var(--hub-ink)] tracking-tight">
               Startup Command Center & V3F Readiness Hub
             </h1>
             <p className="text-sm text-[var(--hub-muted)] max-w-3xl leading-relaxed">
-              Institutional deep-tech startup command center managing Pawan Shakti's low cut-in wind turbine development, high-torque planetary gearbox engineering, and V3F incubation readiness submission.
+              Verified baseline tracker for PAWAN SHAKTI ("Compact Wind Turbine with Planetary Gears"). Scores below persist locally to Dexie and strictly distinguish verified facts from targets & missing evidence.
             </p>
           </div>
 
           <div className="flex items-center gap-4 bg-[var(--hub-bg)] p-4 rounded-xl border border-[var(--hub-line)] flex-none">
             <div className="text-center">
               <span className="text-xs text-[var(--hub-muted)] uppercase tracking-wider block font-bold">
-                Submission Deadline
+                Target Gate Date
               </span>
               <span className="text-2xl font-bold font-heading text-red-600 dark:text-red-400">
                 15 Nov 2026
@@ -268,27 +276,27 @@ export const StartupCommandPage: React.FC = () => {
       {/* Primary KPI Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
         <StatCard
-          label="Core Differentiator"
-          value="2.0 m/s Cut-In"
-          subtext="vs 3.5 m/s standard turbines"
+          label="Verified Current TRL"
+          value="TRL 4 Only"
+          subtext="Target TRL 5 in 90 days"
           icon={<Wind className="w-5 h-5 text-teal-600" />}
         />
         <StatCard
-          label="Gearbox Ratio"
-          value="1:10 Planetary"
-          subtext="3-planet & 4-planet evaluated"
+          label="P-v Telemetry Status"
+          value="Not Captured"
+          subtext="Need >= 1 Hz closed-loop CSV"
           icon={<Layers className="w-5 h-5 text-blue-600" />}
         />
         <StatCard
-          label="Prototype Unit Cost"
-          value="₹1,20,500"
-          subtext="Target ₹38,400 at 500 units"
+          label="Est. Prototype BOM"
+          value="Estimate Only"
+          subtext="Supplier quotes pending"
           icon={<IndianRupee className="w-5 h-5 text-amber-600" />}
         />
         <StatCard
-          label="V3F Evidence Verified"
+          label="V3F Items Verified (Score 3)"
           value={`${assessmentItems.filter((i) => i.score === 3).length} / ${assessmentItems.length}`}
-          subtext="Validated & actively used items"
+          subtext="Persisted across sessions"
           icon={<CheckCircle2 className="w-5 h-5 text-emerald-600" />}
         />
       </div>

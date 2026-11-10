@@ -1,164 +1,352 @@
 /**
- * Yashwanth Hub Client Automation Service
- * 
- * Antigravity Hard Constraints:
- * 1. NEVER execute automation logic in React components, hooks, or client state.
- * 2. Every automation execution MUST take place on the server via Supabase Functions or Vercel API routes (/api/automations/*).
- * 3. Scheduled triggers MUST rely on vercel.json cron jobs or Supabase pg_cron, never browser intervals.
- * 4. No fake timers, mocked responses, or optimistic success indicators without database execution records.
- * 5. All secrets must remain in server-side environment variables or encrypted database columns.
+ * Yashwanth Hub Client Automation Service (V2 Unified Schema)
+ *
+ * Strictly delegates automation execution and scheduling to Vercel API routes (/api/automations/*)
+ * backed by Supabase public.automations, public.automation_queue, and public.automation_runs.
+ * Never runs automation logic in browser intervals or fabricates fake execution records.
  */
 
-import { getSupabaseClient } from '../lib/supabase';
+import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabase';
+import { SupabaseAuthService } from './auth/supabaseAuthService';
 
-export interface HubAutomation {
+export interface AutomationDefinition {
   id: string;
-  user_id: string;
+  user_id?: string;
   name: string;
-  slug: string;
   description?: string;
-  trigger_type: 'cron' | 'event' | 'webhook' | 'manual';
+  trigger_type: 'cron' | 'one_time' | 'event' | 'webhook' | 'manual';
+  schedule_type?: 'recurring' | 'one_time';
   cron_expression?: string;
-  timezone: string;
-  action_type: string;
-  configuration: Record<string, any>;
-  is_enabled: boolean;
-  last_run_at?: string;
+  timezone?: string;
+  scheduled_for?: string;
   next_run_at?: string;
+  last_run_at?: string;
+  requires_approval?: boolean;
+  trigger_config: {
+    cron_expression?: string;
+    scheduled_for?: string;
+    timezone?: string;
+    next_run_at?: string;
+    last_run_at?: string;
+  };
+  action_type: string;
+  action_config: Record<string, any>;
+  status: 'active' | 'paused' | 'error' | 'needs_authorization' | 'completed';
   created_at: string;
   updated_at: string;
+}
+
+export interface AutomationQueueJob {
+  id: string;
+  automation_id?: string;
+  user_id?: string;
+  action_type: string;
+  trigger_source: string;
+  status: 'pending' | 'processing' | 'retry_scheduled' | 'completed' | 'failed' | 'cancelled';
+  approval_status: 'auto_approved' | 'pending_approval' | 'approved' | 'rejected';
+  approved_by?: string;
+  approved_at?: string;
+  priority: number;
+  payload: Record<string, any>;
+  result_payload?: Record<string, any>;
+  retry_count: number;
+  max_retries: number;
+  scheduled_for: string;
+  started_at?: string;
+  completed_at?: string;
+  error_message?: string | null;
+  idempotency_key?: string;
+  created_at: string;
 }
 
 export interface AutomationExecutionLog {
   id: string;
   automation_id?: string;
+  queue_job_id?: string;
   user_id?: string;
-  trigger_source: 'cron_vercel' | 'pg_cron' | 'manual' | 'webhook' | 'event';
-  action_type: string;
-  status: 'success' | 'failed' | 'partial';
+  trigger_source: 'cron_vercel' | 'pg_cron' | 'manual' | 'webhook' | 'event' | 'one_time_schedule';
+  action_type?: string;
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'success' | 'partial';
+  started_at?: string;
+  completed_at?: string;
   duration_ms: number;
   records_affected: number;
   input_payload?: Record<string, any>;
   output_payload?: Record<string, any>;
   error_log?: string | null;
+  retry_count: number;
+  idempotency_key?: string;
   created_at: string;
 }
 
+export interface AutomationDashboardData {
+  configured: boolean;
+  authenticated: boolean;
+  message?: string;
+  automations: AutomationDefinition[];
+  queue: AutomationQueueJob[];
+  runs: AutomationExecutionLog[];
+}
+
 export class AutomationService {
-  /**
-   * Fetches registered automations for the authenticated user from Supabase.
-   */
-  public static async getAutomations(): Promise<HubAutomation[]> {
-    try {
-      const client = getSupabaseClient();
-      if (!client) {
-        // Fallback to Vercel API endpoint
-        const res = await fetch('/api/automations');
-        if (res.ok) {
-          const json = await res.json();
-          return json.automations || [];
-        }
-        return [];
-      }
-
-      const { data, error } = await client
-        .from('hub_automations')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.warn('[AutomationService] Database fetch warning:', error.message);
-        return [];
-      }
-
-      return (data as HubAutomation[]) || [];
-    } catch (err) {
-      console.warn('[AutomationService] Failed to fetch automations:', err);
-      return [];
+  private static async getAuthHeaders(): Promise<{ headers: Record<string, string>; authenticated: boolean }> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const token = await SupabaseAuthService.getAccessToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+      return { headers, authenticated: true };
     }
+    return { headers, authenticated: false };
   }
 
   /**
-   * Fetches immutable execution history records from the database.
-   * Hard Constraint 4: UI relies on verified execution records, never optimistic fakes.
+   * Loads unified server automations, durable queue items, and run history.
    */
+  public static async loadDashboardData(): Promise<AutomationDashboardData> {
+    const supabaseConfigured = isSupabaseConfigured();
+    const { headers, authenticated } = await this.getAuthHeaders();
+
+    if (!supabaseConfigured) {
+      return {
+        configured: false,
+        authenticated: false,
+        message: 'Supabase client is not configured (missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY).',
+        automations: [],
+        queue: [],
+        runs: [],
+      };
+    }
+
+    if (!authenticated) {
+      return {
+        configured: true,
+        authenticated: false,
+        message: 'Sign in with your Yashwanth Hub account in Integrations to view and control your cloud automations.',
+        automations: [],
+        queue: [],
+        runs: [],
+      };
+    }
+
+    try {
+      const resp = await fetch('/api/automations/dispatch', { headers });
+      const data = await resp.json().catch(() => ({}));
+
+      if (resp.status === 503 || data.configured === false) {
+        return {
+          configured: false,
+          authenticated: true,
+          message:
+            data.message ||
+            'Server database credentials (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) are not configured on Vercel.',
+          automations: [],
+          queue: [],
+          runs: [],
+        };
+      }
+
+      if (resp.ok && data.success) {
+        return {
+          configured: true,
+          authenticated: true,
+          automations: data.automations || [],
+          queue: data.queue || [],
+          runs: data.runs || [],
+        };
+      }
+
+      // Direct Supabase RLS-scoped fallback query (when local vite dev doesn't proxy /api)
+      const client = getSupabaseClient();
+      if (client) {
+        const [aRes, qRes, rRes] = await Promise.all([
+          client.from('automations').select('*').order('created_at', { ascending: false }),
+          client.from('automation_queue').select('*').order('created_at', { ascending: false }).limit(40),
+          client.from('automation_runs').select('*').order('created_at', { ascending: false }).limit(40),
+        ]);
+        if (!aRes.error) {
+          return {
+            configured: true,
+            authenticated: true,
+            automations: (aRes.data as AutomationDefinition[]) || [],
+            queue: (qRes.data as AutomationQueueJob[]) || [],
+            runs: (rRes.data as AutomationExecutionLog[]) || [],
+          };
+        }
+      }
+
+      return {
+        configured: true,
+        authenticated: true,
+        message: data.message || data.error || `Server responded HTTP ${resp.status}`,
+        automations: [],
+        queue: [],
+        runs: [],
+      };
+    } catch (err: any) {
+      return {
+        configured: true,
+        authenticated,
+        message: err?.message || 'Unable to reach /api/automations/dispatch.',
+        automations: [],
+        queue: [],
+        runs: [],
+      };
+    }
+  }
+
+  public static async getAutomations(): Promise<AutomationDefinition[]> {
+    const data = await this.loadDashboardData();
+    return data.automations;
+  }
+
   public static async getExecutionLogs(limit = 20): Promise<AutomationExecutionLog[]> {
+    const data = await this.loadDashboardData();
+    return data.runs.slice(0, limit);
+  }
+
+  public static async createSchedule(params: {
+    name: string;
+    description?: string;
+    action_type: string;
+    trigger_type: 'cron' | 'one_time' | 'manual';
+    cron_expression?: string;
+    scheduled_for?: string;
+    timezone?: string;
+    requires_approval?: boolean;
+    action_config?: Record<string, any>;
+  }): Promise<{ success: boolean; automation?: AutomationDefinition; error?: string }> {
+    const { headers, authenticated } = await this.getAuthHeaders();
+    if (!authenticated) {
+      return { success: false, error: 'Sign in first before creating server automations.' };
+    }
+
     try {
-      const client = getSupabaseClient();
-      if (!client) {
-        const res = await fetch('/api/automations');
-        if (res.ok) {
-          const json = await res.json();
-          return json.recentExecutionLogs || [];
-        }
-        return [];
+      const resp = await fetch('/api/automations/dispatch', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          action: 'create_automation',
+          ...params,
+        }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.success) {
+        return { success: false, error: data.message || data.error || `HTTP ${resp.status}` };
       }
+      return { success: true, automation: data.automation };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to create schedule.' };
+    }
+  }
 
-      const { data, error } = await client
-        .from('automation_execution_logs')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(limit);
-
-      if (error) {
-        console.warn('[AutomationService] Execution logs fetch warning:', error.message);
-        return [];
+  public static async toggleStatus(
+    automationId: string,
+    status: 'active' | 'paused'
+  ): Promise<{ success: boolean; automation?: AutomationDefinition; error?: string }> {
+    const { headers, authenticated } = await this.getAuthHeaders();
+    if (!authenticated) {
+      return { success: false, error: 'Sign in first.' };
+    }
+    try {
+      const resp = await fetch('/api/automations/dispatch', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          action: 'toggle_status',
+          automation_id: automationId,
+          status,
+        }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.success) {
+        return { success: false, error: data.message || data.error || `HTTP ${resp.status}` };
       }
+      return { success: true, automation: data.automation };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to update status.' };
+    }
+  }
 
-      return (data as AutomationExecutionLog[]) || [];
-    } catch (err) {
-      console.warn('[AutomationService] Failed to fetch execution logs:', err);
-      return [];
+  public static async reviewQueueJob(
+    queueJobId: string,
+    decision: 'approve_job' | 'reject_job' | 'retry_job'
+  ): Promise<{ success: boolean; error?: string }> {
+    const { headers, authenticated } = await this.getAuthHeaders();
+    if (!authenticated) {
+      return { success: false, error: 'Sign in first.' };
+    }
+    try {
+      const resp = await fetch('/api/automations/dispatch', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          action: decision,
+          queue_job_id: queueJobId,
+        }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.success) {
+        return { success: false, error: data.message || data.error || `HTTP ${resp.status}` };
+      }
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Queue review failed.' };
     }
   }
 
   /**
-   * Triggers server-side automation execution via /api/automations/run.
-   * Strictly server-side execution. Never executes logic in React or browser.
+   * Triggers server-side automation execution via /api/automations/dispatch.
    */
   public static async triggerServerAutomation(
     actionType: string,
     automationId?: string,
-    payload?: Record<string, any>
-  ): Promise<{ success: boolean; log?: AutomationExecutionLog; error?: string }> {
+    payload?: Record<string, any>,
+    idempotencyKey?: string
+  ): Promise<{
+    success: boolean;
+    queued?: boolean;
+    requires_approval?: boolean;
+    log?: AutomationExecutionLog;
+    error?: string;
+  }> {
     try {
-      // Get current user session JWT if client is available
-      const client = getSupabaseClient();
-      let token: string | undefined = undefined;
-      if (client) {
-        const { data: { session } } = await client.auth.getSession();
-        token = session?.access_token;
+      const { headers, authenticated } = await this.getAuthHeaders();
+      if (!authenticated) {
+        return {
+          success: false,
+          error: 'Sign in to Yashwanth Hub to execute authenticated server automations.',
+        };
       }
 
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
+      const key = idempotencyKey || `manual_${automationId || actionType}_${Date.now()}`;
+      headers['Idempotency-Key'] = key;
 
-      const resp = await fetch('/api/automations/run', {
+      const resp = await fetch('/api/automations/dispatch', {
         method: 'POST',
         headers,
         body: JSON.stringify({
           action_type: actionType,
           automation_id: automationId,
-          payload: payload || {},
+          input_payload: payload || {},
+          trigger_source: 'manual',
+          idempotency_key: key,
         }),
       });
 
+      const data = await resp.json().catch(() => ({}));
       if (!resp.ok) {
-        const errorData = await resp.json().catch(() => ({}));
         return {
           success: false,
-          error: errorData.message || errorData.error || `Server responded with status ${resp.status}`,
+          error: data.message || data.error || `Server responded with status ${resp.status}`,
         };
       }
 
-      const data = await resp.json();
       return {
-        success: true,
+        success: Boolean(data.success),
+        queued: Boolean(data.queued),
+        requires_approval: Boolean(data.requires_approval),
         log: data.result,
+        error: data.error,
       };
     } catch (err: any) {
       console.error('[AutomationService] Server trigger failure:', err);
