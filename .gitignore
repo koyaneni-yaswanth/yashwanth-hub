@@ -39,3 +39,5 @@ service-account*.json
 .vercel
 supabase/.temp/
 .temp/
+low-speed-wind-turbine/
+
