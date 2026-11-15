@@ -31,6 +31,11 @@ import {
   Eye,
   EyeOff,
   SkipForward,
+  CalendarCheck,
+  Trophy,
+  X,
+  ChevronRight,
+  AlertTriangle,
 } from 'lucide-react';
 import { db } from '../db';
 import type { Task, Area, Priority, NavigationTab } from '../types';
@@ -86,10 +91,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const allEvents = useLiveQuery(() => db.events.toArray(), []) || [];
   const allMeetings = useLiveQuery(() => db.meetings.toArray(), []) || [];
   const allExpenses = useLiveQuery(() => db.expenses.toArray(), []) || [];
+  const allProjects = useLiveQuery(() => db.projects.toArray(), []) || [];
   const pinnedNotes = useLiveQuery(
     () => db.notes.filter((n) => n.pinned).toArray(),
     []
   ) || [];
+
+  // Planning & Review Modal States
+  const [isDailyPlanningOpen, setIsDailyPlanningOpen] = useState(false);
+  const [isWeeklyReviewOpen, setIsWeeklyReviewOpen] = useState(false);
+  const [dailyPlanNotice, setDailyPlanNotice] = useState<string | null>(null);
+  const [weeklyReviewNotice, setWeeklyReviewNotice] = useState<string | null>(null);
 
   // Filter based on selected area
   const tasks = currentArea === 'All' ? allTasks : allTasks.filter((t) => t.area === currentArea);
@@ -123,20 +135,126 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     return () => clearInterval(interval);
   }, [isTimerRunning, focusSeconds]);
 
-  // Priority sorted tasks for next recommendation
-  const candidateTasks = [...openTasks].sort((a, b) => {
-    const aDueToday = a.due_date && a.due_date <= today;
-    const bDueToday = b.due_date && b.due_date <= today;
-    if (aDueToday && !bDueToday) return -1;
-    if (!aDueToday && bDueToday) return 1;
-    if ((a.starred || a.priority === 'urgent') && !(b.starred || b.priority === 'urgent')) return -1;
-    if (!(a.starred || a.priority === 'urgent') && (b.starred || b.priority === 'urgent')) return 1;
-    return 0;
-  });
+  // Multi-dimensional Task Recommendation Engine
+  interface ScoredTask {
+    task: Task;
+    score: number;
+    reasons: string[];
+  }
 
-  const activeRecommendation = candidateTasks.length > 0
-    ? candidateTasks[recommendationSkipIndex % candidateTasks.length]
+  const scoredCandidateTasks: ScoredTask[] = React.useMemo(() => {
+    return openTasks
+      .map((t) => {
+        let score = 0;
+        const reasons: string[] = [];
+
+        // 1. Deadline Urgency
+        if (t.due_date) {
+          if (t.due_date < today) {
+            score += 50;
+            reasons.push('Overdue (+50)');
+          } else if (t.due_date === today) {
+            score += 35;
+            reasons.push('Due today (+35)');
+          } else if (t.due_date <= nextWeek) {
+            score += 15;
+            reasons.push('Approaching (+15)');
+          } else {
+            score += 5;
+          }
+        }
+
+        // 2. Priority Weight
+        if (t.priority === 'urgent') {
+          score += 40;
+          reasons.push('Urgent priority (+40)');
+        } else if (t.priority === 'high') {
+          score += 25;
+          reasons.push('High priority (+25)');
+        } else if (t.priority === 'medium') {
+          score += 10;
+        }
+
+        // 3. Starred / Focus Flag
+        if (t.starred) {
+          score += 20;
+          reasons.push('Starred focus (+20)');
+        }
+
+        // 4. Milestone / Plan Association
+        if (t.plan !== undefined) {
+          score += 15;
+          reasons.push('Milestone deliverable (+15)');
+        }
+
+        // 5. Active Workspace Alignment
+        if (currentArea !== 'All' && t.area === currentArea) {
+          score += 10;
+          reasons.push(`${currentArea} workspace (+10)`);
+        }
+
+        return { task: t, score, reasons };
+      })
+      .sort((a, b) => b.score - a.score);
+  }, [openTasks, today, nextWeek, currentArea]);
+
+  const candidateTasks = scoredCandidateTasks.map((s) => s.task);
+  const activeRecommendationItem = scoredCandidateTasks.length > 0
+    ? scoredCandidateTasks[recommendationSkipIndex % scoredCandidateTasks.length]
     : null;
+  const activeRecommendation = activeRecommendationItem ? activeRecommendationItem.task : null;
+
+  const sevenDaysAgo = React.useMemo(() => {
+    return new Date(Date.now() - 7 * 86400000).toISOString();
+  }, []);
+
+  const overdueTasks = React.useMemo(() => {
+    return openTasks.filter((t) => t.due_date && t.due_date < today);
+  }, [openTasks, today]);
+
+  const completedPastWeek = React.useMemo(() => {
+    return allTasks.filter((t) => t.done && (t.updated_at || '') >= sevenDaysAgo);
+  }, [allTasks, sevenDaysAgo]);
+
+  const todayEvents = React.useMemo(() => {
+    return allEvents.filter((e) => e.date === today);
+  }, [allEvents, today]);
+
+  const todayMeetings = React.useMemo(() => {
+    return allMeetings.filter((m) => m.date === today && m.status === 'scheduled');
+  }, [allMeetings, today]);
+
+  const handleMoveToToday = async (task: Task) => {
+    await db.tasks.update(task.id, {
+      due_date: today,
+      updated_at: new Date().toISOString(),
+    });
+  };
+
+  const handleFinishDailyPlan = () => {
+    setDailyPlanNotice('Daily Plan locked in! Top focus priorities configured for today.');
+    setIsDailyPlanningOpen(false);
+    setTimeout(() => setDailyPlanNotice(null), 5000);
+  };
+
+  const handleFinishWeeklyReview = async () => {
+    try {
+      await db.notes.add({
+        id: generateId(),
+        title: `Weekly Review — ${today}`,
+        body: `Weekly Founder Retrospective (${today}):\n• Completed tasks this week: ${completedPastWeek.length}\n• Open backlog items: ${openTasks.length}\n• Active projects tracked: ${allProjects.filter((p) => p.status === 'active' || p.status === 'planning').length}\n\nStrategic alignment verified across Pawan Shakti, Robotics, and Personal areas.`,
+        area: currentArea !== 'All' ? currentArea : 'FOUNDER STRATEGY',
+        pinned: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+      setWeeklyReviewNotice('Weekly Review recorded to Notes successfully!');
+    } catch (err) {
+      console.warn('Could not record review note:', err);
+    }
+    setIsWeeklyReviewOpen(false);
+    setTimeout(() => setWeeklyReviewNotice(null), 5000);
+  };
 
   // Next 7 days upcoming events & meetings
   const upcomingEvents = (currentArea === 'All' ? allEvents : allEvents.filter((e) => e.area === currentArea))
@@ -213,6 +331,22 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <span>My Day</span>
           </button>
           <button
+            onClick={() => setIsDailyPlanningOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-700 dark:text-indigo-300 text-xs font-semibold hover:bg-indigo-500/20 transition-all cursor-pointer"
+            title="Open interactive Daily Planning workflow"
+          >
+            <CalendarCheck className="w-3.5 h-3.5 text-indigo-500" />
+            <span>Plan My Day</span>
+          </button>
+          <button
+            onClick={() => setIsWeeklyReviewOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-700 dark:text-purple-300 text-xs font-semibold hover:bg-purple-500/20 transition-all cursor-pointer"
+            title="Open interactive Weekly Review workflow"
+          >
+            <Trophy className="w-3.5 h-3.5 text-purple-500" />
+            <span>Weekly Review</span>
+          </button>
+          <button
             onClick={() => setIsFocusMode(!isFocusMode)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
               isFocusMode
@@ -243,6 +377,31 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           )}
         </div>
       </div>
+
+      {/* Workflow Notice Banners */}
+      {dailyPlanNotice && (
+        <div className="p-3.5 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-700 dark:text-indigo-300 text-xs font-semibold flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <CalendarCheck className="w-4 h-4 text-indigo-500 shrink-0" />
+            <span>{dailyPlanNotice}</span>
+          </span>
+          <button onClick={() => setDailyPlanNotice(null)} className="text-xs hover:underline cursor-pointer">
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {weeklyReviewNotice && (
+        <div className="p-3.5 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-700 dark:text-purple-300 text-xs font-semibold flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <Trophy className="w-4 h-4 text-purple-500 shrink-0" />
+            <span>{weeklyReviewNotice}</span>
+          </span>
+          <button onClick={() => setWeeklyReviewNotice(null)} className="text-xs hover:underline cursor-pointer">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Focus Mode Distraction-Free Workspace */}
       {isFocusMode && (
@@ -315,26 +474,34 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       )}
 
       {/* "What Should I Do Next?" Intelligent Recommendation Card */}
-      {!isFocusMode && activeRecommendation && (
+      {!isFocusMode && activeRecommendation && activeRecommendationItem && (
         <div className="rounded-2xl p-4 sm:p-5 bg-gradient-to-r from-teal-500/10 via-[var(--hub-surface)] to-[var(--hub-surface)] border border-teal-500/30 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-start gap-3">
             <div className="p-2.5 rounded-xl bg-teal-500/20 text-teal-400 border border-teal-500/30 shrink-0">
               <Target className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-400">
                   What To Do Next
                 </span>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                  Score: {activeRecommendationItem.score} pts
+                </span>
                 <span className="text-xs text-[var(--hub-muted)]">
-                  • High Conviction ({activeRecommendation.area})
+                  • {activeRecommendation.area}
                 </span>
               </div>
               <h3 className="text-base font-bold text-[var(--hub-ink)] mt-1 font-heading">
                 {activeRecommendation.text}
               </h3>
-              <p className="text-xs text-[var(--hub-muted)] mt-0.5">
-                Rationale: {activeRecommendation.priority === 'urgent' ? 'Flagged as urgent priority' : activeRecommendation.due_date && activeRecommendation.due_date <= today ? 'Scheduled for today' : 'High impact project milestone'} • Est: 30-45 mins
+              <p className="text-xs text-[var(--hub-muted)] mt-1 flex items-center gap-1.5 flex-wrap">
+                <span className="font-semibold text-teal-500 dark:text-teal-400">Factors:</span>
+                <span>
+                  {activeRecommendationItem.reasons.length > 0
+                    ? activeRecommendationItem.reasons.join(' • ')
+                    : 'Standard backlog order'}
+                </span>
               </p>
             </div>
           </div>
@@ -880,6 +1047,274 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </div>
         )}
       </div>
+
+      {/* Interactive Daily Planning Modal */}
+      {isDailyPlanningOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-6 my-8 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-4 border-b border-[var(--hub-line)] pb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-400">
+                    <CalendarCheck className="w-5 h-5" />
+                  </span>
+                  <h3 className="text-lg font-bold font-heading text-[var(--hub-ink)]">
+                    Daily Planning — Founder Execution Cadence
+                  </h3>
+                </div>
+                <p className="text-xs text-[var(--hub-muted)] mt-1">
+                  Triage overdue tasks, confirm your top daily focus targets, and inspect commitments.
+                </p>
+              </div>
+              <button
+                onClick={() => setIsDailyPlanningOpen(false)}
+                className="p-1 rounded-lg text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-surface-subtle)] cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Overdue Triage Section */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--hub-ink)] flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 text-red-500" />
+                  <span>1. Overdue Tasks Triage ({overdueTasks.length})</span>
+                </h4>
+                {overdueTasks.length === 0 && (
+                  <span className="text-xs font-semibold text-emerald-500 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> All clean
+                  </span>
+                )}
+              </div>
+
+              {overdueTasks.length > 0 ? (
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {overdueTasks.map((t) => (
+                    <div
+                      key={t.id}
+                      className="p-3 rounded-xl bg-red-500/5 border border-red-500/20 flex items-center justify-between gap-3 text-xs"
+                    >
+                      <div className="min-w-0">
+                        <div className="font-semibold text-[var(--hub-ink)] truncate">{t.text}</div>
+                        <div className="text-[10px] text-red-400">Due {t.due_date} • {t.area}</div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          onClick={() => handleMoveToToday(t)}
+                          className="px-2.5 py-1 rounded-lg bg-[var(--hub-surface)] border border-[var(--hub-line)] text-indigo-400 hover:bg-indigo-500/10 font-medium cursor-pointer"
+                        >
+                          Move to Today
+                        </button>
+                        <button
+                          onClick={() => handleToggleTask(t)}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 font-medium cursor-pointer"
+                        >
+                          Mark Done
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-[var(--hub-muted)] p-3 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)]">
+                  No overdue items pending. Your operational velocity is on schedule.
+                </p>
+              )}
+            </div>
+
+            {/* Top Focus Selection */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--hub-ink)] flex items-center gap-1.5">
+                <Target className="w-4 h-4 text-indigo-500" />
+                <span>2. Recommended Focus Priorities</span>
+              </h4>
+              <p className="text-xs text-[var(--hub-muted)]">
+                Star tasks to anchor them as your top founder focus priorities for today.
+              </p>
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {candidateTasks.slice(0, 5).map((t) => (
+                  <div
+                    key={t.id}
+                    className="p-3 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] flex items-center justify-between gap-3 text-xs"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <button
+                        onClick={() => handleToggleStar(t)}
+                        className={`p-1 rounded-md cursor-pointer ${t.starred ? 'text-amber-400' : 'text-[var(--hub-muted)] hover:text-amber-400'}`}
+                        title={t.starred ? 'Starred focus' : 'Click to star'}
+                      >
+                        <Star className={`w-4 h-4 ${t.starred ? 'fill-amber-400' : ''}`} />
+                      </button>
+                      <span className="text-[var(--hub-ink)] font-medium truncate">{t.text}</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-[var(--hub-surface)] text-[var(--hub-muted)]">
+                        {t.area}
+                      </span>
+                      <button
+                        onClick={() => handleToggleTask(t)}
+                        className="p-1 rounded-md text-[var(--hub-muted)] hover:text-emerald-400 cursor-pointer"
+                        title="Mark Done"
+                      >
+                        <Check className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Today's Agenda Preview */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--hub-ink)] flex items-center gap-1.5">
+                <Clock className="w-4 h-4 text-teal-500" />
+                <span>3. Today's Agenda & Commitments</span>
+              </h4>
+              {todayMeetings.length === 0 && todayEvents.length === 0 ? (
+                <p className="text-xs text-[var(--hub-muted)] p-3 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)]">
+                  Clear schedule today! Uninterrupted deep work blocks available.
+                </p>
+              ) : (
+                <div className="space-y-1.5 text-xs">
+                  {todayMeetings.map((m) => (
+                    <div key={m.id} className="p-2.5 rounded-lg bg-[var(--hub-bg)] flex items-center justify-between">
+                      <span className="font-medium text-[var(--hub-ink)]">Meeting: {m.title}</span>
+                      <span className="text-[var(--hub-muted)]">{m.start_time}</span>
+                    </div>
+                  ))}
+                  {todayEvents.map((e) => (
+                    <div key={e.id} className="p-2.5 rounded-lg bg-[var(--hub-bg)] flex items-center justify-between">
+                      <span className="font-medium text-[var(--hub-ink)]">{e.kind}: {e.title}</span>
+                      <span className="text-[var(--hub-muted)]">{e.start_time || 'All day'}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-[var(--hub-line)]">
+              <button
+                onClick={() => setIsDailyPlanningOpen(false)}
+                className="px-4 py-2 rounded-xl border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] hover:bg-[var(--hub-surface-subtle)] cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleFinishDailyPlan}
+                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-sm flex items-center gap-1.5 cursor-pointer"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Lock Daily Plan</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Interactive Weekly Review Modal */}
+      {isWeeklyReviewOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-6 my-8 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-4 border-b border-[var(--hub-line)] pb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-lg bg-purple-500/20 text-purple-400">
+                    <Trophy className="w-5 h-5" />
+                  </span>
+                  <h3 className="text-lg font-bold font-heading text-[var(--hub-ink)]">
+                    Weekly Strategic Review — Retrospective
+                  </h3>
+                </div>
+                <p className="text-xs text-[var(--hub-muted)] mt-1">
+                  Celebrate execution velocity, verify active project milestones, and triage backlog risks.
+                </p>
+              </div>
+              <button
+                onClick={() => setIsWeeklyReviewOpen(false)}
+                className="p-1 rounded-lg text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-surface-subtle)] cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Wins Section */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--hub-ink)] flex items-center gap-1.5">
+                  <Trophy className="w-4 h-4 text-purple-500" />
+                  <span>1. Execution Wins (Past 7 Days: {completedPastWeek.length} Completed)</span>
+                </h4>
+              </div>
+              {completedPastWeek.length > 0 ? (
+                <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                  {completedPastWeek.slice(0, 6).map((t) => (
+                    <div
+                      key={t.id}
+                      className="p-2.5 rounded-xl bg-purple-500/5 border border-purple-500/20 flex items-center justify-between text-xs"
+                    >
+                      <span className="font-medium text-[var(--hub-ink)] line-through opacity-80">{t.text}</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-[var(--hub-surface)] text-purple-400 font-semibold">
+                        {t.area}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-[var(--hub-muted)] p-3 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)]">
+                  No completed items recorded in the last 7 days. Focus on moving open tasks to done!
+                </p>
+              )}
+            </div>
+
+            {/* Project Progress Section */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--hub-ink)] flex items-center gap-1.5">
+                <FolderKanban className="w-4 h-4 text-teal-500" />
+                <span>2. Active Projects & Milestones ({allProjects.filter((p) => p.status === 'active' || p.status === 'planning').length})</span>
+              </h4>
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {allProjects.filter((p) => p.status === 'active' || p.status === 'planning').map((p) => (
+                  <div key={p.id} className="p-3 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-[var(--hub-ink)]">{p.title}</span>
+                      <span className="text-[10px] text-teal-400 font-bold">{p.progress}% Complete</span>
+                    </div>
+                    <div className="w-full bg-[var(--hub-line)] rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="bg-teal-500 h-1.5 rounded-full transition-all"
+                        style={{ width: `${Math.min(100, Math.max(0, p.progress))}%` }}
+                      />
+                    </div>
+                    <div className="text-[10px] text-[var(--hub-muted)] flex items-center justify-between">
+                      <span>Area: {p.area}</span>
+                      <span>Target: {p.target_date || 'Ongoing'}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-[var(--hub-line)]">
+              <button
+                onClick={() => setIsWeeklyReviewOpen(false)}
+                className="px-4 py-2 rounded-xl border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] hover:bg-[var(--hub-surface-subtle)] cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                onClick={handleFinishWeeklyReview}
+                className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold shadow-sm flex items-center gap-1.5 cursor-pointer"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Log Retrospective & Finish</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

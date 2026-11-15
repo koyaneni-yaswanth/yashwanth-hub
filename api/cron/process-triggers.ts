@@ -4,7 +4,7 @@
 // Enqueues due recurring & one-time schedules into public.automation_queue,
 // respects approval gating, and executes due jobs with backoff retries.
 
-import { isServerSupabaseConfigured, supabaseServer } from '../_lib/db.ts';
+import { hasServiceRoleKey, isServerSupabaseConfigured, supabaseServer } from '../_lib/db.ts';
 import { processAutomationTick } from '../_lib/queueEngine.ts';
 import { executeAutomationRun } from '../_lib/runner.ts';
 
@@ -45,7 +45,19 @@ export function createCronTriggersHandler(dbClient: any = supabaseServer) {
         error: 'Server Database Not Configured',
         configured: false,
         message:
-          'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in Vercel Environment Variables before cron jobs can read or persist automation state.',
+          'SUPABASE_URL and SUPABASE_ANON_KEY (or SUPABASE_SERVICE_ROLE_KEY) must be set in Vercel Environment Variables before cron jobs can read or persist automation state.',
+      });
+    }
+
+    if (dbClient === supabaseServer && !hasServiceRoleKey()) {
+      return res.status(200).json({
+        success: true,
+        configured: true,
+        hasServiceRoleKey: false,
+        processedAutomationsCount: 0,
+        executed: [],
+        message:
+          'Unattended background cron requires SUPABASE_SERVICE_ROLE_KEY to bypass RLS and process queues across users without active sessions. User-triggered automations are operational.',
       });
     }
 

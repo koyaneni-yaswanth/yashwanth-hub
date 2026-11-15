@@ -55,14 +55,16 @@ export function createDispatchHandler(
       });
     }
 
+    const activeClient = (auth as any).client || dbClient;
+
     // ---------------------------------------------------------------------------
     // GET: Return user-scoped automations, durable queue jobs, and recent runs
     // ---------------------------------------------------------------------------
     if (req.method === 'GET') {
       try {
-        let automationsQuery = dbClient.from('automations').select('*').order('created_at', { ascending: false });
-        let queueQuery = dbClient.from('automation_queue').select('*').order('created_at', { ascending: false }).limit(40);
-        let runsQuery = dbClient.from('automation_runs').select('*').order('created_at', { ascending: false }).limit(40);
+        let automationsQuery = activeClient.from('automations').select('*').order('created_at', { ascending: false });
+        let queueQuery = activeClient.from('automation_queue').select('*').order('created_at', { ascending: false }).limit(40);
+        let runsQuery = activeClient.from('automation_runs').select('*').order('created_at', { ascending: false }).limit(40);
 
         if (auth.userId) {
           automationsQuery = automationsQuery.eq('user_id', auth.userId);
@@ -298,7 +300,7 @@ export function createDispatchHandler(
       let effectiveUserId = auth.userId;
 
       if (automation_id) {
-        let query = dbClient.from('automations').select('*').eq('id', automation_id);
+        let query = activeClient.from('automations').select('*').eq('id', automation_id);
         if (auth.userId) {
           query = query.eq('user_id', auth.userId);
         }
@@ -326,7 +328,7 @@ export function createDispatchHandler(
       }
 
       // Database-backed idempotency check scoped to user
-      const { data: existingRun } = await dbClient
+      const { data: existingRun } = await activeClient
         .from('automation_runs')
         .select('*')
         .eq('idempotency_key', idempotencyKey)
@@ -346,7 +348,7 @@ export function createDispatchHandler(
         });
       }
 
-      const { data: existingQueue } = await dbClient
+      const { data: existingQueue } = await activeClient
         .from('automation_queue')
         .select('*')
         .eq('idempotency_key', idempotencyKey)
@@ -374,11 +376,11 @@ export function createDispatchHandler(
           approval_status: requiresApproval ? 'pending_approval' : 'auto_approved',
           idempotency_key: idempotencyKey,
         },
-        dbClient
+        activeClient
       );
 
       if (requiresApproval) {
-        await dbClient.from('notifications').insert({
+        await activeClient.from('notifications').insert({
           user_id: effectiveUserId,
           title: `Approval Required: ${targetActionType}`,
           message: `Automation job queued for manual confirmation before execution.`,

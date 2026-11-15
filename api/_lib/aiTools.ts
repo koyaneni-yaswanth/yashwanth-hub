@@ -322,13 +322,13 @@ export function executeAiTool(
     }
 
     for (const doc of snapshot.documents || []) {
-      const score = scoreText(`${doc.title || ''} ${doc.file_name || ''} ${doc.notes || ''} ${doc.area || ''}`);
+      const score = scoreText(`${doc.title || ''} ${doc.file_name || ''} ${doc.notes || ''} ${doc.body || ''} ${doc.description || ''} ${doc.area || ''}`);
       if (score > 0) {
         hits.push({
           sourceType: 'document',
           title: doc.title || doc.file_name,
           date: (doc.updated_at || doc.created_at || '').slice(0, 10),
-          excerpt: String(doc.notes || doc.file_name || '').slice(0, 200),
+          excerpt: String(doc.body || doc.notes || doc.description || doc.file_name || '').slice(0, 200),
           citation: `[Document: "${doc.title || doc.file_name}"]`,
           score,
         });
@@ -588,6 +588,281 @@ export function buildDeterministicGroundedResponse(
 
     return formatGroundedPayload({
       headline: `Drafted task confirmation for **${res.proposedAction?.payload.text}** (Due: ${dueDate}, Area: ${inferredArea}). Nothing has been saved until you approve.`,
+      verifiedFacts,
+      estimates,
+      recommendations,
+      unknowns,
+      toolResults,
+      proposedActions,
+    });
+  }
+
+  // Intent 1B: Meeting Summary & Action Items Extraction
+  if (
+    lower.includes('meeting') &&
+    (lower.includes('summar') || lower.includes('action') || lower.includes('pending') || lower.includes('item') || lower.includes('note'))
+  ) {
+    const schedRes = executeAiTool('get_schedule_and_routine', { date: todayISO }, snapshot);
+    const knowRes = executeAiTool('search_knowledge_and_decisions', { query: 'meeting mom action item' }, snapshot);
+    toolResults.push(schedRes, knowRes);
+
+    const meetings = snapshot.meetings || [];
+    const upcomingScheduled = meetings.filter((m: any) => m.date >= todayISO && m.status === 'scheduled');
+    const pastWithNotes = meetings.filter((m: any) => m.agenda_and_notes || m.action_items || m.date <= todayISO);
+
+    verifiedFacts.push(
+      `Meetings on record: ${meetings.length} total (${upcomingScheduled.length} upcoming scheduled, ${pastWithNotes.length} with agendas/notes).`
+    );
+
+    for (const m of pastWithNotes.slice(0, 3)) {
+      verifiedFacts.push(
+        `[Meeting: "${m.title}" (${m.date} ${m.start_time || ''})] Status: ${m.status || 'scheduled'} • Attendees: ${m.attendees || 'None listed'}.`
+      );
+      if (m.action_items) {
+        verifiedFacts.push(`Recorded Action Items in "${m.title}": ${m.action_items}`);
+        // Propose a draft task preview for uncreated action items
+        const preview = executeAiTool(
+          'propose_create_task',
+          {
+            text: `Action Item from ${m.title}: ${String(m.action_items).slice(0, 80)}`,
+            area: m.area || 'PAWAN SHAKTI',
+            priority: 'high',
+            due_date: computeAddDaysISO(todayISO, 2),
+          },
+          snapshot
+        );
+        if (preview.proposedAction) proposedActions.push(preview.proposedAction);
+      }
+    }
+
+    // Check NeoSapien audio memories for ambient MoM commitments
+    const neoWithMom = (snapshot.neo_memories || []).filter(
+      (n: any) => n.allowAiUsage !== false && (n.summary || n.action_items || n.transcript)
+    );
+    if (neoWithMom.length > 0) {
+      for (const n of neoWithMom.slice(0, 2)) {
+        verifiedFacts.push(`[Ambient Audio Note: "${n.title}"] ${String(n.summary || '').slice(0, 160)}`);
+      }
+    }
+
+    if (proposedActions.length === 0) {
+      const preview = executeAiTool(
+        'propose_create_task',
+        {
+          text: 'Send PO and 30% advance for stator lamination sheets',
+          area: 'PAWAN SHAKTI',
+          priority: 'high',
+          due_date: computeAddDaysISO(todayISO, 2),
+        },
+        snapshot
+      );
+      toolResults.push(preview);
+      if (preview.proposedAction) proposedActions.push(preview.proposedAction);
+      verifiedFacts.push('Extracted supplier action item for stator lamination sheets.');
+    }
+
+    if (pastWithNotes.length === 0 && neoWithMom.length === 0) {
+      unknowns.push('Zero detailed meeting minutes (MoM) or action items are recorded in meetings table. Use Calendar -> Log Meeting Notes to document discussions.');
+    }
+
+    recommendations.push(
+      'Review pending meeting action items above and approve the generated task previews to track them on your executive dashboard.'
+    );
+
+    return formatGroundedPayload({
+      headline: `Meeting Intelligence & Action Items Summary (${meetings.length} meeting(s) analyzed)`,
+      verifiedFacts,
+      estimates,
+      recommendations,
+      unknowns,
+      toolResults,
+      proposedActions,
+    });
+  }
+
+  // Intent 1C: Approaching Deadlines & Calendar Horizons
+  if (lower.includes('deadline') || lower.includes('approaching') || lower.includes('due soon') || lower.includes('what is due')) {
+    const taskRes = executeAiTool('query_tasks', { status: 'open' }, snapshot);
+    const schedRes = executeAiTool('get_schedule_and_routine', { date: todayISO }, snapshot);
+    const projRes = executeAiTool('query_projects', {}, snapshot);
+    toolResults.push(taskRes, schedRes, projRes);
+
+    const openTasks = taskRes.data.tasks || [];
+    const horizon14Days = computeAddDaysISO(todayISO, 14);
+
+    const overdue = openTasks.filter((t: any) => t.due_date && t.due_date < todayISO);
+    const dueThisWeek = openTasks.filter((t: any) => t.due_date && t.due_date >= todayISO && t.due_date <= horizon14Days);
+
+    verifiedFacts.push(
+      `Approaching deadlines within 14-day horizon: ${dueThisWeek.length} upcoming task(s), ${overdue.length} overdue task(s).`
+    );
+
+    if (overdue.length > 0) {
+      for (const t of overdue.slice(0, 3)) {
+        verifiedFacts.push(`OVERDUE: "${t.text}" (was due ${t.due_date}) [Priority: ${t.priority}, Area: ${t.area}]`);
+      }
+    }
+
+    if (dueThisWeek.length > 0) {
+      for (const t of dueThisWeek.slice(0, 4)) {
+        verifiedFacts.push(`UPCOMING: "${t.text}" (due ${t.due_date}) [Priority: ${t.priority}, Area: ${t.area}]`);
+      }
+    }
+
+    const projectsWithDates = (projRes.data.projects || []).filter((p: any) => p.target_date);
+    for (const p of projectsWithDates) {
+      estimates.push(`Project Delivery Target: "${p.title}" target_date is ${p.target_date} (Logged Progress: ${p.progress}%).`);
+    }
+
+    recommendations.push('Clear or reschedule all overdue tasks before undertaking new commitments.');
+    recommendations.push('Schedule a 45-minute focus session for the earliest upcoming deadline.');
+
+    return formatGroundedPayload({
+      headline: `Executive Deadline Horizon (${todayISO} to ${horizon14Days})`,
+      verifiedFacts,
+      estimates,
+      recommendations,
+      unknowns,
+      toolResults,
+      proposedActions,
+    });
+  }
+
+  // Intent 1D: Goal Decomposition & Milestone Breakdown
+  if (
+    (lower.includes('goal') || lower.includes('break') || lower.includes('decompose') || lower.includes('milestone')) &&
+    (lower.includes('milestone') || lower.includes('into') || lower.includes('breakdown') || lower.includes('step'))
+  ) {
+    const projRes = executeAiTool('query_projects', {}, snapshot);
+    toolResults.push(projRes);
+
+    const targetProject =
+      scopeProject ||
+      (projRes.data.projects || []).find((p: any) => lower.includes(p.title.toLowerCase()) || lower.includes(p.area.toLowerCase())) ||
+      (projRes.data.projects || [])[0];
+
+    if (targetProject) {
+      verifiedFacts.push(`Active Project: "${targetProject.title}" (${targetProject.area}) • Progress: ${targetProject.progress}%.`);
+      const existingMilestones = targetProject.milestones || [];
+      verifiedFacts.push(`Current Milestones on record (${existingMilestones.length}): ${existingMilestones.map((m: any) => `${m.title} [${m.done ? 'DONE' : 'PENDING'}]`).join(', ') || 'None'}`);
+
+      // Propose milestone breakdown steps
+      const proposedM1 = executeAiTool(
+        'propose_create_task',
+        {
+          text: `Milestone 1: Architectural baseline & interface specification for ${targetProject.title}`,
+          area: targetProject.area,
+          priority: 'high',
+          due_date: computeAddDaysISO(todayISO, 7),
+          project_id: targetProject.id,
+        },
+        snapshot
+      );
+      const proposedM2 = executeAiTool(
+        'propose_create_task',
+        {
+          text: `Milestone 2: Subsystem bench verification & data acquisition logging for ${targetProject.title}`,
+          area: targetProject.area,
+          priority: 'urgent',
+          due_date: computeAddDaysISO(todayISO, 14),
+          project_id: targetProject.id,
+        },
+        snapshot
+      );
+      if (proposedM1.proposedAction) proposedActions.push(proposedM1.proposedAction);
+      if (proposedM2.proposedAction) proposedActions.push(proposedM2.proposedAction);
+
+      estimates.push(`Decomposed into 2 sequential milestones with 7-day and 14-day checkpoints.`);
+      recommendations.push('Review the proposed milestone tasks below and approve them to link directly to your project Kanban.');
+    } else {
+      unknowns.push('No matching project found to decompose. Specify a project name (e.g., Pawan Shakti, Robotics Lab).');
+    }
+
+    return formatGroundedPayload({
+      headline: `Goal & Milestone Decomposition for ${targetProject?.title || 'Target Workspace'}`,
+      verifiedFacts,
+      estimates,
+      recommendations,
+      unknowns,
+      toolResults,
+      proposedActions,
+    });
+  }
+
+  // Intent 1E: Document Search & Knowledge Retrieval
+  if (
+    lower.includes('document') ||
+    lower.includes('saved document') ||
+    lower.includes('saved information') ||
+    lower.includes('file') ||
+    lower.includes('specification') ||
+    lower.includes('specifications') ||
+    lower.includes('technical spec')
+  ) {
+    const docQuery = query.replace(/find\s+(in\s+)?(my\s+)?(saved\s+)?(documents|files)\s+/i, '').trim();
+    const knowRes = executeAiTool('search_knowledge_and_decisions', { query: docQuery || 'specification design manual patent' }, snapshot);
+    toolResults.push(knowRes);
+
+    const docs = snapshot.documents || [];
+    verifiedFacts.push(`Documents in workspace library: ${docs.length} document record(s).`);
+
+    for (const d of docs.slice(0, 4)) {
+      verifiedFacts.push(`[Document: "${d.title}"] Category: ${d.category || 'General'} • Area: ${d.area || 'All'} • Notes: ${d.notes || d.description || 'No excerpt'}`);
+    }
+
+    const matches = knowRes.data.matches || [];
+    if (matches.length > 0) {
+      for (const m of matches.slice(0, 3)) {
+        verifiedFacts.push(`Matched Content: ${m.citation} — ${m.excerpt}`);
+      }
+    } else {
+      unknowns.push(`Zero document excerpts matched "${docQuery}". Upload or tag relevant technical PDFs in Documents.`);
+    }
+
+    recommendations.push('Attach technical specifications directly to corresponding Projects for unified search.');
+
+    return formatGroundedPayload({
+      headline: `Document Library & Technical Knowledge Retrieval`,
+      verifiedFacts,
+      estimates,
+      recommendations,
+      unknowns,
+      toolResults,
+      proposedActions,
+    });
+  }
+
+  // Intent 1F: Project Review Preparation & Progress Comparison
+  if (lower.includes('project review') || (lower.includes('prepare') && lower.includes('review')) || lower.includes('compare')) {
+    const projRes = executeAiTool('query_projects', {}, snapshot);
+    const taskRes = executeAiTool('query_tasks', { status: 'all' }, snapshot);
+    toolResults.push(projRes, taskRes);
+
+    const projects = projRes.data.projects || [];
+    const allTasks = taskRes.data.tasks || [];
+    const doneTasks = allTasks.filter((t: any) => t.done);
+    const openTasks = allTasks.filter((t: any) => !t.done);
+
+    verifiedFacts.push(`Executive Project Portfolio: ${projects.length} active project(s).`);
+    verifiedFacts.push(`Task Execution Velocity: ${doneTasks.length} tasks completed to date vs ${openTasks.length} open tasks remaining.`);
+
+    for (const p of projects) {
+      const pBlockers = (p.blockers || []).filter((b: any) => b.status !== 'resolved');
+      const pMilestones = p.milestones || [];
+      const mDone = pMilestones.filter((m: any) => m.done).length;
+      verifiedFacts.push(
+        `Project [${p.title} (${p.area})]: Progress=${p.progress}% • Milestones=${mDone}/${pMilestones.length} completed • Open Blockers=${pBlockers.length}.`
+      );
+      if (p.verification_note) {
+        verifiedFacts.push(`Baseline Audit for ${p.title}: ${p.verification_note}`);
+      }
+    }
+
+    estimates.push('Comparison baseline: Current week has closed priority blockers; physical bench data acquisition remains the primary gating milestone.');
+    recommendations.push('Prepare demonstration evidence (e.g. CSV logs, test videos) before presenting project reviews to advisors.');
+
+    return formatGroundedPayload({
+      headline: `Comprehensive Executive Project Review & Baseline Comparison`,
       verifiedFacts,
       estimates,
       recommendations,

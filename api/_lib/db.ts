@@ -19,9 +19,31 @@ export function isServerSupabaseConfigured(): boolean {
     rawUrl &&
       rawUrl.startsWith('https://') &&
       !rawUrl.includes('sample-project.supabase.co') &&
-      rawServiceKey &&
+      rawFallbackKey &&
+      rawFallbackKey !== 'service-role-placeholder'
+  );
+}
+
+export function hasServiceRoleKey(): boolean {
+  return Boolean(
+    rawServiceKey &&
       rawServiceKey !== 'service-role-placeholder'
   );
+}
+
+export function createUserScopedClient(userToken?: string) {
+  if (!userToken) return supabaseServer;
+  return createClient(supabaseUrl, rawFallbackKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+    global: {
+      headers: {
+        Authorization: `Bearer ${userToken}`,
+      },
+    },
+  });
 }
 
 const supabaseUrl = rawUrl || 'https://sample-project.supabase.co';
@@ -40,6 +62,7 @@ export interface RequestAuthResult {
   email?: string;
   isCron?: boolean;
   error?: string;
+  client?: any;
 }
 
 /**
@@ -87,6 +110,7 @@ export async function resolveAuthenticatedUser(
       authenticated: true,
       userId: data.user.id,
       email: data.user.email || undefined,
+      client: createUserScopedClient(token),
     };
   } catch (err: any) {
     return {
