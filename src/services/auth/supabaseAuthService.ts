@@ -1,5 +1,5 @@
-import { getSupabaseClient, getSupabaseConfig, isSupabaseConfigured } from '../../lib/supabase';
-import { CapacitorService } from '../native/capacitorService';
+import { getSupabaseClient, getSupabaseConfig, isSupabaseConfigured } from '../../lib/supabase.ts';
+import { CapacitorService } from '../native/capacitorService.ts';
 import type { Session, User } from '@supabase/supabase-js';
 
 export interface AuthState {

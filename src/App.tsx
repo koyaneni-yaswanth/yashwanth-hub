@@ -81,7 +81,7 @@ function HubMain() {
       lastAuthUserId = nextUserId;
     });
 
-    const boot = async () => {
+    const initApp = async () => {
       await initializeDatabase();
       setIsDbReady(true);
 
@@ -93,48 +93,45 @@ function HubMain() {
       RealtimeSyncManager.init();
       ReminderEngine.runIntelligenceScan().catch(() => {});
       IntegrationVaultService.initSessionRestoration().catch(() => {});
-    };
-    boot();
 
-    // Parse URL callbacks & navigation deep links
-    const hash = window.location.hash;
-    const search = window.location.search;
-    const searchParams = new URLSearchParams(search);
-    const hashParams = new URLSearchParams(hash.replace(/^#/, ''));
+      // Parse URL callbacks & navigation deep links AFTER session hydration
+      const hash = window.location.hash;
+      const search = window.location.search;
+      const searchParams = new URLSearchParams(search);
+      const hashParams = new URLSearchParams(hash.replace(/^#/, ''));
 
-    const requestedTab = searchParams.get('tab') as NavigationTab | null;
-    if (requestedTab) {
-      setCurrentTab(requestedTab);
-    }
+      const requestedTab = searchParams.get('tab') as NavigationTab | null;
+      if (requestedTab) {
+        setCurrentTab(requestedTab);
+      }
 
-    const googleServerErr = searchParams.get('google_error');
-    const googleServerDesc = searchParams.get('google_error_desc');
-    const hasGooglePkceContext =
-      (typeof sessionStorage !== 'undefined' && Boolean(sessionStorage.getItem('yash_google_pkce_verifier'))) ||
-      (searchParams.get('state') || '').startsWith('g_');
-    const isGoogleImplicitHash =
-      hashParams.has('access_token') && !hashParams.has('refresh_token') && !hashParams.has('provider_token');
+      const googleServerErr = searchParams.get('google_error');
+      const googleServerDesc = searchParams.get('google_error_desc');
+      const hasGooglePkceContext =
+        (typeof sessionStorage !== 'undefined' && Boolean(sessionStorage.getItem('yash_google_pkce_verifier'))) ||
+        (searchParams.get('state') || '').startsWith('g_');
+      const isGoogleImplicitHash =
+        hashParams.has('access_token') && !hashParams.has('refresh_token') && !hashParams.has('provider_token');
 
-    if (googleServerErr) {
-      const parsedErr = GoogleAuthService.parseOAuthCallback(`error=${encodeURIComponent(googleServerErr)}`);
-      setOauthError({
-        message: googleServerDesc || parsedErr.errorMessage || `Google OAuth error: ${googleServerErr}`,
-        hint: parsedErr.resolutionHint,
-      });
-      setCurrentTab('integrations');
-      window.history.replaceState(null, '', window.location.pathname);
-    } else if (searchParams.get('google_connected') === 'true') {
-      IntegrationVaultService.initSessionRestoration(true).then(() => {
+      if (googleServerErr) {
+        const parsedErr = GoogleAuthService.parseOAuthCallback(`error=${encodeURIComponent(googleServerErr)}`);
+        setOauthError({
+          message: googleServerDesc || parsedErr.errorMessage || `Google OAuth error: ${googleServerErr}`,
+          hint: parsedErr.resolutionHint,
+        });
         setCurrentTab('integrations');
-      });
-      window.history.replaceState(null, '', window.location.pathname);
-    } else if (searchParams.has('code') && !searchParams.has('neo_code') && hasGooglePkceContext) {
-      const parsed = GoogleAuthService.parseOAuthCallback(
-        search,
-        typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('yash_google_oauth_state') : null
-      );
-      if (parsed.success && parsed.flow === 'code' && parsed.code) {
-        GoogleAuthService.exchangeAuthorizationCode(parsed.code, parsed.state).then((ex) => {
+        window.history.replaceState(null, '', window.location.pathname);
+      } else if (searchParams.get('google_connected') === 'true') {
+        await IntegrationVaultService.initSessionRestoration(true);
+        setCurrentTab('integrations');
+        window.history.replaceState(null, '', window.location.pathname);
+      } else if (searchParams.has('code') && !searchParams.has('neo_code') && hasGooglePkceContext) {
+        const parsed = GoogleAuthService.parseOAuthCallback(
+          search,
+          typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('yash_google_oauth_state') : null
+        );
+        if (parsed.success && parsed.flow === 'code' && parsed.code) {
+          const ex = await GoogleAuthService.exchangeAuthorizationCode(parsed.code, parsed.state);
           if (!ex.success) {
             setOauthError({
               message: ex.error || 'Failed to exchange Google authorization code.',
@@ -144,33 +141,32 @@ function HubMain() {
             IntegrationVaultService.initSessionRestoration(true).catch(() => {});
           }
           setCurrentTab('integrations');
-        });
-      } else {
-        setOauthError({
-          message: parsed.errorMessage || 'Google OAuth code callback invalid.',
-          hint: parsed.resolutionHint,
-        });
-        setCurrentTab('integrations');
-      }
-      window.history.replaceState(null, '', window.location.pathname);
-    } else if (isGoogleImplicitHash || hashParams.has('error') || (searchParams.has('error') && hasGooglePkceContext)) {
-      const rawStr = isGoogleImplicitHash || hashParams.has('error') ? hash : search;
-      const res = GoogleAuthService.parseOAuthCallback(rawStr);
+        } else {
+          setOauthError({
+            message: parsed.errorMessage || 'Google OAuth code callback invalid.',
+            hint: parsed.resolutionHint,
+          });
+          setCurrentTab('integrations');
+        }
+        window.history.replaceState(null, '', window.location.pathname);
+      } else if (isGoogleImplicitHash || hashParams.has('error') || (searchParams.has('error') && hasGooglePkceContext)) {
+        const rawStr = isGoogleImplicitHash || hashParams.has('error') ? hash : search;
+        const res = GoogleAuthService.parseOAuthCallback(rawStr);
 
-      if (res.success && res.token) {
-        const expiresIn = res.expiresIn || 3600;
-        const expiresAt = Date.now() + expiresIn * 1000;
-        const config = GoogleAuthService.getConfig();
-        GoogleAuthService.saveConfig({
-          ...config,
-          connected: true,
-          accessToken: res.token,
-          expiresAt,
-          calendarSyncEnabled: true,
-          driveSyncEnabled: true,
-          gmailSyncEnabled: true,
-        });
-        GoogleAuthService.fetchUserProfile(res.token).then((profile) => {
+        if (res.success && res.token) {
+          const expiresIn = res.expiresIn || 3600;
+          const expiresAt = Date.now() + expiresIn * 1000;
+          const config = GoogleAuthService.getConfig();
+          GoogleAuthService.saveConfig({
+            ...config,
+            connected: true,
+            accessToken: res.token,
+            expiresAt,
+            calendarSyncEnabled: true,
+            driveSyncEnabled: true,
+            gmailSyncEnabled: true,
+          });
+          const profile = await GoogleAuthService.fetchUserProfile(res.token);
           if (profile) {
             GoogleAuthService.saveConfig({
               ...GoogleAuthService.getConfig(),
@@ -179,22 +175,23 @@ function HubMain() {
               picture: profile.picture,
             });
           }
-          GoogleAuthService.syncTokenToServer(res.token!, expiresAt, profile?.email).catch(() => {});
-        });
+          await GoogleAuthService.syncTokenToServer(res.token, expiresAt, profile?.email).catch(() => {});
+          setCurrentTab('integrations');
+        } else if (!res.success && res.error) {
+          setOauthError({
+            message: res.errorMessage || 'Google OAuth Error',
+            hint: res.resolutionHint,
+          });
+          setCurrentTab('integrations');
+        }
+        window.history.replaceState(null, '', window.location.pathname);
+      } else if (searchParams.has('neo_code')) {
         setCurrentTab('integrations');
-      } else if (!res.success && res.error) {
-        setOauthError({
-          message: res.errorMessage || 'Google OAuth Error',
-          hint: res.resolutionHint,
-        });
-        setCurrentTab('integrations');
+      } else if (requestedTab) {
+        window.history.replaceState(null, '', window.location.pathname);
       }
-      window.history.replaceState(null, '', window.location.pathname);
-    } else if (searchParams.has('neo_code')) {
-      setCurrentTab('integrations');
-    } else if (requestedTab) {
-      window.history.replaceState(null, '', window.location.pathname);
-    }
+    };
+    initApp();
 
     // Global Keyboard Shortcuts (Ctrl+K for Command Palette, Ctrl+Q for Quick Capture)
     const handleKeyDown = (e: KeyboardEvent) => {

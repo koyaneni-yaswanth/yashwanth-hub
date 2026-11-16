@@ -37,6 +37,7 @@ import {
   SUPABASE_SCHEMA_SQL,
 } from '../lib/supabase';
 import { GoogleAuthService } from '../services/google/googleAuthService';
+import { SupabaseAuthService } from '../services/auth/supabaseAuthService';
 import { GoogleCalendarService } from '../services/google/googleCalendarService';
 import { NeoSapienService } from '../services/neoSapienService';
 import { CapacitorService } from '../services/native/capacitorService';
@@ -166,6 +167,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
   };
 
   const handleConnectRedirectFallback = async () => {
+    const user = SupabaseAuthService.getState().user;
+    if (!user) {
+      alert('Authentication Required: Please sign in to Yashwanth Hub before connecting Google Workspace so your tokens can be securely vaulted.');
+      return;
+    }
     const cleaned = GoogleAuthService.cleanClientId(googleClientId);
     if (!cleaned || !GoogleAuthService.isValidClientId(cleaned)) {
       alert('Valid Google Web Client ID is required. Format: [id].apps.googleusercontent.com');
@@ -177,6 +183,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
   };
 
   const handleConnectGoogle = async () => {
+    const user = SupabaseAuthService.getState().user;
+    if (!user) {
+      alert('Authentication Required: Please sign in to Yashwanth Hub before connecting Google Workspace so your tokens can be securely vaulted.');
+      return;
+    }
     const cleaned = GoogleAuthService.cleanClientId(googleClientId);
     if (!cleaned) {
       alert('Please enter your Google OAuth 2.0 Web Client ID from Google Cloud Console.');

@@ -335,14 +335,32 @@ export class GoogleAuthService {
     }
 
     try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      // Ensure Supabase Auth session is resolved from client storage
+      let session: any = null;
       const client = getSupabaseClient();
       if (client) {
-        const { data: { session } } = await client.auth.getSession();
-        if (session?.access_token) {
-          headers['Authorization'] = `Bearer ${session.access_token}`;
+        for (let i = 0; i < 4; i++) {
+          const { data } = await client.auth.getSession();
+          if (data?.session?.access_token) {
+            session = data.session;
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 200));
         }
       }
+
+      if (!session?.access_token) {
+        return {
+          success: false,
+          error: 'Authentication Required: Please sign in to Yashwanth Hub before connecting Google Workspace so your tokens can be securely vaulted.',
+          hint: 'Sign in to Yashwanth Hub (via Email & Password or Founder credentials) on the Integrations tab, then click Connect Google Workspace.',
+        };
+      }
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      };
 
       const resp = await fetch('/api/auth/google/token', {
         method: 'POST',
@@ -437,18 +455,20 @@ export class GoogleAuthService {
   public static async syncTokenToServer(token: string, expiresAt: number, email?: string): Promise<void> {
     try {
       const client = getSupabaseClient();
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (client) {
-        const { data: { session } } = await client.auth.getSession();
-        if (session?.access_token) {
-          headers['Authorization'] = `Bearer ${session.access_token}`;
-        } else {
-          // Do not write unauthenticated anonymous tokens to Supabase RLS-protected vault
-          return;
-        }
-      } else {
+      if (!client) return;
+
+      const { data: sessionData } = await client.auth.getSession();
+      const session = sessionData?.session || null;
+
+      if (!session?.access_token) {
+        // Do not write unauthenticated anonymous tokens to Supabase RLS-protected vault
         return;
       }
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      };
 
       await fetch('/api/auth/google/token', {
         method: 'POST',
@@ -474,7 +494,9 @@ export class GoogleAuthService {
       const client = getSupabaseClient();
       if (!client) return this.isConnected();
 
-      const { data: { session } } = await client.auth.getSession();
+      const { data: sessionData } = await client.auth.getSession();
+      const session = sessionData?.session || null;
+
       if (!session?.access_token) {
         return this.isConnected();
       }

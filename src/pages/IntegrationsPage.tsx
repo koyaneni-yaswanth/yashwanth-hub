@@ -366,6 +366,13 @@ export const IntegrationsPage: React.FC = () => {
   };
 
   const handleConnectGoogle = async (service?: GoogleServiceKey) => {
+    if (!authState.user) {
+      setOauthErrorMessage(
+        'Authentication Required: Please sign in to Yashwanth Hub (via Email & Password below) before connecting Google Workspace so your integration tokens can be securely vaulted under Row-Level Security.'
+      );
+      return;
+    }
+
     const trimmedId = googleClientId.trim();
     if (!trimmedId) {
       setOauthErrorMessage('Please enter your Google Cloud OAuth 2.0 Web Client ID.');
@@ -408,6 +415,13 @@ export const IntegrationsPage: React.FC = () => {
   };
 
   const handleConnectRedirectFallback = async (service?: GoogleServiceKey) => {
+    if (!authState.user) {
+      setOauthErrorMessage(
+        'Authentication Required: Please sign in to Yashwanth Hub (via Email & Password below) before connecting Google Workspace so your integration tokens can be securely vaulted under Row-Level Security.'
+      );
+      return;
+    }
+
     const trimmedId = googleClientId.trim();
     if (!trimmedId || !GoogleAuthService.isValidClientId(trimmedId)) {
       setOauthErrorMessage('Valid Google Web Client ID is required before initiating PKCE OAuth.');
