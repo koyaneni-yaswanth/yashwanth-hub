@@ -392,7 +392,7 @@ async function executeAIGatewayAction(
   const urgentTasks = tasks.filter((t: any) => t.priority === 'high' || t.priority === 'urgent');
 
   const geminiKey = (process.env.GEMINI_API_KEY || '').trim();
-  const geminiModel = (process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim();
+  const geminiModel = (process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim();
   let aiSummary = `Executive Morning Briefing for ${todayStr}:\n- ${meetings.length} meeting(s) today.\n- ${urgentTasks.length} urgent task(s) requiring immediate attention.\n- Total open tasks: ${tasks.length}.`;
 
   if (geminiKey) {

@@ -70,7 +70,8 @@ const MODULAR_AGENTS: {
 ];
 
 const QUICK_CHIEF_PROMPTS = [
-  'Plan my day.',
+  'What is the status and what is blocking Small Wind Turbine TRL 6 Prototype Demonstration?',
+  'Plan a day for the segregation of the tasks',
   'What is blocking Pawan Shakti?',
   'Prepare my weekly robotics progress report.',
   'Find my last decision about the PiPER setup.',
@@ -95,7 +96,7 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
     return (localStorage.getItem('yash_ai_provider') as AIProvider) || 'gemini';
   });
   const [selectedModelId, setSelectedModelId] = useState<string>(() => {
-    return localStorage.getItem('yash_ai_model') || 'gemini-2.5-flash';
+    return localStorage.getItem('yash_ai_model') || 'gemini-2.0-flash';
   });
   const [selectedMode, setSelectedMode] = useState<AIMode>('personal');
   const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
@@ -333,7 +334,7 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
     setIsComparing(true);
     setComparisonResults([]);
     try {
-      const modelsToCompare = ['gemini-2.5-flash', 'gpt-4o-mini', 'claude-3-5-haiku-20241022'];
+      const modelsToCompare = ['gemini-2.0-flash', 'gpt-4o-mini', 'claude-3-5-haiku-20241022'];
       const results = await AIGateway.compareModels(comparePrompt.trim(), modelsToCompare);
       setComparisonResults(results);
     } finally {
@@ -448,10 +449,12 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
 
         <div className="flex items-center gap-2 text-[11px]">
           <Badge variant={anyServerLlmConfigured ? 'emerald' : 'amber'}>
-            {anyServerLlmConfigured ? 'Server LLM Tools Active' : 'Grounded Deterministic Mode (No Server API Key)'}
+            {anyServerLlmConfigured ? 'Server LLM Tools Active' : 'Grounded Deterministic Engine (Offline Workspace Baseline)'}
           </Badge>
           <span className="px-2 py-0.5 rounded bg-[var(--hub-surface)] border border-[var(--hub-line)] font-mono text-[var(--hub-muted)]">
-            {totalTokensLogged.toLocaleString()} tok • ${totalCostLogged.toFixed(4)}
+            {totalTokensLogged > 0
+              ? `${totalTokensLogged.toLocaleString()} tok • $${totalCostLogged.toFixed(4)}`
+              : 'Zero Cloud Spend (Deterministic Mode)'}
           </span>
         </div>
       </div>
@@ -628,7 +631,14 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
                 return (
                   <button
                     key={agent.id}
-                    onClick={() => setSelectedAgent(agent.id)}
+                    onClick={() => {
+                      setSelectedAgent(agent.id);
+                      if (agent.id === 'startup_advisor') setSelectedMode('startup');
+                      else if (agent.id === 'robotics') setSelectedMode('engineering');
+                      else if (agent.id === 'research') setSelectedMode('research');
+                      else if (agent.id === 'planning' || agent.id === 'productivity') setSelectedMode('personal');
+                      else if (agent.id === 'execution') setSelectedMode('engineering');
+                    }}
                     className={`w-full flex items-center justify-between p-2 rounded-lg text-left transition-colors cursor-pointer ${
                       active
                         ? 'bg-[var(--hub-accent)]/10 text-[var(--hub-accent)]'
@@ -700,8 +710,10 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
                         </span>
                         <span className="font-mono">
                           {msg.timestamp}
-                          {msg.usage && (msg.usage.inputTokens || msg.usage.outputTokens)
+                          {msg.usage && ((msg.usage.inputTokens || 0) + (msg.usage.outputTokens || 0) > 0)
                             ? ` • ${(msg.usage.inputTokens || 0) + (msg.usage.outputTokens || 0)} tok`
+                            : msg.role === 'assistant'
+                            ? ' • Grounded Deterministic'
                             : ''}
                         </span>
                       </div>

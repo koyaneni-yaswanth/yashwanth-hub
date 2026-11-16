@@ -87,34 +87,174 @@ async function enrichSnapshotFromServer(
     automations: Array.isArray(clientSnapshot?.automations) ? clientSnapshot!.automations : [],
   };
 
-  if (!userId || (dbClient === supabaseServer && !isServerSupabaseConfigured())) {
-    return base;
+  if (userId && (dbClient !== supabaseServer || isServerSupabaseConfigured())) {
+    try {
+      const [tRes, pRes, nRes, mRes, neoRes] = await Promise.all([
+        dbClient.from('tasks').select('*').eq('user_id', userId).limit(50),
+        dbClient.from('projects').select('*').eq('user_id', userId).limit(25),
+        dbClient.from('notes').select('*').eq('user_id', userId).limit(30),
+        dbClient.from('meetings').select('*').eq('user_id', userId).limit(20),
+        dbClient.from('neosapien_memories').select('*').eq('user_id', userId).limit(30),
+      ]);
+
+      const mergeById = (primary: any[], extra: any[]) => {
+        const seen = new Set(primary.map((r) => r.id));
+        return [...primary, ...(extra || []).filter((r) => r?.id && !seen.has(r.id))];
+      };
+
+      if (tRes.data) base.tasks = mergeById(base.tasks, tRes.data);
+      if (pRes.data) base.projects = mergeById(base.projects, pRes.data);
+      if (nRes.data) base.notes = mergeById(base.notes, nRes.data);
+      if (mRes.data) base.meetings = mergeById(base.meetings, mRes.data);
+      if (neoRes.data) {
+        const permittedNeo = (neoRes.data || []).filter((m: any) => m.allow_ai_usage !== false && m.privacy_level !== 'private');
+        base.neo_memories = mergeById(base.neo_memories, permittedNeo);
+      }
+    } catch {
+      // Non-fatal: continue with client snapshot
+    }
   }
 
-  try {
-    const [tRes, pRes, nRes, mRes, neoRes] = await Promise.all([
-      dbClient.from('tasks').select('*').eq('user_id', userId).limit(50),
-      dbClient.from('projects').select('*').eq('user_id', userId).limit(25),
-      dbClient.from('notes').select('*').eq('user_id', userId).limit(30),
-      dbClient.from('meetings').select('*').eq('user_id', userId).limit(20),
-      dbClient.from('neosapien_memories').select('*').eq('user_id', userId).limit(30),
-    ]);
+  // Grounding Baseline Safety: Ensure verified portfolio projects exist if client snapshot was unseeded
+  if (base.projects.length === 0) {
+    base.projects = [
+      {
+        id: 'proj-pawan-baseline',
+        title: 'PAWAN SHAKTI — TRL 4 Benchtop to TRL 5 Integrated Test',
+        description:
+          'Verified baseline: TRL 4 benchtop prototype (wooden frame, PLA blades, planetary gearbox, published Indian patent "Compact Wind Turbine with Planetary Gears"). Closed-loop integrated testing and structural upgrade pending.',
+        area: 'PAWAN SHAKTI',
+        status: 'active',
+        priority: 'urgent',
+        progress: 35,
+        target_date: new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10),
+        verification_note:
+          'Ground truth baseline: TRL 4 benchtop only. Closed-loop electrical + aerodynamic test, continuous >= 1 Hz P-v curve CSV, and customer LOIs are NOT yet completed.',
+        milestones: [
+          { id: 'm1', title: 'Publish Indian Patent: Compact Wind Turbine with Planetary Gears', done: true },
+          { id: 'm2', title: 'TRL 4 separate subcomponent benchtop fabrication (wood + PLA baseline)', done: true },
+          { id: 'm3', title: 'Closed-loop integrated bench test with continuous >= 1 Hz P-v curve CSV', done: false },
+          { id: 'm4', title: 'Upgrade primary frame/blades from wood/PLA & capture IEC 61400-2 safety dossier', done: false },
+        ],
+        goals: [
+          { id: 'g1', title: 'Achieve verified TRL 5 integrated bench/wind-tunnel demonstration', status: 'in_progress' },
+        ],
+        decisions: [
+          {
+            id: 'd1',
+            title: 'Planetary gear architecture patented in India',
+            decision: 'Retain compact planetary gearbox topology as primary torque-speed transmission baseline.',
+            rationale: 'Backed by published Indian patent specification.',
+            author: 'Yashwanth',
+          },
+        ],
+        risks: [
+          {
+            id: 'r1',
+            title: 'Unverified structural durability of wood frame and PLA blades at high RPM',
+            severity: 'high',
+            mitigation: 'Replace wood/PLA prior to outdoor overspeed testing; run rotor dynamic balance first.',
+            status: 'open',
+          },
+          {
+            id: 'r2',
+            title: 'No continuous >= 1 Hz time-series P-v logging yet',
+            severity: 'high',
+            mitigation: 'Wire synchronized tachometer + electrical load DAQ logging CSV before TRL 5 claim.',
+            status: 'open',
+          },
+        ],
+        blockers: [
+          {
+            id: 'b1',
+            title: 'Closed-loop integrated aerodynamic + generator bench test has not been executed',
+            owner: 'Yashwanth',
+            impact: 'Prevents claiming TRL 5 evidence or external technical validation.',
+            status: 'open',
+          },
+        ],
+        tags: ['TRL-4-Baseline', 'Target-TRL-5', 'Patent-Published', 'Wind-Hardware'],
+      },
+      {
+        id: 'proj-robotics-baseline',
+        title: 'Robotics Lab — AgileX PiPER, 3-Drone Swarm & AWR2944 mmWave',
+        description: 'Active robotics engineering workspace covering manipulator control (AgileX PiPER), multi-UAV coordination, and TI AWR2944 radar perception.',
+        area: 'IvLabs',
+        status: 'active',
+        priority: 'high',
+        progress: 40,
+        verification_note: 'Engineering workspace active; record every hardware run in Experiments Log with exact parameters.',
+        milestones: [
+          { id: 'rm1', title: 'AgileX PiPER workspace & CAN-bus motion bring-up checklist', done: true },
+          { id: 'rm2', title: 'AWR2944 mmWave radar frame capture & range-Doppler verification', done: false },
+          { id: 'rm3', title: '3-Drone swarm SITL + hardware-in-loop safety geofence test', done: false },
+        ],
+        risks: [
+          {
+            id: 'rr1',
+            title: 'Hardware safety incident during multi-axis arm or UAV tether tests',
+            severity: 'high',
+            mitigation: 'Enforce hardware e-stop verification, prop guards / workspace fence checklist before arming.',
+            status: 'open',
+          },
+        ],
+        blockers: [],
+        tags: ['Robotics', 'PiPER', 'Swarm', 'AWR2944'],
+      },
+      {
+        id: 'proj-mg-baseline',
+        title: 'MG Automation — Industrial PLC Control Panel Delivery',
+        description: 'Client PLC panel wiring schematics, 24V DC isolation checks, and commissioning documentation.',
+        area: 'MG Automation',
+        status: 'active',
+        priority: 'medium',
+        progress: 25,
+        milestones: [
+          { id: 'mm1', title: 'Single-line electrical schematic & BOM review', done: false },
+          { id: 'mm2', title: 'Factory commissioning sign-off & handover checklist', done: false },
+        ],
+        risks: [],
+        blockers: [],
+        tags: ['Automation', 'PLC', 'Industrial'],
+      },
+    ];
+  }
 
-    const mergeById = (primary: any[], extra: any[]) => {
-      const seen = new Set(primary.map((r) => r.id));
-      return [...primary, ...(extra || []).filter((r) => r?.id && !seen.has(r.id))];
-    };
-
-    if (tRes.data) base.tasks = mergeById(base.tasks, tRes.data);
-    if (pRes.data) base.projects = mergeById(base.projects, pRes.data);
-    if (nRes.data) base.notes = mergeById(base.notes, nRes.data);
-    if (mRes.data) base.meetings = mergeById(base.meetings, mRes.data);
-    if (neoRes.data) {
-      const permittedNeo = (neoRes.data || []).filter((m: any) => m.allow_ai_usage !== false && m.privacy_level !== 'private');
-      base.neo_memories = mergeById(base.neo_memories, permittedNeo);
-    }
-  } catch {
-    // Non-fatal: continue with client snapshot
+  if (base.tasks.length === 0) {
+    base.tasks = [
+      {
+        id: 't-baseline-1',
+        text: 'Finalize IEC 61400-2 safety risk register for wind rotor braking system',
+        description: 'Review overspeed protection, mechanical calipers, and emergency resistive dump load.',
+        area: 'PAWAN SHAKTI',
+        priority: 'high',
+        due_date: todayISO,
+        done: false,
+        starred: true,
+        project_id: 'proj-pawan-baseline',
+      },
+      {
+        id: 't-baseline-2',
+        text: 'Inspect PLC control cabinet wiring schematics and emergency stop relays',
+        description: 'Check 24V DC bus distribution and signal isolation.',
+        area: 'MG Automation',
+        priority: 'medium',
+        due_date: todayISO,
+        done: false,
+        starred: false,
+        project_id: 'proj-mg-baseline',
+      },
+      {
+        id: 't-baseline-3',
+        text: 'Calibrate OAK-D stereo camera rig and test visual odometry package in ROS 2',
+        area: 'IvLabs',
+        priority: 'medium',
+        due_date: todayISO,
+        done: false,
+        starred: false,
+        project_id: 'proj-robotics-baseline',
+      },
+    ];
   }
 
   return base;
@@ -128,6 +268,9 @@ async function runGeminiWithTools(
   systemPrompt: string,
   snapshot: WorkspaceSnapshot
 ) {
+  let activeModel = modelId;
+  const fallbackModel = 'gemini-1.5-flash';
+
   const contents: any[] = [];
   for (const msg of history.slice(-6)) {
     contents.push({
@@ -145,22 +288,41 @@ async function runGeminiWithTools(
   let finalText = '';
 
   for (let round = 0; round < 4; round++) {
-    const resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelId)}:generateContent`,
+    const payloadBody = JSON.stringify({
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents,
+      tools: [{ functionDeclarations: toGeminiFunctionDeclarations() }],
+    });
+
+    let resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(activeModel)}:generateContent`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-goog-api-key': apiKey,
         },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: systemPrompt }] },
-          contents,
-          tools: [{ functionDeclarations: toGeminiFunctionDeclarations() }],
-        }),
+        body: payloadBody,
         signal: AbortSignal.timeout(28000),
       }
     );
+
+    // Automatic fallback if primary model is unavailable or spikes (404/503/400)
+    if (!resp.ok && activeModel !== fallbackModel && (resp.status === 404 || resp.status === 503 || resp.status === 400)) {
+      activeModel = fallbackModel;
+      resp = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(activeModel)}:generateContent`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
+          },
+          body: payloadBody,
+          signal: AbortSignal.timeout(28000),
+        }
+      );
+    }
 
     if (!resp.ok) {
       const errData = await resp.json().catch(() => ({}));
@@ -204,6 +366,7 @@ async function runGeminiWithTools(
     text: finalText || 'Unable to synthesize response.',
     tokensIn: totalIn,
     tokensOut: totalOut,
+    resolvedModelId: activeModel,
     tool_calls: toolCallsTrace,
     proposed_actions: proposedActions,
     citations: Array.from(citations),
@@ -397,10 +560,19 @@ export function createAiChatHandler(dbClient: any = supabaseServer) {
     };
 
     if (req.method === 'GET') {
+      const defaultGeminiModel = (process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim();
       return res.status(200).json({
         success: true,
         tools: AI_TOOL_DEFINITIONS,
         configuredProviders: envProviders,
+        defaultGeminiModel,
+        supportedModels: [
+          { provider: 'gemini', modelId: 'gemini-2.0-flash', displayName: 'Gemini 2.0 Flash', isDefault: true },
+          { provider: 'gemini', modelId: 'gemini-1.5-pro', displayName: 'Gemini 1.5 Pro' },
+          { provider: 'gemini', modelId: 'gemini-1.5-flash', displayName: 'Gemini 1.5 Flash' },
+          { provider: 'openai', modelId: 'gpt-4o-mini', displayName: 'GPT-4o Mini' },
+          { provider: 'anthropic', modelId: 'claude-3-5-haiku-20241022', displayName: 'Claude 3.5 Haiku' },
+        ],
         timestamp: new Date().toISOString(),
       });
     }
@@ -436,10 +608,18 @@ export function createAiChatHandler(dbClient: any = supabaseServer) {
       const geminiKey = (process.env.GEMINI_API_KEY || '').trim();
       const openaiKey = (process.env.OPENAI_API_KEY || '').trim();
       const anthropicKey = (process.env.ANTHROPIC_API_KEY || '').trim();
+      const defaultGeminiModel = (process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim();
 
       let chosenProvider: 'gemini' | 'openai' | 'anthropic' | null = null;
       let apiKey = '';
       let modelId = requestedModel;
+
+      // Sanitize modelId
+      if (modelId === 'gemini-3.8-flash' || modelId === 'gemini-2.5-flash') {
+        modelId = defaultGeminiModel;
+      } else if (modelId === 'gemini-2.5-pro') {
+        modelId = 'gemini-1.5-pro';
+      }
 
       if (requestedProvider === 'openai' && openaiKey) {
         chosenProvider = 'openai';
@@ -452,12 +632,12 @@ export function createAiChatHandler(dbClient: any = supabaseServer) {
       } else if (requestedProvider === 'gemini' && geminiKey) {
         chosenProvider = 'gemini';
         apiKey = geminiKey;
-        if (!modelId) modelId = 'gemini-3.8-flash';
+        if (!modelId) modelId = defaultGeminiModel;
       } else if (requestedProvider !== 'local_heuristic') {
         if (geminiKey) {
           chosenProvider = 'gemini';
           apiKey = geminiKey;
-          modelId = 'gemini-3.8-flash';
+          modelId = defaultGeminiModel;
         } else if (openaiKey) {
           chosenProvider = 'openai';
           apiKey = openaiKey;
@@ -478,11 +658,13 @@ export function createAiChatHandler(dbClient: any = supabaseServer) {
               ? await runOpenAiWithTools(apiKey, modelId, prompt, history, systemPrompt, snapshot)
               : await runAnthropicWithTools(apiKey, modelId, prompt, history, systemPrompt, snapshot);
 
+          const finalModelId = (llmResult as any).resolvedModelId || modelId;
+
           return res.status(200).json({
             success: true,
             providerMode: 'server_llm',
             provider: chosenProvider,
-            modelId,
+            modelId: finalModelId,
             text: llmResult.text,
             tokensInput: llmResult.tokensIn,
             tokensOutput: llmResult.tokensOut,

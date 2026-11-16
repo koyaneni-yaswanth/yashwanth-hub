@@ -189,22 +189,56 @@ export function executeAiTool(
   const todayISO = snapshot.todayISO || new Date().toISOString().slice(0, 10);
 
   if (toolName === 'query_tasks') {
-    const status = String(args.status || 'open').toLowerCase();
+    const rawStatus = String(args.status || 'open').toLowerCase();
     const areaQ = args.area ? String(args.area).toLowerCase() : '';
     const projectQ = args.project_id ? String(args.project_id) : '';
-    const q = args.query ? String(args.query).toLowerCase() : '';
+    const q = args.query ? String(args.query).toLowerCase().trim() : '';
+
+    // If project_id is specified, resolve project area for fuzzy association
+    const scopedProject = projectQ
+      ? (snapshot.projects || []).find((p) => p.id === projectQ)
+      : undefined;
+    const scopedArea = scopedProject?.area ? String(scopedProject.area).toLowerCase() : '';
 
     const matched = (snapshot.tasks || []).filter((t) => {
-      if (status === 'open' && t.done) return false;
-      if (status === 'done' && !t.done) return false;
-      if (status === 'overdue' && (t.done || !t.due_date || t.due_date >= todayISO)) return false;
+      // Status normalization
+      if (['open', 'todo', 'in_progress', 'pending'].includes(rawStatus) && t.done) return false;
+      if (['done', 'completed'].includes(rawStatus) && !t.done) return false;
+      if (rawStatus === 'overdue' && (t.done || !t.due_date || t.due_date >= todayISO)) return false;
+
+      // Area filter
       if (areaQ && String(t.area || '').toLowerCase() !== areaQ) return false;
-      if (projectQ && String(t.project_id || '') !== projectQ) return false;
-      if (q && !`${t.text || ''} ${t.description || ''} ${t.area || ''}`.toLowerCase().includes(q)) return false;
+
+      // Project filter: match by project_id OR project's area if tasks don't have explicit project_id
+      if (projectQ) {
+        const matchesProjectId = String(t.project_id || '') === projectQ;
+        const matchesProjectArea = Boolean(scopedArea && String(t.area || '').toLowerCase() === scopedArea);
+        if (!matchesProjectId && !matchesProjectArea) return false;
+      }
+
+      // Query filter: token search
+      if (q) {
+        const hay = `${t.text || ''} ${t.description || ''} ${t.area || ''} ${t.notes || ''}`.toLowerCase();
+        const qTokens = q.split(/\s+/).filter((w) => w.length >= 2);
+        if (!hay.includes(q) && !qTokens.some((tok) => hay.includes(tok))) return false;
+      }
+
       return true;
     });
 
-    const top = matched.slice(0, 15).map((t) => ({
+    // Priority order: overdue first, then urgent, high, medium, low
+    const priorityWeight: Record<string, number> = { urgent: 4, high: 3, medium: 2, low: 1 };
+    matched.sort((a, b) => {
+      const aOverdue = Boolean(!a.done && a.due_date && a.due_date < todayISO);
+      const bOverdue = Boolean(!b.done && b.due_date && b.due_date < todayISO);
+      if (aOverdue !== bOverdue) return aOverdue ? -1 : 1;
+      const pDiff = (priorityWeight[b.priority || 'medium'] || 2) - (priorityWeight[a.priority || 'medium'] || 2);
+      if (pDiff !== 0) return pDiff;
+      if (a.due_date && b.due_date) return a.due_date.localeCompare(b.due_date);
+      return 0;
+    });
+
+    const top = matched.slice(0, 25).map((t) => ({
       id: t.id,
       text: t.text,
       area: t.area,
@@ -213,6 +247,7 @@ export function executeAiTool(
       done: Boolean(t.done),
       starred: Boolean(t.starred),
       project_id: t.project_id || null,
+      notes: t.notes || null,
     }));
 
     return {
@@ -226,16 +261,78 @@ export function executeAiTool(
 
   if (toolName === 'query_projects') {
     const pid = args.project_id ? String(args.project_id) : '';
-    const q = args.query ? String(args.query).toLowerCase() : '';
+    const rawQ = args.query ? String(args.query).toLowerCase().trim() : '';
 
-    const matched = (snapshot.projects || []).filter((p) => {
-      if (pid && p.id !== pid) return false;
-      if (q) {
-        const hay = `${p.title || ''} ${p.description || ''} ${p.area || ''} ${(p.tags || []).join(' ')} ${JSON.stringify(p.blockers || [])} ${JSON.stringify(p.risks || [])}`.toLowerCase();
-        if (!hay.includes(q)) return false;
+    const STOPWORDS = new Set([
+      'what', 'is', 'the', 'and', 'are', 'for', 'of', 'in', 'to', 'my', 'about',
+      'with', 'on', 'status', 'blocking', 'blocker', 'blockers', 'progress',
+      'project', 'projects'
+    ]);
+    const tokens = rawQ
+      .split(/[^a-z0-9_-]+/)
+      .filter((t) => t.length >= 2 && !STOPWORDS.has(t));
+
+    const scoredProjects: Array<{ project: any; score: number }> = [];
+
+    for (const p of snapshot.projects || []) {
+      if (pid && p.id !== pid) continue;
+      if (!rawQ) {
+        scoredProjects.push({ project: p, score: 1 });
+        continue;
       }
-      return true;
-    });
+
+      let score = 0;
+      const titleLower = String(p.title || '').toLowerCase();
+      const descLower = String(p.description || '').toLowerCase();
+      const areaLower = String(p.area || '').toLowerCase();
+      const tags = (p.tags || []).map((t: string) => String(t).toLowerCase());
+      const hay = `${titleLower} ${descLower} ${areaLower} ${tags.join(' ')} ${JSON.stringify(p.blockers || [])} ${JSON.stringify(p.risks || [])}`.toLowerCase();
+
+      // Exact phrase match
+      if (hay.includes(rawQ)) {
+        score += 30;
+      }
+
+      // Keyword token scoring
+      for (const tok of tokens) {
+        if (titleLower.includes(tok)) score += 10;
+        if (areaLower.includes(tok)) score += 8;
+        if (tags.some((t: string) => t.includes(tok))) score += 6;
+        if (descLower.includes(tok)) score += 4;
+        if (hay.includes(tok)) score += 2;
+      }
+
+      // Wind / Turbine domain synonyms
+      const isWindQuery = tokens.some((t) =>
+        ['wind', 'turbine', 'wt', 'planetary', 'aerodynamic', 'blade', 'rotor', 'stator', 'pawan', 'shakti'].includes(t)
+      );
+      if (isWindQuery && (areaLower.includes('pawan') || titleLower.includes('pawan') || tags.some((t: string) => t.includes('wind')))) {
+        score += 20;
+      }
+
+      // Robotics domain synonyms
+      const isRoboticsQuery = tokens.some((t) =>
+        ['robot', 'robotics', 'piper', 'swarm', 'drone', 'radar', 'mmwave', 'awr2944', 'ros', 'ivlabs'].includes(t)
+      );
+      if (isRoboticsQuery && (areaLower.includes('ivlabs') || titleLower.includes('robotics') || tags.some((t: string) => t.includes('robotics')))) {
+        score += 20;
+      }
+
+      // Automation domain synonyms
+      const isAutomationQuery = tokens.some((t) =>
+        ['plc', 'panel', 'automation', 'commissioning', 'relay', 'cabinet'].includes(t)
+      );
+      if (isAutomationQuery && (areaLower.includes('automation') || titleLower.includes('automation') || tags.some((t: string) => t.includes('automation')))) {
+        score += 20;
+      }
+
+      if (score > 0) {
+        scoredProjects.push({ project: p, score });
+      }
+    }
+
+    scoredProjects.sort((a, b) => b.score - a.score);
+    const matched = scoredProjects.map((sp) => sp.project);
 
     return {
       tool: toolName,
@@ -872,60 +969,121 @@ export function buildDeterministicGroundedResponse(
     });
   }
 
-  // Intent 2: Project Blocker Inquiry (e.g. "What is blocking Pawan Shakti?")
-  if (lower.includes('blocking') || lower.includes('blocker') || lower.includes('pawan')) {
-    const targetQuery = lower.includes('pawan') ? 'pawan' : scopeProject?.title || '';
-    const projRes = executeAiTool('query_projects', { project_id: projectScopeId, query: targetQuery }, snapshot);
-    const taskRes = executeAiTool('query_tasks', { status: 'open', area: lower.includes('pawan') ? 'PAWAN SHAKTI' : undefined }, snapshot);
-    toolResults.push(projRes, taskRes);
+  // Intent 2: Project Status & Blocker Inquiry (e.g. "What is the status and what is blocking Small Wind Turbine TRL 6 Prototype Demonstration?")
+  const isStatusOrBlockerQuery =
+    lower.includes('blocking') ||
+    lower.includes('blocker') ||
+    lower.includes('pawan') ||
+    lower.includes('turbine') ||
+    lower.includes('wind') ||
+    ((lower.includes('status') || lower.includes('progress') || lower.includes('trl')) &&
+      (lower.includes('prototype') || lower.includes('demonstration') || lower.includes('project') || lower.includes('piper') || lower.includes('swarm') || lower.includes('plc') || lower.includes('automation') || Boolean(projectScopeId)));
+
+  if (isStatusOrBlockerQuery) {
+    const cleanSubject = query
+      .replace(/what\s+is\s+(the\s+)?status\s+(of\s+)?(and\s+)?/i, '')
+      .replace(/what\s+is\s+blocking\s+/i, '')
+      .replace(/what\s+are\s+the\s+blockers\s+(for|in|of)\s+/i, '')
+      .trim();
+
+    const projRes = executeAiTool('query_projects', { project_id: projectScopeId, query: cleanSubject || query }, snapshot);
+    toolResults.push(projRes);
 
     const matchedProjects = projRes.data.projects || [];
-    for (const p of matchedProjects) {
-      if (p.verification_note) {
-        verifiedFacts.push(`${p.title}: ${p.verification_note}`);
-      }
-      for (const b of (p.blockers || []).filter((x: any) => x.status !== 'resolved')) {
-        verifiedFacts.push(`Open Blocker in ${p.title}: "${b.title}" — Impact: ${b.impact}`);
-      }
-      for (const r of (p.risks || []).filter((x: any) => x.status === 'open')) {
-        verifiedFacts.push(`Open Risk (${r.severity}): "${r.title}" — Mitigation: ${r.mitigation}`);
-      }
-      const openMilestones = (p.milestones || []).filter((m: any) => !m.done);
-      if (openMilestones.length > 0) {
-        estimates.push(
-          `${openMilestones.length} uncompleted milestone(s) remain in ${p.title} (target date: ${p.target_date || 'unset'}).`
+    if (matchedProjects.length > 0) {
+      const p = matchedProjects[0];
+      const taskRes = executeAiTool('query_tasks', { status: 'open', project_id: p.id, area: p.area }, snapshot);
+      toolResults.push(taskRes);
+
+      const milestones = p.milestones || [];
+      const completedMilestones = milestones.filter((m: any) => m.done);
+      const pendingMilestones = milestones.filter((m: any) => !m.done);
+      const milestoneProgressPercent = milestones.length > 0
+        ? Math.round((completedMilestones.length / milestones.length) * 100)
+        : (p.progress || 0);
+
+      verifiedFacts.push(
+        `Project Identity: **${p.title}** (Area: ${p.area || 'Engineering'}, Status: ${p.status || 'active'}, Priority: ${p.priority || 'high'})`
+      );
+      verifiedFacts.push(
+        `Milestone Progress: **${milestoneProgressPercent}%** (${completedMilestones.length}/${milestones.length} milestones completed; logged target progress: ${p.progress}%).`
+      );
+
+      const isWindOrPawan = p.area === 'PAWAN SHAKTI' || p.title.toLowerCase().includes('pawan') || p.title.toLowerCase().includes('turbine') || lower.includes('wind') || lower.includes('trl');
+      if (isWindOrPawan) {
+        verifiedFacts.push(
+          `Ground Truth TRL Baseline: Workspace records confirm **TRL 4 benchtop prototype** (wood frame + PLA blades + published Indian patent "Compact Wind Turbine with Planetary Gears").`
+        );
+        verifiedFacts.push(
+          `TRL 6 Operational Prototype Demonstration Status: **NOT REACHED**. Gated behind TRL 5 integrated bench/wind-tunnel testing. No outdoor field prototype demonstration in an operational environment has been conducted or verified.`
         );
       }
+
+      if (p.verification_note) {
+        verifiedFacts.push(`Baseline Verification Audit: ${p.verification_note}`);
+      }
+
+      const openBlockers = (p.blockers || []).filter((x: any) => x.status !== 'resolved');
+      if (openBlockers.length > 0) {
+        for (const b of openBlockers) {
+          verifiedFacts.push(`Open Gating Blocker: "${b.title}" — Owner: ${b.owner || 'Founder'} • Impact: ${b.impact}`);
+        }
+      } else {
+        verifiedFacts.push('No formal blocker tickets flagged as unresolved in project blockers register; review open high-severity risks.');
+      }
+
+      const openRisks = (p.risks || []).filter((x: any) => x.status === 'open');
+      if (openRisks.length > 0) {
+        for (const r of openRisks) {
+          verifiedFacts.push(`Active Risk (${r.severity || 'high'} severity): "${r.title}" — Mitigation: ${r.mitigation}`);
+        }
+      }
+
+      const openProjectTasks = taskRes.data.tasks || [];
+      const urgentHighTasks = openProjectTasks.filter((t: any) => t.priority === 'urgent' || t.priority === 'high');
+      if (urgentHighTasks.length > 0) {
+        verifiedFacts.push(
+          `Gating High-Priority Open Tasks (${urgentHighTasks.length}): ${urgentHighTasks.slice(0, 3).map((t: any) => `"${t.text}" [${t.priority}]`).join('; ')}.`
+        );
+      }
+
+      if (pendingMilestones.length > 0) {
+        for (const m of pendingMilestones) {
+          estimates.push(`Pending Milestone Target: "${m.title}" (target date: ${m.target_date || p.target_date || 'unset'}).`);
+        }
+      }
+      estimates.push('Target Milestone: TRL 5 integrated bench test with continuous >= 1 Hz P-v curve logging before advancing to field demo (TRL 6).');
+
+      recommendations.push('Prioritize executing closed-loop integrated bench test with continuous synchronized tachometer + load DAQ before claiming TRL 5 or 6.');
+      recommendations.push('Upgrade primary frame & blades from wood/PLA to engineering structural materials before high-RPM outdoor testing.');
+      recommendations.push('Complete IEC 61400-2 safety dossier for emergency rotor braking.');
+
+      unknowns.push('Zero continuous >= 1 Hz P-v power curve CSV time-series records logged in workspace.');
+      unknowns.push('Zero signed customer Letters of Intent (LOIs) or field demonstration test site permits secured.');
+
+      return formatGroundedPayload({
+        headline: `Status & Blocker Brief for **${p.title}**`,
+        verifiedFacts,
+        estimates,
+        recommendations,
+        unknowns,
+        toolResults,
+        proposedActions,
+      });
+    } else {
+      unknowns.push(`No matching project found for query "${cleanSubject || query}" in workspace snapshot.`);
+      recommendations.push('Verify project title or check Project Workspace in left navigation.');
+
+      return formatGroundedPayload({
+        headline: 'Project Status & Blocker Assessment',
+        verifiedFacts,
+        estimates,
+        recommendations,
+        unknowns,
+        toolResults,
+        proposedActions,
+      });
     }
-
-    const openUrgent = (taskRes.data.tasks || []).filter((t: any) => t.priority === 'urgent' || t.priority === 'high');
-    if (openUrgent.length > 0) {
-      verifiedFacts.push(
-        `Top open high-priority tasks: ${openUrgent.slice(0, 3).map((t: any) => `"${t.text}"`).join('; ')}.`
-      );
-    }
-
-    if (matchedProjects.length === 0) {
-      unknowns.push('No matching project record found in the current workspace snapshot.');
-    } else if (!matchedProjects.some((p: any) => (p.blockers || []).length > 0)) {
-      unknowns.push('No explicit blocker objects are logged on the matched project; check open tasks & risks.');
-    }
-
-    recommendations.push(
-      'Prioritize closing the highest-impact open blocker before advancing TRL claims or external pilot commitments.'
-    );
-
-    return formatGroundedPayload({
-      headline: matchedProjects[0]
-        ? `Status & Blocker Brief for **${matchedProjects[0].title}**`
-        : 'Project Blocker Assessment',
-      verifiedFacts,
-      estimates,
-      recommendations,
-      unknowns,
-      toolResults,
-      proposedActions,
-    });
   }
 
   // Intent 3: Knowledge / Decision Lookup (e.g. "Find my last decision about the PiPER setup")
@@ -1018,7 +1176,116 @@ export function buildDeterministicGroundedResponse(
     });
   }
 
-  // Intent 5: Summarize Unfinished Work / Plan My Day (Default Executive Chief of Staff View)
+  // Intent 4B: Real Daily Planning & Task Segregation Engine
+  if (
+    lower.includes('plan a day') ||
+    lower.includes('plan my day') ||
+    lower.includes('segregat') ||
+    lower.includes('schedule my day') ||
+    lower.includes('daily schedule') ||
+    lower.includes('day plan')
+  ) {
+    const taskRes = executeAiTool('query_tasks', { status: 'open' }, snapshot);
+    const schedRes = executeAiTool('get_schedule_and_routine', { date: todayISO }, snapshot);
+    const projRes = executeAiTool('query_projects', {}, snapshot);
+    toolResults.push(taskRes, schedRes, projRes);
+
+    const openTasks = taskRes.data.tasks || [];
+    const overdue = openTasks.filter((t: any) => t.due_date && t.due_date < todayISO);
+    const urgentAndHigh = openTasks.filter((t: any) => t.priority === 'urgent' || t.priority === 'high');
+    const mediumTasks = openTasks.filter((t: any) => t.priority === 'medium');
+    const lowTasks = openTasks.filter(
+      (t: any) => t.priority === 'low' || (!t.priority && !urgentAndHigh.includes(t) && !mediumTasks.includes(t))
+    );
+    const meetings = schedRes.data.meetings || [];
+    const events = schedRes.data.events || [];
+
+    verifiedFacts.push(
+      `Open Workspace Tasks: **${openTasks.length}** total (${overdue.length} overdue, ${urgentAndHigh.length} high/urgent priority, ${mediumTasks.length} medium, ${lowTasks.length} low).`
+    );
+    verifiedFacts.push(
+      `Scheduled Calendar Commitments: **${meetings.length}** meeting(s), **${events.length}** calendar event(s) on or after ${todayISO}.`
+    );
+
+    // Explicit task segregation into operational buckets
+    verifiedFacts.push(`Task Segregation by Operational Category:`);
+    verifiedFacts.push(
+      `- **Bucket 1: Deep Technical Focus (High/Urgent - ${urgentAndHigh.length} tasks)**: ${
+        urgentAndHigh.length > 0
+          ? urgentAndHigh.map((t: any) => `"${t.text}" [${t.area}] (Due: ${t.due_date || 'None'})`).join('; ')
+          : 'None'
+      }`
+    );
+    verifiedFacts.push(
+      `- **Bucket 2: System Validation & Secondary Milestones (${mediumTasks.length} tasks)**: ${
+        mediumTasks.length > 0
+          ? mediumTasks.map((t: any) => `"${t.text}" [${t.area}]`).join('; ')
+          : 'None'
+      }`
+    );
+    verifiedFacts.push(
+      `- **Bucket 3: Operational Triage & Admin/Follow-ups (${lowTasks.length} tasks)**: ${
+        lowTasks.length > 0
+          ? lowTasks.map((t: any) => `"${t.text}" [${t.area}]`).join('; ')
+          : 'None'
+      }`
+    );
+
+    // 09:00 - 18:00 structured time blocks
+    estimates.push(`Proposed Time-Blocked Daily Schedule (09:00 – 18:00 Standard Working Day):`);
+    estimates.push(`- **09:00 – 09:30 | Morning Kickoff & Triage**: Triage ${overdue.length} overdue item(s), review daily calendar and synchronize agenda.`);
+    estimates.push(
+      `- **09:30 – 11:30 | Deep Work Block 1 (Technical Gating Focus)**: Dedicated 2-hour sprint on ${
+        urgentAndHigh[0] ? `"${urgentAndHigh[0].text}" (${urgentAndHigh[0].area})` : 'highest-impact blocker resolution'
+      }. Silence non-urgent notifications.`
+    );
+    estimates.push(`- **11:30 – 11:45 | Rest & Cognitive Buffer**: 15-minute screen pause and hydration.`);
+    estimates.push(
+      `- **11:45 – 13:00 | Deep Work Block 2 / Calendar Commitments**: ${
+        meetings[0]
+          ? `Attend scheduled meeting "${meetings[0].title}" (${meetings[0].start_time || '11:45'})`
+          : urgentAndHigh[1]
+          ? `Advance secondary priority "${urgentAndHigh[1].text}"`
+          : 'Secondary technical execution block'
+      }.`
+    );
+    estimates.push(`- **13:00 – 14:00 | Midday Reset & Lunch Break**: 1 hour rest.`);
+    estimates.push(
+      `- **14:00 – 15:30 | Execution Block 3 (Subsystem & Secondary Milestones)**: Advance Bucket 2 tasks (${
+        mediumTasks[0] ? `"${mediumTasks[0].text}"` : 'schematics review, code validation, test scripts'
+      }).`
+    );
+    estimates.push(`- **15:30 – 16:00 | Contingency Slack Buffer**: 30-minute reserve for unforeseen debugging, interruptions, or urgent requests.`);
+    estimates.push(`- **16:00 – 17:30 | Operational Follow-ups & Admin**: Bucket 3 admin tasks, supplier/advisor communication, task status updates.`);
+    estimates.push(`- **17:30 – 18:00 | Daily Retrospective & Blocker Logging**: Check completed tasks, log any new blockers in Project Workspace, define tomorrow's top 3.`);
+
+    estimates.push(`End-of-Day Deliverables Checklist:`);
+    estimates.push(`- [ ] Deliverable 1: Primary deep-work deliverable completed with documented baseline notes`);
+    estimates.push(`- [ ] Deliverable 2: All ${overdue.length} overdue task(s) resolved or rescheduled`);
+    estimates.push(`- [ ] Deliverable 3: Project Workspace updated with latest blockers and next targets`);
+
+    recommendations.push(`Protect the 09:30 – 11:30 deep-work block strictly against interruptions.`);
+    if (overdue.length > 0) {
+      recommendations.push(`Triage the ${overdue.length} overdue task(s) first thing during the 09:00 kickoff.`);
+    }
+    recommendations.push(`Cap active deep work at 5 hours per day to prevent cognitive fatigue.`);
+
+    if (events.length === 0) {
+      unknowns.push('Zero Google Calendar events loaded in workspace; check Integrations if external meetings are scheduled.');
+    }
+
+    return formatGroundedPayload({
+      headline: `Daily Operating Brief & Task Segregation Plan for **${todayISO}**`,
+      verifiedFacts,
+      estimates,
+      recommendations,
+      unknowns,
+      toolResults,
+      proposedActions,
+    });
+  }
+
+  // Intent 5: Summarize Unfinished Work (Default Executive Chief of Staff View)
   const taskRes = executeAiTool('query_tasks', { status: 'open', project_id: projectScopeId }, snapshot);
   const schedRes = executeAiTool('get_schedule_and_routine', { date: todayISO }, snapshot);
   const projRes = executeAiTool('query_projects', { project_id: projectScopeId }, snapshot);

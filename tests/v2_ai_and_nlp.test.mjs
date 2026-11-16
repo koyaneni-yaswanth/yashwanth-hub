@@ -104,14 +104,28 @@ test('Phase 3 AI Tools: exposes structured tool schemas & /api/ai/chat GET ?acti
   assert.equal(code, 200);
   assert.equal(body.success, true);
   assert.ok(Array.isArray(body.tools) && body.tools.length >= 6);
+  assert.equal(body.defaultGeminiModel, 'gemini-2.0-flash');
+  assert.ok(Array.isArray(body.supportedModels));
+  assert.ok(body.supportedModels.some((m) => m.modelId === 'gemini-2.0-flash' && m.isDefault));
 });
 
 test('Phase 3 AI Grounding: answers realistic Chief of Staff queries without fabricating claims', () => {
-  // 1. Blocker query
+  // 1. Blocker query (both "What is blocking Pawan Shakti?" and "What is the status and what is blocking Small Wind Turbine TRL 6 Prototype Demonstration?")
   const blockerResp = buildDeterministicGroundedResponse('What is blocking Pawan Shakti?', SAMPLE_SNAPSHOT);
   assert.match(blockerResp.text, /Closed-loop integrated aerodynamic \+ generator bench test/);
   assert.match(blockerResp.text, /Verified Facts/);
   assert.ok(!blockerResp.text.includes('TRL 5 achieved'));
+
+  // 1b. Small Wind Turbine TRL 6 Prototype Demonstration query
+  const trl6Resp = buildDeterministicGroundedResponse(
+    'What is the status and what is blocking Small Wind Turbine TRL 6 Prototype Demonstration?',
+    SAMPLE_SNAPSHOT
+  );
+  assert.match(trl6Resp.text, /PAWAN SHAKTI — TRL 4 Benchtop to TRL 5 Integrated Test/);
+  assert.match(trl6Resp.text, /TRL 4 benchtop prototype/);
+  assert.match(trl6Resp.text, /TRL 6 Operational Prototype Demonstration Status: \*\*NOT REACHED\*\*/);
+  assert.match(trl6Resp.text, /Milestone Progress: \*\*50%\*\*/);
+  assert.match(trl6Resp.text, /Closed-loop integrated aerodynamic \+ generator bench test not executed/);
 
   // 2. Last decision query & privacy filter
   const decisionResp = buildDeterministicGroundedResponse('Find my last decision about the PiPER setup.', SAMPLE_SNAPSHOT);
@@ -125,7 +139,20 @@ test('Phase 3 AI Grounding: answers realistic Chief of Staff queries without fab
   assert.equal(createResp.proposed_actions[0].payload.due_date, '2026-11-11');
   assert.equal(createResp.proposed_actions[0].status, 'pending');
 
-  // 4. Weekly robotics report + Plan my day + Unfinished work
+  // 4. Daily Planning Engine: "Plan a day for the segregation of the tasks"
+  const planDayResp = buildDeterministicGroundedResponse(
+    'Plan a day for the segregation of the tasks',
+    SAMPLE_SNAPSHOT
+  );
+  assert.match(planDayResp.text, /Task Segregation by Operational Category/);
+  assert.match(planDayResp.text, /Bucket 1: Deep Technical Focus/);
+  assert.match(planDayResp.text, /Bucket 2: System Validation/);
+  assert.match(planDayResp.text, /09:00 – 09:30 \| Morning Kickoff/);
+  assert.match(planDayResp.text, /09:30 – 11:30 \| Deep Work Block 1/);
+  assert.match(planDayResp.text, /Rest & Cognitive Buffer/);
+  assert.match(planDayResp.text, /End-of-Day Deliverables Checklist/);
+
+  // 5. Weekly robotics report + Plan my day + Unfinished work
   const robResp = buildDeterministicGroundedResponse('Prepare my weekly robotics progress report.', SAMPLE_SNAPSHOT);
   assert.match(robResp.text, /Unknowns/);
   const dayResp = buildDeterministicGroundedResponse('Plan my day.', SAMPLE_SNAPSHOT);

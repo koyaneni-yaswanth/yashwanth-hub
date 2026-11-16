@@ -4,24 +4,24 @@ export const SUPPORTED_MODELS: AIModelConfig[] = [
   // Google Gemini Models
   {
     provider: 'gemini',
-    modelId: 'gemini-2.5-pro',
-    displayName: 'Gemini 2.5 Pro (Deep Reasoning & Multimodal)',
+    modelId: 'gemini-2.0-flash',
+    displayName: 'Gemini 2.0 Flash (Fastest, Agentic Tool-Calling)',
     contextWindow: 1048576,
+    costPer1kInputTokensUSD: 0.0001,
+    costPer1kOutputTokensUSD: 0.0004,
+    supportedModes: ['personal', 'engineering', 'startup', 'research', 'meeting', 'writing'],
+    latencyProfile: 'ultra_fast',
+    isDefault: true,
+  },
+  {
+    provider: 'gemini',
+    modelId: 'gemini-1.5-pro',
+    displayName: 'Gemini 1.5 Pro (Deep Reasoning & Multimodal)',
+    contextWindow: 2097152,
     costPer1kInputTokensUSD: 0.00125,
     costPer1kOutputTokensUSD: 0.005,
     supportedModes: ['engineering', 'research', 'startup', 'writing'],
     latencyProfile: 'deep_reasoning',
-  },
-  {
-    provider: 'gemini',
-    modelId: 'gemini-2.5-flash',
-    displayName: 'Gemini 2.5 Flash (Ultra-fast & Intelligent)',
-    contextWindow: 1048576,
-    costPer1kInputTokensUSD: 0.000075,
-    costPer1kOutputTokensUSD: 0.0003,
-    supportedModes: ['personal', 'engineering', 'startup', 'research', 'meeting', 'writing'],
-    latencyProfile: 'ultra_fast',
-    isDefault: true,
   },
   {
     provider: 'gemini',
@@ -98,20 +98,21 @@ export function getRecommendedModel(
     if (mode === 'engineering' || mode === 'research') {
       return (
         SUPPORTED_MODELS.find((m) => m.modelId === 'claude-3-5-sonnet-20241022') ||
-        SUPPORTED_MODELS.find((m) => m.modelId === 'gemini-2.5-pro') ||
+        SUPPORTED_MODELS.find((m) => m.modelId === 'gemini-1.5-pro') ||
         SUPPORTED_MODELS[0]
       );
     }
     return (
-      SUPPORTED_MODELS.find((m) => m.modelId === 'gemini-2.5-pro') ||
+      SUPPORTED_MODELS.find((m) => m.modelId === 'gemini-1.5-pro') ||
       SUPPORTED_MODELS[0]
     );
   }
 
   // Fast models for routine queries and summaries
   return (
-    SUPPORTED_MODELS.find((m) => m.modelId === 'gemini-2.5-flash') ||
+    SUPPORTED_MODELS.find((m) => m.modelId === 'gemini-2.0-flash') ||
+    SUPPORTED_MODELS.find((m) => m.modelId === 'gemini-1.5-flash') ||
     SUPPORTED_MODELS.find((m) => m.modelId === 'gpt-4o-mini') ||
-    SUPPORTED_MODELS[1]
+    SUPPORTED_MODELS[0]
   );
 }
