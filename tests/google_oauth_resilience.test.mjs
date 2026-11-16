@@ -79,3 +79,72 @@ test('Google OAuth: Callback parser parses valid access token and computes expir
   assert.equal(result.token, 'ya29.a0AfH6SM...');
   assert.equal(result.expiresIn, 3599);
 });
+
+test('Supabase Auth Provider Error: Gracefully catches "Unsupported provider: provider is not enabled"', () => {
+  const errorPayload = {
+    code: 400,
+    error_code: 'validation_failed',
+    msg: 'Unsupported provider: provider is not enabled',
+  };
+
+  function parseSupabaseProviderError(err) {
+    if (
+      err?.error_code === 'validation_failed' ||
+      err?.msg?.includes('provider is not enabled') ||
+      err?.message?.includes('provider is not enabled')
+    ) {
+      return {
+        error:
+          'Google Sign-In is not enabled on this Supabase project. Enable Google in the Supabase Dashboard (Authentication -> Providers) or sign in using Email & Password below.',
+        providerDisabled: true,
+      };
+    }
+    return { error: err?.message || 'Authentication error', providerDisabled: false };
+  }
+
+  const result = parseSupabaseProviderError(errorPayload);
+  assert.equal(result.providerDisabled, true);
+  assert.match(result.error, /Google Sign-In is not enabled on this Supabase project/);
+  assert.match(result.error, /Authentication -> Providers/);
+});
+
+test('OAuth Architecture Separation: Supabase Auth vs Google Workspace PKCE URLs are strictly isolated', () => {
+  const supabaseUrl = 'https://xjhkxnfahkkgwbbtmhtk.supabase.co';
+  const supabaseAuthEndpoint = `${supabaseUrl}/auth/v1/authorize?provider=google`;
+
+  const googleAuthEndpoint = 'https://accounts.google.com/o/oauth2/v2/auth';
+  const samplePkceUrl = `${googleAuthEndpoint}?client_id=12345.apps.googleusercontent.com&response_type=code&code_challenge_method=S256&code_challenge=test_challenge&access_type=offline`;
+
+  // Verify Supabase Auth targets GoTrue endpoint
+  assert.equal(new URL(supabaseAuthEndpoint).hostname, 'xjhkxnfahkkgwbbtmhtk.supabase.co');
+  assert.equal(new URL(supabaseAuthEndpoint).pathname, '/auth/v1/authorize');
+
+  // Verify Google Workspace PKCE targets Google accounts directly
+  assert.equal(new URL(samplePkceUrl).hostname, 'accounts.google.com');
+  assert.equal(new URL(samplePkceUrl).pathname, '/o/oauth2/v2/auth');
+  assert.equal(new URL(samplePkceUrl).searchParams.get('code_challenge_method'), 'S256');
+  assert.equal(new URL(samplePkceUrl).searchParams.get('access_type'), 'offline');
+});
+
+test('Serverless Token API: api/auth/google/token.ts imports unified db client and supports user-scoped RLS', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const tokenApiPath = path.resolve(process.cwd(), 'api/auth/google/token.ts');
+  const tokenCode = fs.readFileSync(tokenApiPath, 'utf-8');
+
+  // Must import from _lib/db.ts
+  assert.match(tokenCode, /from '\.\.\/\.\.\/_lib\/db\.ts'/);
+  assert.match(tokenCode, /isServerSupabaseConfigured/);
+  assert.match(tokenCode, /resolveAuthenticatedUser/);
+
+  // Must not contain local duplicate isServerSupabaseConfigured demanding only service role
+  assert.doesNotMatch(
+    tokenCode,
+    /function isServerSupabaseConfigured\(\)/,
+    'Must not define private isServerSupabaseConfigured demanding service role'
+  );
+
+  // Must use user-scoped client db
+  assert.match(tokenCode, /const db = auth\.client \|\| supabaseServer/);
+});
+

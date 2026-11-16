@@ -134,7 +134,7 @@ export const IntegrationsPage: React.FC = () => {
     setAuthMessage(null);
     const res = await SupabaseAuthService.signInWithGoogleOAuth();
     if (res.error) {
-      setAuthMessage(`Google Sign-In error: ${res.error}`);
+      setAuthMessage(res.error);
     } else if (res.url) {
       window.location.href = res.url;
     }

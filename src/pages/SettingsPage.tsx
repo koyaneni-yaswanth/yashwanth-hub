@@ -189,25 +189,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
     GoogleAuthService.saveClientId(cleaned);
 
     if (CapacitorService.isNative()) {
-      const client = getSupabaseClient();
-      if (client) {
-        try {
-          const { data } = await client.auth.signInWithOAuth({
-            provider: 'google',
-            options: {
-              redirectTo: 'com.yaswanth.hub://auth/callback',
-              skipBrowserRedirect: true,
-            },
-          });
-          if (data?.url) {
-            window.open(data.url, '_system');
-            return;
-          }
-        } catch (e) {
-          console.warn('Supabase OAuth attempt failed, falling back to PKCE Google Auth URL:', e);
-        }
-      }
-
       const { url: nativeAuthUrl } = await GoogleAuthService.buildPkceAuthUrl(cleaned, 'com.yaswanth.hub://auth/callback');
       window.open(nativeAuthUrl, '_system');
       return;

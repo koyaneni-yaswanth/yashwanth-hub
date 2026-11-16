@@ -5,38 +5,11 @@
 // 2. Requires authenticated Supabase session JWT for multi-user RLS isolation.
 
 import { google } from 'googleapis';
-import { supabaseServer } from '../../_lib/db.ts';
-
-function isServerSupabaseConfigured(): boolean {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-  return Boolean(url && key && !url.includes('sample-project') && !key.includes('placeholder'));
-}
-
-async function resolveAuthenticatedUser(req: any): Promise<{ userId: string | null; error?: string }> {
-  const authHeader = req.headers?.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return { userId: null, error: 'Missing Authorization Bearer JWT.' };
-  }
-
-  const token = authHeader.slice(7).trim();
-  if (!token) {
-    return { userId: null, error: 'Empty Bearer JWT.' };
-  }
-
-  try {
-    const {
-      data: { user },
-      error,
-    } = await supabaseServer.auth.getUser(token);
-    if (error || !user) {
-      return { userId: null, error: error?.message || 'Invalid or expired user session.' };
-    }
-    return { userId: user.id };
-  } catch (err: any) {
-    return { userId: null, error: err?.message || 'Auth verification failed.' };
-  }
-}
+import {
+  supabaseServer,
+  isServerSupabaseConfigured,
+  resolveAuthenticatedUser,
+} from '../../_lib/db.ts';
 
 export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -52,16 +25,16 @@ export default async function handler(req: any, res: any) {
       success: false,
       error: 'Server Configuration Required',
       message:
-        'Supabase server credentials (SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY) are not configured in Vercel Environment Variables.',
+        'Supabase server credentials (SUPABASE_URL and SUPABASE_ANON_KEY or SUPABASE_SERVICE_ROLE_KEY) are not configured in Vercel Environment Variables.',
       missingEnvVars: [
         !process.env.SUPABASE_URL && !process.env.VITE_SUPABASE_URL ? 'SUPABASE_URL' : null,
-        !process.env.SUPABASE_SERVICE_ROLE_KEY ? 'SUPABASE_SERVICE_ROLE_KEY' : null,
+        !process.env.SUPABASE_SERVICE_ROLE_KEY && !process.env.SUPABASE_ANON_KEY && !process.env.VITE_SUPABASE_ANON_KEY ? 'SUPABASE_ANON_KEY' : null,
       ].filter(Boolean),
     });
   }
 
   const auth = await resolveAuthenticatedUser(req);
-  if (!auth.userId) {
+  if (!auth.authenticated || !auth.userId) {
     return res.status(401).json({
       success: false,
       error: 'Unauthorized',
@@ -69,6 +42,7 @@ export default async function handler(req: any, res: any) {
     });
   }
   const userId = auth.userId;
+  const db = auth.client || supabaseServer;
 
   const clientId = (process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || '').trim();
   const clientSecret = (process.env.GOOGLE_CLIENT_SECRET || '').trim();
@@ -78,7 +52,7 @@ export default async function handler(req: any, res: any) {
     // GET: Restore Session Status & Server-Side Auto-Refresh Expired Access Token
     // -------------------------------------------------------------------------
     if (req.method === 'GET') {
-      const { data: tokenRecord, error: fetchErr } = await supabaseServer
+      const { data: tokenRecord, error: fetchErr } = await db
         .from('integration_tokens')
         .select('id, user_id, provider, access_token, encrypted_access_token, refresh_token, encrypted_refresh_token, expires_at, token_expires_at, account_email, scopes, updated_at')
         .eq('user_id', userId)
@@ -110,7 +84,7 @@ export default async function handler(req: any, res: any) {
               ? new Date(credentials.expiry_date).toISOString()
               : new Date(Date.now() + 3600000).toISOString();
 
-            await supabaseServer
+            await db
               .from('integration_tokens')
               .update({
                 access_token: accessToken,
@@ -149,7 +123,7 @@ export default async function handler(req: any, res: any) {
     // DELETE: Sign Out / Disconnect Google Workspace & Purge User Token
     // -------------------------------------------------------------------------
     if (req.method === 'DELETE') {
-      const { data: existing } = await supabaseServer
+      const { data: existing } = await db
         .from('integration_tokens')
         .select('access_token, encrypted_access_token, refresh_token, encrypted_refresh_token')
         .eq('user_id', userId)
@@ -168,7 +142,7 @@ export default async function handler(req: any, res: any) {
         }
       }
 
-      await supabaseServer
+      await db
         .from('integration_tokens')
         .delete()
         .eq('user_id', userId)
@@ -191,7 +165,7 @@ export default async function handler(req: any, res: any) {
     const body = req.body || {};
     if (body.action === 'vault_access_token' && body.access_token) {
       const expiresAt = body.expires_at || new Date(Date.now() + 3600000).toISOString();
-      const { error: upsertErr } = await supabaseServer
+      const { error: upsertErr } = await db
         .from('integration_tokens')
         .upsert(
           {
@@ -271,7 +245,7 @@ export default async function handler(req: any, res: any) {
 
     let refreshToken = tokens.refresh_token || null;
     if (!refreshToken) {
-      const { data: existing } = await supabaseServer
+      const { data: existing } = await db
         .from('integration_tokens')
         .select('refresh_token, encrypted_refresh_token')
         .eq('user_id', userId)
@@ -280,7 +254,7 @@ export default async function handler(req: any, res: any) {
       refreshToken = existing?.refresh_token || existing?.encrypted_refresh_token || null;
     }
 
-    const { error: upsertErr } = await supabaseServer
+    const { error: upsertErr } = await db
       .from('integration_tokens')
       .upsert(
         {
@@ -310,7 +284,7 @@ export default async function handler(req: any, res: any) {
     }
 
     // Clear needs_authorization status on any Google automations owned by this user
-    await supabaseServer
+    await db
       .from('automations')
       .update({ status: 'active' })
       .eq('user_id', userId)

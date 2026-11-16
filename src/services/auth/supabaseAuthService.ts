@@ -100,7 +100,7 @@ class SupabaseAuthManager {
     return window.location.origin;
   }
 
-  public async signInWithGoogleOAuth(): Promise<{ url?: string; error?: string }> {
+  public async signInWithGoogleOAuth(): Promise<{ url?: string; error?: string; providerDisabled?: boolean }> {
     const client = getSupabaseClient();
     if (!client) {
       return {
@@ -109,6 +109,29 @@ class SupabaseAuthManager {
     }
 
     const redirectTo = this.getRedirectToUrl();
+    const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
+
+    // Pre-flight validation: check if Google OAuth provider is enabled in Supabase GoTrue
+    if (supabaseUrl && typeof window !== 'undefined') {
+      try {
+        const checkRes = await fetch(`${supabaseUrl}/auth/v1/authorize?provider=google`, {
+          method: 'GET',
+          redirect: 'manual',
+        });
+        if (checkRes.status === 400) {
+          const body = await checkRes.json().catch(() => ({}));
+          if (body.error_code === 'validation_failed' || body.msg?.includes('provider is not enabled')) {
+            return {
+              error: 'Google Sign-In is not enabled on this Supabase project. Enable Google in the Supabase Dashboard (Authentication -> Providers) or sign in using Email & Password below.',
+              providerDisabled: true,
+            };
+          }
+        }
+      } catch {
+        // Continue to standard client call if network probe is blocked by CORS
+      }
+    }
+
     const { data, error } = await client.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -121,6 +144,12 @@ class SupabaseAuthManager {
     });
 
     if (error) {
+      if (error.message?.includes('provider is not enabled') || (error as any).code === 'validation_failed') {
+        return {
+          error: 'Google Sign-In is not enabled on this Supabase project. Enable Google in the Supabase Dashboard (Authentication -> Providers) or sign in using Email & Password below.',
+          providerDisabled: true,
+        };
+      }
       return { error: error.message };
     }
     return { url: data?.url };
