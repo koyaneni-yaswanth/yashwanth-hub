@@ -328,23 +328,24 @@ async function seedProjects() {
       id: generateId(),
       title: 'PAWAN SHAKTI — TRL 4 Benchtop to TRL 5 Integrated Test',
       description:
-        'Verified baseline: TRL 4 benchtop prototype (wooden frame, PLA blades, planetary gearbox, published Indian patent "Compact Wind Turbine with Planetary Gears"). Closed-loop integrated testing and structural upgrade pending.',
+        'Verified baseline: TRL 4 benchtop prototype (wooden frame, PLA blades, planetary gearbox, published Indian patent "Compact Wind Turbine with Planetary Gears"). TRL 6 is NOT reached; target date for TRL 6 is 2027-01-03. Closed-loop integrated testing and structural upgrade pending.',
       area: 'PAWAN SHAKTI',
       status: 'active',
       priority: 'urgent',
       start_date: today,
-      target_date: ninetyDays,
-      progress: 35,
+      target_date: '2027-01-03',
+      progress: 45,
       verification_note:
-        'Ground truth baseline: TRL 4 benchtop only. Closed-loop electrical + aerodynamic test, continuous >= 1 Hz P-v curve CSV, and customer LOIs are NOT yet completed.',
+        'Ground truth baseline: TRL 4 benchtop only. Operational TRL 6 is NOT reached. Closed-loop electrical + aerodynamic test, continuous >= 1 Hz P-v curve CSV, and customer LOIs are NOT yet completed.',
       milestones: [
         { id: generateId(), title: 'Publish Indian Patent: Compact Wind Turbine with Planetary Gears', target_date: today, done: true },
         { id: generateId(), title: 'TRL 4 separate subcomponent benchtop fabrication (wood + PLA baseline)', target_date: today, done: true },
-        { id: generateId(), title: 'Closed-loop integrated bench test with continuous >= 1 Hz P-v curve CSV', target_date: ninetyDays, done: false },
-        { id: generateId(), title: 'Upgrade primary frame/blades from wood/PLA & capture IEC 61400-2 safety dossier', target_date: ninetyDays, done: false },
+        { id: generateId(), title: 'Closed-loop integrated aerodynamic + generator bench test with continuous >= 1 Hz P-v curve CSV', target_date: ninetyDays, done: false },
+        { id: generateId(), title: 'Advance to TRL 6 field operational demonstration in operational environment', target_date: '2027-01-03', done: false },
       ],
       goals: [
         { id: generateId(), title: 'Achieve verified TRL 5 integrated bench/wind-tunnel demonstration', target_metric: 'Integrated P-v curve >= 1 Hz CSV', status: 'in_progress', truth_tag: 'target' },
+        { id: generateId(), title: 'Target TRL 6 field operational demonstration by 2027-01-03', target_metric: 'Operational field test data', status: 'planned', truth_tag: 'target' },
         { id: generateId(), title: 'Eliminate wooden frame & PLA structural compliance risks before outdoor run', target_metric: 'Engineering metal/composite chassis BOM', status: 'planned', truth_tag: 'target' },
       ],
       decisions: [

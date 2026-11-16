@@ -122,22 +122,23 @@ async function enrichSnapshotFromServer(
         id: 'proj-pawan-baseline',
         title: 'PAWAN SHAKTI — TRL 4 Benchtop to TRL 5 Integrated Test',
         description:
-          'Verified baseline: TRL 4 benchtop prototype (wooden frame, PLA blades, planetary gearbox, published Indian patent "Compact Wind Turbine with Planetary Gears"). Closed-loop integrated testing and structural upgrade pending.',
+          'Verified baseline: TRL 4 benchtop prototype (wooden frame, PLA blades, planetary gearbox, published Indian patent "Compact Wind Turbine with Planetary Gears"). TRL 6 is NOT reached; target date for TRL 6 is 2027-01-03. Closed-loop integrated testing and structural upgrade pending.',
         area: 'PAWAN SHAKTI',
         status: 'active',
         priority: 'urgent',
-        progress: 35,
-        target_date: new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10),
+        progress: 45,
+        target_date: '2027-01-03',
         verification_note:
-          'Ground truth baseline: TRL 4 benchtop only. Closed-loop electrical + aerodynamic test, continuous >= 1 Hz P-v curve CSV, and customer LOIs are NOT yet completed.',
+          'Ground truth baseline: TRL 4 benchtop only. Operational TRL 6 is NOT reached. Closed-loop electrical + aerodynamic test, continuous >= 1 Hz P-v curve CSV, and customer LOIs are NOT yet completed.',
         milestones: [
           { id: 'm1', title: 'Publish Indian Patent: Compact Wind Turbine with Planetary Gears', done: true },
           { id: 'm2', title: 'TRL 4 separate subcomponent benchtop fabrication (wood + PLA baseline)', done: true },
-          { id: 'm3', title: 'Closed-loop integrated bench test with continuous >= 1 Hz P-v curve CSV', done: false },
-          { id: 'm4', title: 'Upgrade primary frame/blades from wood/PLA & capture IEC 61400-2 safety dossier', done: false },
+          { id: 'm3', title: 'Closed-loop integrated aerodynamic + generator bench test with continuous >= 1 Hz P-v curve CSV', done: false },
+          { id: 'm4', title: 'Advance to TRL 6 field operational demonstration in operational environment', done: false },
         ],
         goals: [
           { id: 'g1', title: 'Achieve verified TRL 5 integrated bench/wind-tunnel demonstration', status: 'in_progress' },
+          { id: 'g2', title: 'Target TRL 6 field operational demonstration by 2027-01-03', status: 'planned' },
         ],
         decisions: [
           {
