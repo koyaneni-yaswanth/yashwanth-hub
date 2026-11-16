@@ -308,6 +308,12 @@ async function runGeminiWithTools(
       }
     );
 
+    let firstErrorMsg = '';
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => ({}));
+      firstErrorMsg = errData.error?.message || `HTTP ${resp.status}`;
+    }
+
     // Automatic fallback if primary model is unavailable or spikes (404/503/400)
     if (!resp.ok && activeModel !== fallbackModel && (resp.status === 404 || resp.status === 503 || resp.status === 400)) {
       activeModel = fallbackModel;
@@ -327,7 +333,8 @@ async function runGeminiWithTools(
 
     if (!resp.ok) {
       const errData = await resp.json().catch(() => ({}));
-      throw new Error(errData.error?.message || `Gemini API returned HTTP ${resp.status}`);
+      const secondErrorMsg = errData.error?.message || `HTTP ${resp.status}`;
+      throw new Error(`[${modelId} error: ${firstErrorMsg}] [${activeModel} fallback error: ${secondErrorMsg}]`);
     }
 
     const data = await resp.json();
