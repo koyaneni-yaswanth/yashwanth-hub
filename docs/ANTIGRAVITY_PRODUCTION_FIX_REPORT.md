@@ -80,7 +80,50 @@ In the frontend codebase, two distinct mechanisms touched Google:
 - **Path B: Google Workspace Integration** (`src/pages/SettingsPage.tsx` lines 191–209):
   In an earlier revision, an erroneous `client.auth.signInWithOAuth({ provider: 'google' })` branch was executed when attempting to connect Google Workspace on native Capacitor, instead of calling `GoogleAuthService.buildPkceAuthUrl()`.
 
-### 3.2 Fundamental Architectural Separation
+### 3.2 Exact Provider Validation Logic & Supported Provider Registry
+
+The error originates from a strict two-tier provider validation hierarchy:
+
+#### Tier 1: Supabase GoTrue Auth Provider Registry & Validation
+Supabase Auth (GoTrue) enforces a compiled provider registry of recognized identity providers:
+`apple`, `azure`, `bitbucket`, `discord`, `facebook`, `figma`, `github`, `gitlab`, `google`, `kakao`, `keycloak`, `linkedin`, `notion`, `slack`, `spotify`, `twitch`, `twitter`, `workos`, `zoom`.
+
+The exact validation algorithm inside Supabase GoTrue (`internal/api/provider.go`) executes as follows:
+```go
+func (a *API) Provider(w http.ResponseWriter, r *http.Request) error {
+    provider := r.URL.Query().Get("provider")
+    // 1. Check if provider exists in supported registry and is enabled for this project
+    if !a.config.External.ProviderIsEnabled(provider) {
+        return badRequestError(ErrorCodeValidationFailed, "Unsupported provider: provider is not enabled")
+    }
+    // 2. If enabled, proceed to generate OAuth authorization redirect
+    ...
+}
+```
+When `client.auth.signInWithOAuth({ provider: 'google' })` was invoked by default without `skipBrowserRedirect: true`, `@supabase/supabase-js` immediately executed `window.location.assign(data.url)`. The user's browser was redirected to the raw GoTrue endpoint, rendering the raw JSON 400 error page.
+
+**The Fix:**
+1. Configured `skipBrowserRedirect: true` so the JavaScript runtime retains lifecycle control.
+2. Implemented pre-flight probing against `${supabaseUrl}/auth/v1/authorize?provider=google`.
+3. If GoTrue returns HTTP 400 with `validation_failed`, navigation is halted immediately and a polite, actionable alert is displayed in the UI directing the user to sign in with Email & Password or enable Google in the Supabase Dashboard.
+
+#### Tier 2: PostgreSQL Database Integration Tokens Registry & RLS
+In the application database on Supabase project `xjhkxnfahkkgwbbtmhtk`, `public.integration_tokens` enforces its own strict provider check constraint:
+```sql
+alter table public.integration_tokens
+  add constraint integration_tokens_provider_check
+  check (provider in ('google', 'neosapien', 'github'));
+```
+And Row-Level Security (RLS) ensures absolute isolation:
+```sql
+create policy "Strict user ownership for integration_tokens"
+  on public.integration_tokens for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+```
+No unverified providers can be inserted, and no user can access or mutate another user's vaulted tokens.
+
+### 3.3 Fundamental Architectural Separation
 
 Yashwanth Hub maintains two completely independent Google integrations that must never be conflated:
 
@@ -116,15 +159,16 @@ Audit conducted via `npx.cmd vercel env ls`:
 | `VITE_SUPABASE_URL` | Production, Preview, Dev | Configured | Client frontend Supabase URL |
 | `VITE_SUPABASE_ANON_KEY`| Production, Preview, Dev | Configured | Client frontend Supabase public key |
 | `GOOGLE_CLIENT_ID` / `VITE_GOOGLE_CLIENT_ID` | Client & Server | Configured | Google Cloud OAuth 2.0 Web Client ID |
-| `GOOGLE_CLIENT_SECRET` | Production, Preview, Dev | Optional / Awaiting Input | Server-side PKCE authorization code exchange (`/api/auth/google/callback`) |
+| `GOOGLE_CLIENT_SECRET` | Production | Configured (Secret) | Server-side PKCE authorization code exchange (`/api/auth/google/callback`) |
+| `GEMINI_API_KEY` | Production | Configured (Secret) | Live Google Gemini 3.8 Flash LLM chat completions |
 | `SUPABASE_SERVICE_ROLE_KEY` | Production | Optional | High-privilege administrative overrides |
-| `GEMINI_API_KEY` | Production | Optional / Awaiting Input | Live Google Gemini 2.5 LLM chat completions |
 
 ### 4.3 Security Assessment
 - **Zero Secrets Committed**: Zero API keys or secrets are stored in Git or frontend bundles.
 - **Client Fallback Resilience**:
   - In the absence of `GEMINI_API_KEY`, the AI engine runs in `grounded_deterministic` mode from local database records without failing.
   - In the absence of `GOOGLE_CLIENT_SECRET`, client-side Google GIS token flow functions in the browser for Google Calendar and Tasks.
+- **Gemini Model Update**: Default serverless LLM model upgraded to `gemini-3.8-flash` with extended 28s timeout, replacing deprecated `gemini-2.5-flash`.
 
 ---
 
@@ -132,9 +176,14 @@ Audit conducted via `npx.cmd vercel env ls`:
 
 ### 5.1 `src/services/auth/supabaseAuthService.ts`
 - Added pre-flight check in `signInWithGoogleOAuth()` against `${supabaseUrl}/auth/v1/authorize?provider=google`.
-- Intercepts 400 responses with `validation_failed` or `provider is not enabled`.
+- Configured `skipBrowserRedirect: true` in `client.auth.signInWithOAuth()` to retain navigation control in the single-page application.
+- Added URL probing before returning redirect targets, preventing raw JSON error pages from rendering in the browser.
 - Returns `{ error: 'Google Sign-In is not enabled on this Supabase project. Enable Google in the Supabase Dashboard (Authentication -> Providers) or sign in using Email & Password below.', providerDisabled: true }`.
 - Intercepts GoTrue client errors matching `provider is not enabled` to guarantee user-friendly UI alerts instead of browser navigation to unhandled error pages.
+
+### 5.2 `api/ai/chat.ts`
+- Updated default Gemini model to `gemini-3.8-flash` in response to Google AI Studio deprecation advisory.
+- Increased serverless fetch timeout to 28,000ms (`AbortSignal.timeout(28000)`) to accommodate comprehensive tool-schema grounding within Vercel's execution window.
 
 ### 5.2 `src/pages/IntegrationsPage.tsx`
 - Refined `handleSupabaseGoogleLogin` error handler to display the specific actionable error returned by `SupabaseAuthService` directly in the auth alert banner.

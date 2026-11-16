@@ -158,7 +158,7 @@ async function runGeminiWithTools(
           contents,
           tools: [{ functionDeclarations: toGeminiFunctionDeclarations() }],
         }),
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(28000),
       }
     );
 
@@ -452,12 +452,12 @@ export function createAiChatHandler(dbClient: any = supabaseServer) {
       } else if (requestedProvider === 'gemini' && geminiKey) {
         chosenProvider = 'gemini';
         apiKey = geminiKey;
-        if (!modelId) modelId = 'gemini-2.5-flash';
+        if (!modelId) modelId = 'gemini-3.8-flash';
       } else if (requestedProvider !== 'local_heuristic') {
         if (geminiKey) {
           chosenProvider = 'gemini';
           apiKey = geminiKey;
-          modelId = 'gemini-2.5-flash';
+          modelId = 'gemini-3.8-flash';
         } else if (openaiKey) {
           chosenProvider = 'openai';
           apiKey = openaiKey;

@@ -1,4 +1,4 @@
-import { getSupabaseClient, isSupabaseConfigured } from '../../lib/supabase';
+import { getSupabaseClient, getSupabaseConfig, isSupabaseConfigured } from '../../lib/supabase';
 import { CapacitorService } from '../native/capacitorService';
 import type { Session, User } from '@supabase/supabase-js';
 
@@ -109,7 +109,8 @@ class SupabaseAuthManager {
     }
 
     const redirectTo = this.getRedirectToUrl();
-    const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
+    const cfg = getSupabaseConfig();
+    const supabaseUrl = cfg.url || (import.meta as any).env?.VITE_SUPABASE_URL || '';
 
     // Pre-flight validation: check if Google OAuth provider is enabled in Supabase GoTrue
     if (supabaseUrl && typeof window !== 'undefined') {
@@ -136,6 +137,7 @@ class SupabaseAuthManager {
       provider: 'google',
       options: {
         redirectTo,
+        skipBrowserRedirect: true,
         queryParams: {
           access_type: 'offline',
           prompt: 'consent',
@@ -152,6 +154,25 @@ class SupabaseAuthManager {
       }
       return { error: error.message };
     }
+
+    if (data?.url && typeof window !== 'undefined') {
+      // Validate that data.url doesn't fail with provider error before returning URL for redirection
+      try {
+        const probeRes = await fetch(data.url, { method: 'GET', redirect: 'manual' });
+        if (probeRes.status === 400) {
+          const probeBody = await probeRes.json().catch(() => ({}));
+          if (probeBody.error_code === 'validation_failed' || probeBody.msg?.includes('provider is not enabled')) {
+            return {
+              error: 'Google Sign-In is not enabled on this Supabase project. Enable Google in the Supabase Dashboard (Authentication -> Providers) or sign in using Email & Password below.',
+              providerDisabled: true,
+            };
+          }
+        }
+      } catch {
+        // Expected when 302 cross-origin redirect to accounts.google.com occurs
+      }
+    }
+
     return { url: data?.url };
   }
 
