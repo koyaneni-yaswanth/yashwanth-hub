@@ -21,6 +21,7 @@ import {
   FolderGit2,
   AlertTriangle,
   Database,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { db } from '../db';
 import type {
@@ -107,7 +108,8 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
 
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isToolsOpen, setIsToolsOpen] = useState(false);
-  const [isHistoryOpen, setIsHistoryOpen] = useState(true);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isOptionsOpen, setIsOptionsOpen] = useState(false);
   const [isCompareMode, setIsCompareMode] = useState(false);
 
   const [discoveredTools, setDiscoveredTools] = useState<AIToolSpec[]>([]);
@@ -352,111 +354,180 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
   ];
 
   return (
-    <div className="space-y-4 pb-8 flex flex-col min-h-[680px]">
-      {/* Top Bar */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-[var(--hub-line)]">
-        <div>
-          <h2 className="text-2xl font-bold font-heading text-[var(--hub-ink)] flex items-center gap-2">
-            <Sparkles className="w-6 h-6 text-[var(--hub-accent)]" />
-            <span>AI Chief of Staff</span>
+    <div className="max-w-5xl mx-auto space-y-4 pb-8 flex flex-col min-h-[680px]">
+      {/* Clean Minimal Top Bar */}
+      <div className="flex items-center justify-between gap-3 pb-3 border-b border-[var(--hub-line)]">
+        <div className="min-w-0">
+          <h2 className="text-xl sm:text-2xl font-bold font-heading text-[var(--hub-ink)] flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-[var(--hub-accent)] shrink-0" />
+            <span className="truncate">Ask Jarvis AI</span>
           </h2>
-          <p className="text-xs text-[var(--hub-muted)] mt-0.5">
-            Tool-grounded intelligence over your real tasks, projects, blockers, decisions, notes, and permitted memories.
+          <p className="text-xs text-[var(--hub-muted)] mt-0.5 hidden sm:block">
+            Connected directly to your tasks, projects, calendar, and notes.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--hub-surface)] border border-[var(--hub-line)] text-[11px]">
-            <FolderGit2 className="w-3.5 h-3.5 text-[var(--hub-accent)]" />
-            <select
-              value={selectedProjectId}
-              onChange={(e) => setSelectedProjectId(e.target.value)}
-              aria-label="Scope AI context to project"
-              className="bg-transparent font-medium text-[var(--hub-ink)] focus:outline-none cursor-pointer max-w-[170px]"
-            >
-              <option value="">All Workspace Context</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  Scope: {p.title.slice(0, 32)}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={handleStartNewConversation}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer shadow-xs"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>New Chat</span>
+          </button>
 
           <button
             onClick={() => setIsHistoryOpen(!isHistoryOpen)}
-            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
               isHistoryOpen
-                ? 'bg-[var(--hub-accent)]/10 text-[var(--hub-accent)] border-[var(--hub-accent)]/30'
-                : 'border-[var(--hub-line)] text-[var(--hub-muted)]'
+                ? 'bg-[var(--hub-accent)]/10 text-[var(--hub-accent)] border-[var(--hub-accent)]/40'
+                : 'bg-[var(--hub-surface)] border-[var(--hub-line)] text-[var(--hub-ink)] hover:border-[var(--hub-accent)]/40'
             }`}
           >
             <History className="w-3.5 h-3.5" />
-            <span>Threads ({conversations.length})</span>
+            <span className="hidden sm:inline">History</span>
+            {conversations.length > 0 && (
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-[var(--hub-bg)] text-[var(--hub-muted)]">
+                {conversations.length}
+              </span>
+            )}
           </button>
 
           <button
-            onClick={() => setIsToolsOpen(!isToolsOpen)}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-[var(--hub-line)] text-[var(--hub-ink)] hover:bg-[var(--hub-surface)] cursor-pointer"
-          >
-            <Wrench className="w-3.5 h-3.5 text-[var(--hub-accent)]" />
-            <span>Tools ({discoveredTools.length})</span>
-          </button>
-
-          <button
-            onClick={() => setIsCompareMode(!isCompareMode)}
-            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
-              isCompareMode
-                ? 'bg-purple-500 text-white border-purple-500'
-                : 'border-[var(--hub-line)] text-[var(--hub-ink)]'
+            onClick={() => setIsOptionsOpen(!isOptionsOpen)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
+              isOptionsOpen || isConfigOpen || isToolsOpen || isCompareMode
+                ? 'bg-[var(--hub-accent)]/10 text-[var(--hub-accent)] border-[var(--hub-accent)]/40'
+                : 'bg-[var(--hub-surface)] border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
             }`}
+            title="Model, Project Scope, Tools & Compare"
           >
-            <Columns3 className="w-3.5 h-3.5" />
-            <span>Compare</span>
-          </button>
-
-          <button
-            onClick={() => setIsConfigOpen(!isConfigOpen)}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border border-[var(--hub-line)] text-[var(--hub-ink)] cursor-pointer"
-          >
-            <Cpu className="w-3.5 h-3.5 text-teal-500" />
-            <span>{anyServerLlmConfigured ? selectedModelId : 'Grounded Engine'}</span>
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Options</span>
           </button>
         </div>
       </div>
 
-      {/* Mode & Cost Telemetry Row */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-1.5">
-          {modes.map((m) => {
-            const Icon = m.icon;
-            return (
+      {/* Collapsible Advanced Controls Drawer (Hidden by default for simplicity) */}
+      {isOptionsOpen && (
+        <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-3.5 space-y-3 shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs">
+                <FolderGit2 className="w-3.5 h-3.5 text-[var(--hub-accent)]" />
+                <select
+                  value={selectedProjectId}
+                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                  aria-label="Scope AI context to project"
+                  className="bg-transparent font-medium text-[var(--hub-ink)] focus:outline-none cursor-pointer max-w-[180px]"
+                >
+                  <option value="">All Workspace Context</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.title.slice(0, 32)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <button
-                key={m.id}
-                onClick={() => setSelectedMode(m.id)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
-                  selectedMode === m.id
+                onClick={() => setIsConfigOpen(!isConfigOpen)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium border cursor-pointer ${
+                  isConfigOpen
                     ? 'bg-[var(--hub-accent)] text-white border-[var(--hub-accent)]'
-                    : 'bg-[var(--hub-surface)] border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
+                    : 'bg-[var(--hub-bg)] border-[var(--hub-line)] text-[var(--hub-ink)]'
                 }`}
               >
-                <Icon className="w-3.5 h-3.5" />
-                <span>{m.label}</span>
+                <Cpu className="w-3.5 h-3.5" />
+                <span>{anyServerLlmConfigured ? selectedModelId : 'Grounded Engine'}</span>
               </button>
-            );
-          })}
-        </div>
 
-        <div className="flex items-center gap-2 text-[11px]">
-          <Badge variant={anyServerLlmConfigured ? 'emerald' : 'amber'}>
-            {anyServerLlmConfigured ? 'Server LLM Tools Active' : 'Grounded Deterministic Engine (Offline Workspace Baseline)'}
-          </Badge>
-          <span className="px-2 py-0.5 rounded bg-[var(--hub-surface)] border border-[var(--hub-line)] font-mono text-[var(--hub-muted)]">
-            {totalTokensLogged > 0
-              ? `${totalTokensLogged.toLocaleString()} tok • $${totalCostLogged.toFixed(4)}`
-              : 'Zero Cloud Spend (Deterministic Mode)'}
-          </span>
+              <button
+                onClick={() => setIsToolsOpen(!isToolsOpen)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium border cursor-pointer ${
+                  isToolsOpen
+                    ? 'bg-[var(--hub-accent)] text-white border-[var(--hub-accent)]'
+                    : 'bg-[var(--hub-bg)] border-[var(--hub-line)] text-[var(--hub-ink)]'
+                }`}
+              >
+                <Wrench className="w-3.5 h-3.5" />
+                <span>Tools ({discoveredTools.length})</span>
+              </button>
+
+              <button
+                onClick={() => setIsCompareMode(!isCompareMode)}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium border cursor-pointer ${
+                  isCompareMode
+                    ? 'bg-purple-600 text-white border-purple-600'
+                    : 'bg-[var(--hub-bg)] border-[var(--hub-line)] text-[var(--hub-ink)]'
+                }`}
+              >
+                <Columns3 className="w-3.5 h-3.5" />
+                <span>Compare Models</span>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 text-[11px]">
+              <Badge variant={anyServerLlmConfigured ? 'emerald' : 'amber'}>
+                {anyServerLlmConfigured ? 'Cloud AI Active' : 'Local Grounded Mode'}
+              </Badge>
+              <span className="font-mono text-[var(--hub-muted)]">
+                {totalTokensLogged > 0
+                  ? `${totalTokensLogged.toLocaleString()} tok • $${totalCostLogged.toFixed(4)}`
+                  : 'Zero spend'}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-1.5 pt-2 border-t border-[var(--hub-line)]/70">
+            {modes.map((m) => {
+              const Icon = m.icon;
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => setSelectedMode(m.id)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
+                    selectedMode === m.id
+                      ? 'bg-[var(--hub-accent)] text-white border-[var(--hub-accent)]'
+                      : 'bg-[var(--hub-bg)] border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  <span>{m.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
+      )}
+
+      {/* Compact Horizontal Focus Chips */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+        {MODULAR_AGENTS.map((agent) => {
+          const Icon = agent.icon;
+          const active = selectedAgent === agent.id;
+          return (
+            <button
+              key={agent.id}
+              onClick={() => {
+                setSelectedAgent(agent.id);
+                if (agent.id === 'startup_advisor') setSelectedMode('startup');
+                else if (agent.id === 'robotics') setSelectedMode('engineering');
+                else if (agent.id === 'research') setSelectedMode('research');
+                else if (agent.id === 'planning' || agent.id === 'productivity') setSelectedMode('personal');
+                else if (agent.id === 'execution') setSelectedMode('engineering');
+              }}
+              className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all cursor-pointer ${
+                active
+                  ? 'bg-[var(--hub-accent)] text-white border-[var(--hub-accent)] shadow-xs'
+                  : 'bg-[var(--hub-surface)] border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:border-[var(--hub-accent)]/40'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              <span>{agent.name}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Tools Discovery Panel */}
@@ -572,124 +643,90 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
           )}
         </div>
       ) : (
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 min-h-[520px]">
-          {/* Left Rail: Persistent Conversations + Specialist Personas */}
-          <div className={`${isHistoryOpen ? 'lg:col-span-3' : 'lg:col-span-3'} space-y-3`}>
-            <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--hub-muted)]">
-                  Saved Conversations
-                </span>
-                <button
-                  onClick={handleStartNewConversation}
-                  className="flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--hub-accent)] text-white text-[11px] font-semibold cursor-pointer"
-                >
-                  <Plus className="w-3 h-3" />
-                  <span>New</span>
-                </button>
-              </div>
-              {conversations.length === 0 ? (
-                <p className="text-[11px] text-[var(--hub-muted)] py-2">
-                  No saved threads yet. Ask a Chief of Staff prompt to begin.
-                </p>
-              ) : (
-                <div className="space-y-1 max-h-[220px] overflow-y-auto pr-0.5">
-                  {conversations.map((conv) => (
-                    <div
-                      key={conv.id}
-                      className={`group flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${
-                        activeConversationId === conv.id
-                          ? 'bg-[var(--hub-accent)]/12 text-[var(--hub-accent)] font-semibold'
-                          : 'text-[var(--hub-ink)] hover:bg-[var(--hub-bg)]'
-                      }`}
-                      onClick={() => handleSelectConversation(conv)}
-                    >
-                      <span className="truncate flex-1">{conv.title}</span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteConversation(conv.id);
-                        }}
-                        aria-label="Delete thread"
-                        className="opacity-0 group-hover:opacity-100 text-[var(--hub-muted)] hover:text-red-500 cursor-pointer"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-3 space-y-1.5">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--hub-muted)] px-1">
-                Specialist Perspective
-              </div>
-              {MODULAR_AGENTS.map((agent) => {
-                const Icon = agent.icon;
-                const active = selectedAgent === agent.id;
-                return (
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 min-h-[540px]">
+          {/* Optional History Sidebar (only when toggled on) */}
+          {isHistoryOpen && (
+            <div className="lg:col-span-3 space-y-3">
+              <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--hub-muted)]">
+                    Recent Chats
+                  </span>
                   <button
-                    key={agent.id}
-                    onClick={() => {
-                      setSelectedAgent(agent.id);
-                      if (agent.id === 'startup_advisor') setSelectedMode('startup');
-                      else if (agent.id === 'robotics') setSelectedMode('engineering');
-                      else if (agent.id === 'research') setSelectedMode('research');
-                      else if (agent.id === 'planning' || agent.id === 'productivity') setSelectedMode('personal');
-                      else if (agent.id === 'execution') setSelectedMode('engineering');
-                    }}
-                    className={`w-full flex items-center justify-between p-2 rounded-lg text-left transition-colors cursor-pointer ${
-                      active
-                        ? 'bg-[var(--hub-accent)]/10 text-[var(--hub-accent)]'
-                        : 'text-[var(--hub-ink)] hover:bg-[var(--hub-bg)]'
-                    }`}
+                    onClick={() => setIsHistoryOpen(false)}
+                    className="text-xs text-[var(--hub-muted)] hover:text-[var(--hub-ink)] cursor-pointer"
                   >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Icon className="w-3.5 h-3.5 shrink-0" />
-                      <div className="truncate">
-                        <div className="text-xs font-semibold truncate">{agent.name}</div>
-                        <div className="text-[10px] text-[var(--hub-muted)] truncate">{agent.role}</div>
-                      </div>
-                    </div>
+                    Hide
                   </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Center Chat & Verified Action Previews */}
-          <div className="lg:col-span-9 bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl flex flex-col overflow-hidden min-h-[520px]">
-            {/* Starter Prompts Strip */}
-            <div className="px-4 py-2.5 border-b border-[var(--hub-line)] bg-[var(--hub-bg)]/50 flex items-center gap-1.5 overflow-x-auto">
-              <span className="text-[10px] font-bold uppercase text-[var(--hub-muted)] shrink-0 mr-1">
-                Ask:
-              </span>
-              {QUICK_CHIEF_PROMPTS.map((q) => (
-                <button
-                  key={q}
-                  onClick={() => sendPromptText(q)}
-                  disabled={isProcessing}
-                  className="shrink-0 px-2.5 py-1 rounded-full bg-[var(--hub-surface)] border border-[var(--hub-line)] text-[11px] text-[var(--hub-ink)] hover:border-[var(--hub-accent)] hover:text-[var(--hub-accent)] transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
-
-            {/* Messages Scroll */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
-              {messages.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-center max-w-lg mx-auto space-y-3 py-10">
-                  <div className="w-11 h-11 rounded-2xl bg-[var(--hub-accent)]/10 text-[var(--hub-accent)] flex items-center justify-center">
-                    <Sparkles className="w-5 h-5" />
-                  </div>
-                  <h3 className="font-heading font-bold text-base text-[var(--hub-ink)]">
-                    Grounded Personal Operating System Assistant
-                  </h3>
-                  <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
-                    Every response queries your live workspace database first, cites source records, separates verified facts from unknowns, and previews any new task, note, or decision before saving.
+                </div>
+                {conversations.length === 0 ? (
+                  <p className="text-xs text-[var(--hub-muted)] py-2">
+                    No saved chats yet.
                   </p>
+                ) : (
+                  <div className="space-y-1 max-h-[420px] overflow-y-auto pr-0.5">
+                    {conversations.map((conv) => (
+                      <div
+                        key={conv.id}
+                        className={`group flex items-center justify-between gap-1.5 px-2.5 py-2 rounded-xl text-xs cursor-pointer transition-colors ${
+                          activeConversationId === conv.id
+                            ? 'bg-[var(--hub-accent)]/12 text-[var(--hub-accent)] font-semibold'
+                            : 'text-[var(--hub-ink)] hover:bg-[var(--hub-bg)]'
+                        }`}
+                        onClick={() => handleSelectConversation(conv)}
+                      >
+                        <span className="truncate flex-1">{conv.title}</span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteConversation(conv.id);
+                          }}
+                          aria-label="Delete thread"
+                          className="opacity-0 group-hover:opacity-100 text-[var(--hub-muted)] hover:text-red-500 cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Main Full-Width Chat Area */}
+          <div
+            className={`${
+              isHistoryOpen ? 'lg:col-span-9' : 'lg:col-span-12'
+            } bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl flex flex-col overflow-hidden min-h-[540px] shadow-xs`}
+          >
+            {/* Messages Scroll */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+              {messages.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center max-w-xl mx-auto space-y-5 py-8">
+                  <div className="w-12 h-12 rounded-2xl bg-[var(--hub-accent)]/12 text-[var(--hub-accent)] flex items-center justify-center">
+                    <Sparkles className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="font-heading font-bold text-lg text-[var(--hub-ink)]">
+                      How can I help today?
+                    </h3>
+                    <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
+                      Ask about your tasks, schedule, Pawan Shakti progress, or robotics projects — or tap a prompt below.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full text-left">
+                    {QUICK_CHIEF_PROMPTS.slice(0, 4).map((q) => (
+                      <button
+                        key={q}
+                        onClick={() => sendPromptText(q)}
+                        disabled={isProcessing}
+                        className="p-3 rounded-xl bg-[var(--hub-bg)]/80 border border-[var(--hub-line)] hover:border-[var(--hub-accent)] text-xs font-medium text-[var(--hub-ink)] transition-all cursor-pointer disabled:opacity-50 leading-snug"
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               ) : (
                 messages.map((msg) => (
