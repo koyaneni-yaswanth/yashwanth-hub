@@ -36,6 +36,8 @@ import type {
   GoalMilestone,
   Habit,
   HabitLog,
+  DailyPlan,
+  FocusSession,
   RoboticsProjectRecord,
 } from '../types';
 import { generateId, getTodayISO } from '../lib/utils';
@@ -76,6 +78,8 @@ export class YashwanthHubDatabase extends Dexie {
   goal_milestones!: Table<GoalMilestone, string>;
   habits!: Table<Habit, string>;
   habit_logs!: Table<HabitLog, string>;
+  daily_plans!: Table<DailyPlan, string>;
+  focus_sessions!: Table<FocusSession, string>;
 
   constructor() {
     super('YashwanthHubDB');
@@ -137,6 +141,12 @@ export class YashwanthHubDatabase extends Dexie {
       goal_milestones: 'id, goal_id, week_start, done',
       habits: 'id, goal_id, area, archived',
       habit_logs: 'id, habit_id, date',
+    });
+
+    // Daily Compass plans and Deep Work sessions. Additive only.
+    this.version(9).stores({
+      daily_plans: 'id, updated_at',
+      focus_sessions: 'id, date, task_id, goal_id, started_at',
     });
   }
 }

@@ -22,10 +22,7 @@ import {
   Sun,
   Target,
   Play,
-  Pause,
-  RotateCcw,
   Eye,
-  EyeOff,
   SkipForward,
   CalendarCheck,
   Trophy,
@@ -50,6 +47,7 @@ import { StatCard } from '../components/common/StatCard';
 import { Badge } from '../components/common/Badge';
 import { Neo1DeviceCard } from '../components/neo/Neo1DeviceCard';
 import { IntegrationVaultService } from '../services/integrationVaultService';
+import { handOffFocusTask } from '../lib/focusHandoff';
 import { TaskService } from '../services/sync/taskService';
 import { TodayProgress } from '../components/home/TodayProgress';
 
@@ -144,19 +142,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
   // Focus Mode state
   const [recommendationSkipIndex, setRecommendationSkipIndex] = useState(0);
-  const [isFocusMode, setIsFocusMode] = useState(false);
-  const [focusSeconds, setFocusSeconds] = useState(25 * 60);
-  const [isTimerRunning, setIsTimerRunning] = useState(false);
-
-  React.useEffect(() => {
-    let interval: any = null;
-    if (isTimerRunning && focusSeconds > 0) {
-      interval = setInterval(() => setFocusSeconds((s) => s - 1), 1000);
-    } else if (focusSeconds === 0) {
-      setIsTimerRunning(false);
-    }
-    return () => clearInterval(interval);
-  }, [isTimerRunning, focusSeconds]);
 
   // Smart Task Recommendation (clean human reasons, no jargon)
   interface ScoredTask {
@@ -396,15 +381,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
         <div className="flex items-center gap-2 self-start sm:self-auto">
           <button
-            onClick={() => setIsFocusMode(!isFocusMode)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-              isFocusMode
-                ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] border-[var(--hub-accent)]'
-                : 'bg-[var(--hub-surface)] border-[var(--hub-line)] text-[var(--hub-ink)] hover:border-[var(--hub-accent)]/50'
-            }`}
+            onClick={() => {
+              if (activeRecommendation) handOffFocusTask(activeRecommendation.id);
+              onNavigate('focus');
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer bg-[var(--hub-surface)] border-[var(--hub-line)] text-[var(--hub-ink)] hover:border-[var(--hub-accent)]/50"
           >
-            {isFocusMode ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-            <span>{isFocusMode ? 'Exit Focus' : 'Focus Mode'}</span>
+            <Eye className="w-3.5 h-3.5" aria-hidden="true" />
+            <span>Focus Mode</span>
           </button>
 
           <button
@@ -559,86 +543,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </form>
       </div>
 
-      {/* 3. Focus Mode Timer (Only visible when toggled on) */}
-      {isFocusMode && (
-        <div className="rounded-2xl p-6 sm:p-8 bg-[var(--hub-surface)] border-2 border-[var(--hub-accent)] shadow-lg space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-[var(--hub-accent)] flex items-center gap-1.5">
-              <Eye className="w-4 h-4" />
-              <span>Focus Session</span>
-            </span>
-            <button
-              onClick={() => setIsFocusMode(false)}
-              className="text-xs text-[var(--hub-muted)] hover:text-[var(--hub-ink)] cursor-pointer"
-            >
-              Close
-            </button>
-          </div>
-
-          <div className="text-center py-3 space-y-3">
-            <div className="text-5xl sm:text-6xl font-extrabold font-mono text-[var(--hub-ink)] tracking-wider">
-              {String(Math.floor(focusSeconds / 60)).padStart(2, '0')}:
-              {String(focusSeconds % 60).padStart(2, '0')}
-            </div>
-
-            {activeRecommendation ? (
-              <div className="max-w-md mx-auto">
-                <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[var(--hub-bg)] border border-[var(--hub-line)] text-[var(--hub-accent)]">
-                  {activeRecommendation.area}
-                </span>
-                <h3 className="text-lg font-bold text-[var(--hub-ink)] mt-2">
-                  {activeRecommendation.text}
-                </h3>
-              </div>
-            ) : (
-              <p className="text-sm text-[var(--hub-muted)]">Deep work session active</p>
-            )}
-
-            <div className="flex flex-wrap items-center justify-center gap-2.5 pt-2">
-              <button
-                onClick={() => setIsTimerRunning(!isTimerRunning)}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer"
-              >
-                {isTimerRunning ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                <span>{isTimerRunning ? 'Pause' : 'Start'}</span>
-              </button>
-              <button
-                onClick={() => {
-                  setIsTimerRunning(false);
-                  setFocusSeconds(25 * 60);
-                }}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reset</span>
-              </button>
-              {activeRecommendation && (
-                <button
-                  onClick={() => {
-                    handleToggleTask(activeRecommendation);
-                    setRecommendationSkipIndex((p) => p + 1);
-                  }}
-                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-semibold hover:bg-emerald-500/20 cursor-pointer"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Mark Done</span>
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* 4. Clean "Up Next" Single Focus Card */}
-      {!isFocusMode && activeRecommendation && activeRecommendationItem && (
+      {activeRecommendation && activeRecommendationItem && (
         <div className="rounded-2xl p-4 sm:p-5 bg-[var(--hub-surface)] border border-teal-500/30 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-start gap-3 min-w-0">
-            <div className="p-2.5 rounded-xl bg-teal-500/15 text-teal-600 dark:text-teal-400 shrink-0">
+            <div className="p-2.5 rounded-xl bg-teal-500/15 text-teal-700 dark:text-teal-400 shrink-0">
               <Target className="w-5 h-5" />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-teal-600 dark:text-teal-400">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-teal-700 dark:text-teal-400">
                   Up Next
                 </span>
                 <span className="text-xs text-[var(--hub-muted)]">
@@ -654,9 +568,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => {
-                setIsFocusMode(true);
-                setIsTimerRunning(true);
+                handOffFocusTask(activeRecommendation.id);
+                onNavigate('focus');
               }}
+              aria-label={`Start a focus session: ${activeRecommendation.text}`}
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer"
             >
               <Play className="w-3.5 h-3.5" />
@@ -664,7 +579,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </button>
             <button
               onClick={() => handleToggleTask(activeRecommendation)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs font-semibold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 transition-colors cursor-pointer"
             >
               <Check className="w-3.5 h-3.5" />
               <span>Done</span>
@@ -705,7 +620,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl divide-y divide-[var(--hub-line)] overflow-hidden shadow-xs">
             {dueAndOverdueTasks.length === 0 ? (
               <div className="p-8 text-center text-sm text-[var(--hub-muted)]">
-                <Check className="w-7 h-7 mx-auto text-teal-600 mb-2 opacity-80" />
+                <Check className="w-7 h-7 mx-auto text-teal-700 dark:text-teal-300 mb-2 opacity-80" />
                 <p className="font-semibold text-[var(--hub-ink)]">All caught up for today</p>
                 <p className="text-xs mt-1">Use the bar above to add a task or ask AI what to work on.</p>
               </div>
@@ -735,7 +650,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                         {task.priority === 'urgent' && <Badge variant="red">Urgent</Badge>}
                         {task.priority === 'high' && <Badge variant="amber">High</Badge>}
                         {task.due_date && overdue && (
-                          <span className="text-[11px] font-semibold text-red-600 dark:text-red-400">
+                          <span className="text-[11px] font-semibold text-red-700 dark:text-red-400">
                             Overdue • {formatShortDate(task.due_date)}
                           </span>
                         )}
@@ -744,7 +659,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                     <div className="flex items-center gap-1 opacity-70 group-hover:opacity-100">
                       <button
                         onClick={() => handleToggleStar(task)}
-                        className="p-1 rounded-lg text-amber-500 hover:bg-[var(--hub-bg)] cursor-pointer"
+                        className="p-1 rounded-lg text-amber-800 dark:text-amber-300 hover:bg-[var(--hub-bg)] cursor-pointer"
                         title={task.starred ? 'Unstar' : 'Star'}
                       >
                         <Star className={`w-4 h-4 ${task.starred ? 'fill-amber-500' : ''}`} />
@@ -771,7 +686,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <h3 className="font-heading font-bold text-base sm:text-lg text-[var(--hub-ink)] flex items-center gap-2">
               <span>Upcoming</span>
               {scheduleCount > 0 && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold">
+                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-700 dark:text-blue-400 font-bold">
                   {scheduleCount}
                 </span>
               )}
@@ -787,7 +702,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl divide-y divide-[var(--hub-line)] overflow-hidden shadow-xs">
             {scheduleCount === 0 ? (
               <div className="p-8 text-center text-sm text-[var(--hub-muted)]">
-                <Calendar className="w-7 h-7 mx-auto text-blue-500 mb-2 opacity-80" />
+                <Calendar className="w-7 h-7 mx-auto text-blue-700 dark:text-blue-300 mb-2 opacity-80" />
                 <p className="font-semibold text-[var(--hub-ink)]">Clear schedule this week</p>
                 <p className="text-xs mt-1">Great window for deep engineering work.</p>
               </div>
@@ -797,7 +712,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   <div key={m.id} className="p-3.5 hover:bg-[var(--hub-bg)]/50 transition-colors">
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-400">
+                        <span className="text-[11px] font-semibold text-blue-700 dark:text-blue-400">
                           {formatShortDate(m.date)} • {m.start_time}
                         </span>
                         <h4 className="text-sm font-semibold text-[var(--hub-ink)] mt-0.5">
@@ -816,7 +731,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   <div key={e.id} className="p-3.5 hover:bg-[var(--hub-bg)]/50 transition-colors">
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <span className="text-[11px] font-semibold text-teal-600 dark:text-teal-400">
+                        <span className="text-[11px] font-semibold text-teal-700 dark:text-teal-400">
                           {formatShortDate(e.date)} {e.start_time ? `• ${e.start_time}` : ''}
                         </span>
                         <h4 className="text-sm font-semibold text-[var(--hub-ink)] mt-0.5">
@@ -846,7 +761,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           onClick={() => onNavigate('ai-assistant')}
           className="flex items-center gap-2.5 px-3.5 py-3 rounded-2xl bg-[var(--hub-surface)] border border-[var(--hub-line)] hover:border-teal-500/50 text-xs font-semibold text-[var(--hub-ink)] transition-all cursor-pointer"
         >
-          <Sparkles className="w-4 h-4 text-teal-500 shrink-0" />
+          <Sparkles className="w-4 h-4 text-teal-700 dark:text-teal-300 shrink-0" />
           <span>Ask AI</span>
         </button>
         <button
@@ -854,7 +769,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           onClick={() => onNavigate('projects')}
           className="flex items-center gap-2.5 px-3.5 py-3 rounded-2xl bg-[var(--hub-surface)] border border-[var(--hub-line)] hover:border-indigo-500/50 text-xs font-semibold text-[var(--hub-ink)] transition-all cursor-pointer"
         >
-          <FolderKanban className="w-4 h-4 text-indigo-500 shrink-0" />
+          <FolderKanban className="w-4 h-4 text-indigo-700 dark:text-indigo-300 shrink-0" />
           <span>Projects</span>
         </button>
         <button
@@ -862,7 +777,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           onClick={() => onNavigate('my-day')}
           className="flex items-center gap-2.5 px-3.5 py-3 rounded-2xl bg-[var(--hub-surface)] border border-[var(--hub-line)] hover:border-amber-500/50 text-xs font-semibold text-[var(--hub-ink)] transition-all cursor-pointer"
         >
-          <Sun className="w-4 h-4 text-amber-500 shrink-0" />
+          <Sun className="w-4 h-4 text-amber-800 dark:text-amber-300 shrink-0" />
           <span>My Day</span>
         </button>
         <button
@@ -870,7 +785,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           onClick={() => onNavigate('knowledge-memory')}
           className="flex items-center gap-2.5 px-3.5 py-3 rounded-2xl bg-[var(--hub-surface)] border border-[var(--hub-line)] hover:border-rose-500/50 text-xs font-semibold text-[var(--hub-ink)] transition-all cursor-pointer"
         >
-          <FileText className="w-4 h-4 text-rose-500 shrink-0" />
+          <FileText className="w-4 h-4 text-rose-700 dark:text-rose-300 shrink-0" />
           <span>Memory Vault</span>
         </button>
         <button
@@ -878,7 +793,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           onClick={() => setIsWeeklyReviewOpen(true)}
           className="col-span-2 sm:col-span-1 flex items-center gap-2.5 px-3.5 py-3 rounded-2xl bg-[var(--hub-surface)] border border-[var(--hub-line)] hover:border-purple-500/50 text-xs font-semibold text-[var(--hub-ink)] transition-all cursor-pointer"
         >
-          <Trophy className="w-4 h-4 text-purple-500 shrink-0" />
+          <Trophy className="w-4 h-4 text-purple-700 dark:text-purple-300 shrink-0" />
           <span>Weekly Review</span>
         </button>
       </div>
@@ -909,7 +824,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 subtext={dueAndOverdueTasks.length === 0 ? 'All caught up' : 'Action needed today'}
                 icon={
                   <AlertCircle
-                    className={`w-5 h-5 ${dueAndOverdueTasks.length > 0 ? 'text-red-500' : 'text-teal-500'}`}
+                    className={`w-5 h-5 ${dueAndOverdueTasks.length > 0 ? 'text-red-700 dark:text-red-300' : 'text-teal-700 dark:text-teal-300'}`}
                   />
                 }
                 onClick={() => onNavigate('tasks')}
@@ -918,21 +833,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 label="Open Tasks"
                 value={openTasks.length}
                 subtext={`${tasks.filter((t) => t.done).length} completed`}
-                icon={<CheckCircle2 className="w-5 h-5 text-teal-600" />}
+                icon={<CheckCircle2 className="w-5 h-5 text-teal-700 dark:text-teal-300" />}
                 onClick={() => onNavigate('tasks')}
               />
               <StatCard
                 label="Spent This Month"
                 value={monthExpenses === 0 ? '₹0' : formatINR(monthExpenses)}
                 subtext={monthExpenses === 0 ? 'Manually logged only' : `Cycle ${today.slice(0, 7)}`}
-                icon={<IndianRupee className="w-5 h-5 text-amber-600" />}
+                icon={<IndianRupee className="w-5 h-5 text-amber-800 dark:text-amber-300" />}
                 onClick={() => onNavigate('expenses')}
               />
               <StatCard
                 label="Schedule (7 Days)"
                 value={scheduleCount}
                 subtext={`${upcomingMeetings.length} meetings, ${upcomingEvents.length} events`}
-                icon={<Calendar className="w-5 h-5 text-blue-600" />}
+                icon={<Calendar className="w-5 h-5 text-blue-700 dark:text-blue-300" />}
                 onClick={() => onNavigate('calendar')}
               />
             </div>
@@ -943,7 +858,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-5 shadow-xs flex flex-col justify-between hover:border-teal-500/50 transition-all">
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-xs font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider">
+                    <span className="flex items-center gap-1.5 text-xs font-bold text-teal-700 dark:text-teal-400 uppercase tracking-wider">
                       <Wind className="w-4 h-4" />
                       <span>Pawan Shakti</span>
                     </span>
@@ -980,7 +895,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-5 shadow-xs flex flex-col justify-between hover:border-purple-500/50 transition-all">
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-xs font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider">
+                    <span className="flex items-center gap-1.5 text-xs font-bold text-purple-700 dark:text-purple-400 uppercase tracking-wider">
                       <Bot className="w-4 h-4" />
                       <span>Robotics Lab</span>
                     </span>
@@ -1007,7 +922,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-5 shadow-xs flex flex-col justify-between hover:border-rose-500/50 transition-all">
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-xs font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider">
+                    <span className="flex items-center gap-1.5 text-xs font-bold text-rose-700 dark:text-rose-400 uppercase tracking-wider">
                       <Heart className="w-4 h-4" />
                       <span>Routine & Health</span>
                     </span>
@@ -1041,7 +956,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-amber-500" />
+                    <FileText className="w-4 h-4 text-amber-800 dark:text-amber-300" />
                     <span>Pinned Notes</span>
                   </h3>
                   <button
@@ -1082,7 +997,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <div className="flex items-start justify-between gap-4 border-b border-[var(--hub-line)] pb-4">
               <div>
                 <h3 className="text-lg font-bold font-heading text-[var(--hub-ink)] flex items-center gap-2">
-                  <CalendarCheck className="w-5 h-5 text-indigo-500" />
+                  <CalendarCheck className="w-5 h-5 text-indigo-700 dark:text-indigo-300" />
                   <span>Plan Your Day</span>
                 </h3>
                 <p className="text-xs text-[var(--hub-muted)] mt-1">
@@ -1104,7 +1019,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   1. Overdue ({overdueTasks.length})
                 </h4>
                 {overdueTasks.length === 0 && (
-                  <span className="text-xs font-semibold text-emerald-500">All clear</span>
+                  <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">All clear</span>
                 )}
               </div>
 
@@ -1117,20 +1032,20 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                     >
                       <div className="min-w-0">
                         <div className="font-semibold text-[var(--hub-ink)] truncate">{t.text}</div>
-                        <div className="text-[10px] text-red-400">
+                        <div className="text-[10px] text-red-700 dark:text-red-300">
                           Due {t.due_date} • {t.area}
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <button
                           onClick={() => handleMoveToToday(t)}
-                          className="px-2.5 py-1 rounded-lg bg-[var(--hub-surface)] border border-[var(--hub-line)] text-indigo-500 font-medium cursor-pointer"
+                          className="px-2.5 py-1 rounded-lg bg-[var(--hub-surface)] border border-[var(--hub-line)] text-indigo-700 dark:text-indigo-300 font-medium cursor-pointer"
                         >
                           Today
                         </button>
                         <button
                           onClick={() => handleToggleTask(t)}
-                          className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-medium cursor-pointer"
+                          className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400 font-medium cursor-pointer"
                         >
                           Done
                         </button>
@@ -1156,7 +1071,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                       <button
                         onClick={() => handleToggleStar(t)}
                         className={`p-1 rounded-md cursor-pointer ${
-                          t.starred ? 'text-amber-400' : 'text-[var(--hub-muted)] hover:text-amber-400'
+                          t.starred ? 'text-amber-800 dark:text-amber-300' : 'text-[var(--hub-muted)] hover:text-amber-400'
                         }`}
                       >
                         <Star className={`w-4 h-4 ${t.starred ? 'fill-amber-400' : ''}`} />
@@ -1174,7 +1089,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             {/* Today's Agenda */}
             <div className="space-y-2">
               <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--hub-ink)] flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-teal-500" />
+                <Clock className="w-3.5 h-3.5 text-teal-700 dark:text-teal-300" />
                 <span>3. Today&apos;s Schedule</span>
               </h4>
               {todayMeetings.length === 0 && todayEvents.length === 0 ? (
@@ -1224,7 +1139,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <div className="flex items-start justify-between gap-4 border-b border-[var(--hub-line)] pb-4">
               <div>
                 <h3 className="text-lg font-bold font-heading text-[var(--hub-ink)] flex items-center gap-2">
-                  <Trophy className="w-5 h-5 text-purple-500" />
+                  <Trophy className="w-5 h-5 text-purple-700 dark:text-purple-300" />
                   <span>Weekly Review</span>
                 </h3>
                 <p className="text-xs text-[var(--hub-muted)] mt-1">
@@ -1253,7 +1168,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                       <span className="font-medium text-[var(--hub-ink)] line-through opacity-80">
                         {t.text}
                       </span>
-                      <span className="text-[10px] text-purple-500 font-semibold">{t.area}</span>
+                      <span className="text-[10px] text-purple-700 dark:text-purple-300 font-semibold">{t.area}</span>
                     </div>
                   ))}
                 </div>
@@ -1278,7 +1193,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                     >
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-[var(--hub-ink)]">{p.title}</span>
-                        <span className="text-[10px] text-teal-500 font-bold">{p.progress}%</span>
+                        <span className="text-[10px] text-teal-700 dark:text-teal-300 font-bold">{p.progress}%</span>
                       </div>
                       <div className="w-full bg-[var(--hub-line)] rounded-full h-1.5 overflow-hidden">
                         <div

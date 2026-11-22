@@ -6,7 +6,7 @@ import type { NavigationTab } from '../types';
  */
 export const TAB_TITLES: Record<NavigationTab, string> = {
   dashboard: 'Home',
-  'my-day': 'My Day',
+  'my-day': 'Daily Compass',
   projects: 'Projects',
   'ai-assistant': 'Ask AI',
   automations: 'Automations',
@@ -34,6 +34,7 @@ export const TAB_TITLES: Record<NavigationTab, string> = {
   'neo-memory': 'Memory Vault',
   'system-health': 'System Health',
   goals: 'Goals & Habits',
+  focus: 'Deep Work',
 };
 
 const APP_NAME = 'Yashwanth Hub';

@@ -49,6 +49,7 @@ const pageLoaders = {
   MyDayPage: () => import('./pages/MyDayPage'),
   LearningCareerPage: () => import('./pages/LearningCareerPage'),
   GoalsHabitsPage: () => import('./pages/GoalsHabitsPage'),
+  FocusPage: () => import('./pages/FocusPage'),
 };
 
 const DashboardPage = lazy(() => pageLoaders.DashboardPage().then((m) => ({ default: m.DashboardPage })));
@@ -76,6 +77,7 @@ const KnowledgeMemoryPage = lazy(() => pageLoaders.KnowledgeMemoryPage().then((m
 const MyDayPage = lazy(() => pageLoaders.MyDayPage().then((m) => ({ default: m.MyDayPage })));
 const LearningCareerPage = lazy(() => pageLoaders.LearningCareerPage().then((m) => ({ default: m.LearningCareerPage })));
 const GoalsHabitsPage = lazy(() => pageLoaders.GoalsHabitsPage().then((m) => ({ default: m.GoalsHabitsPage })));
+const FocusPage = lazy(() => pageLoaders.FocusPage().then((m) => ({ default: m.FocusPage })));
 
 function HubMain() {
   const { isDark } = useTheme();
@@ -379,6 +381,8 @@ function HubMain() {
         return <LearningCareerPage />;
       case 'goals':
         return <GoalsHabitsPage currentArea={currentArea} areas={areas} />;
+      case 'focus':
+        return <FocusPage />;
       case 'tasks':
         return <TasksPage currentArea={currentArea} areas={areas} />;
       case 'calendar':
@@ -550,7 +554,7 @@ function HubMain() {
           maxWidth="max-w-lg"
         >
           <div className="space-y-4">
-            <div className="flex items-start gap-3 p-3.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500">
+            <div className="flex items-start gap-3 p-3.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-700 dark:text-red-300">
               <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
               <div>
                 <h4 className="text-sm font-bold">{oauthError.message}</h4>
@@ -566,19 +570,19 @@ function HubMain() {
               <div className="font-bold text-[var(--hub-ink)]">Expected Google Cloud Console URIs:</div>
               <p className="text-[var(--hub-muted)]">
                 Authorized JavaScript Origin:{' '}
-                <code className="text-teal-400 font-mono px-1 py-0.5 rounded bg-black/20">
+                <code className="text-teal-700 dark:text-teal-300 font-mono px-1 py-0.5 rounded bg-black/20">
                   {typeof window !== 'undefined' ? window.location.origin : 'https://yashwanth-hub.vercel.app'}
                 </code>
               </p>
               <p className="text-[var(--hub-muted)]">
                 PKCE SPA Redirect URI:{' '}
-                <code className="text-teal-400 font-mono px-1 py-0.5 rounded bg-black/20">
+                <code className="text-teal-700 dark:text-teal-300 font-mono px-1 py-0.5 rounded bg-black/20">
                   {typeof window !== 'undefined' ? window.location.origin : 'https://yashwanth-hub.vercel.app'}
                 </code>
               </p>
               <p className="text-[var(--hub-muted)]">
                 Server Callback URI:{' '}
-                <code className="text-teal-400 font-mono px-1 py-0.5 rounded bg-black/20">
+                <code className="text-teal-700 dark:text-teal-300 font-mono px-1 py-0.5 rounded bg-black/20">
                   {typeof window !== 'undefined' ? `${window.location.origin}/api/auth/google/callback` : 'https://yashwanth-hub.vercel.app/api/auth/google/callback'}
                 </code>
               </p>

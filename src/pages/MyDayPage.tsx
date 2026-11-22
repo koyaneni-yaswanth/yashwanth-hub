@@ -1,611 +1,697 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../db';
-import type { Task, Area, NavigationTab } from '../types';
-import { getTodayISO, generateId } from '../lib/utils';
-import { addDays } from '../lib/habits';
-import { TaskService } from '../services/sync/taskService';
 import {
-  Sun,
+  Compass,
+  Sparkles,
+  LifeBuoy,
   Moon,
-  Clock,
+  Timer,
   CheckCircle2,
   Circle,
-  Calendar as CalendarIcon,
+  ChevronUp,
+  ChevronDown,
+  X,
   Plus,
+  GripVertical,
+  Calendar as CalendarIcon,
   ArrowRight,
-  Flame,
-  Target,
-  Timer,
-  ChevronRight,
   RotateCcw,
-  Check,
-  Compass,
 } from 'lucide-react';
+import { db } from '../db';
+import type { Area, DailyPlan, NavigationTab, PlanItem, Task } from '../types';
+import { getTodayISO } from '../lib/utils';
+import { addDays } from '../lib/habits';
+import { TaskService } from '../services/sync/taskService';
+import { handOffFocusTask } from '../lib/focusHandoff';
+import {
+  DEFAULT_AVAILABLE_MINUTES,
+  RESCUE_MINUTES,
+  TOP_COUNT,
+  defaultEstimate,
+  formatMinutes,
+  moveItem,
+  planLoad,
+  pruneMissing,
+  rankTasks,
+  replan,
+  splitForWrapUp,
+} from '../lib/dailyCompass';
 
 interface MyDayPageProps {
   onNavigate: (tab: NavigationTab) => void;
   areas?: Area[];
 }
 
-interface DailyOutcome {
-  id: string;
-  text: string;
-  done: boolean;
-}
+const TIME_OPTIONS = [60, 120, 180, 240, 300, 360, 480];
+
+const card = 'rounded-2xl p-5 sm:p-6 bg-[var(--hub-surface)] border border-[var(--hub-line)] shadow-xs';
+const input =
+  'w-full px-3 py-2.5 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] text-sm text-[var(--hub-ink)] placeholder:text-[var(--hub-muted)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--hub-accent)]';
+const primaryBtn =
+  'inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-sm font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer disabled:opacity-50';
+const ghostBtn =
+  'inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-surface)] text-sm font-medium text-[var(--hub-ink)] hover:bg-[var(--hub-surface-hover)] transition-colors cursor-pointer disabled:opacity-50';
+const iconBtn =
+  'p-2 rounded-lg text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-surface-hover)] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed';
 
 export const MyDayPage: React.FC<MyDayPageProps> = ({ onNavigate, areas = [] }) => {
-  const todayStr = getTodayISO();
-  // Inline, screen-reader-announced feedback instead of blocking alert() dialogs.
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const today = getTodayISO();
+  const tomorrow = addDays(today, 1);
+
+  const tasks = useLiveQuery(() => db.tasks.toArray(), []);
+  // null = no plan yet; undefined = still loading (useLiveQuery returns undefined for both otherwise).
+  const plan = useLiveQuery(async () => (await db.daily_plans.get(today)) ?? null, [today]);
+  const events = useLiveQuery(() => db.events.where('date').equals(today).toArray(), [today]) ?? [];
+
+  const [status, setStatus] = useState('');
+  const [captureText, setCaptureText] = useState('');
+  const [addTaskId, setAddTaskId] = useState('');
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [wrapOpen, setWrapOpen] = useState(false);
+
   useEffect(() => {
-    if (!statusMessage) return;
-    const id = window.setTimeout(() => setStatusMessage(null), 5000);
+    if (!status) return;
+    const id = window.setTimeout(() => setStatus(''), 6000);
     return () => window.clearTimeout(id);
-  }, [statusMessage]);
-  const [newOutcomeText, setNewOutcomeText] = useState('');
-  const [quickTaskText, setQuickTaskText] = useState('');
-  const [reflectionText, setReflectionText] = useState('');
-  const [reflectionSaved, setReflectionSaved] = useState(false);
-  const [isEveningOpen, setIsEveningOpen] = useState(false);
+  }, [status]);
 
-  // Load Daily Outcomes from localStorage
-  const outcomeStorageKey = `my_day_outcomes_${todayStr}`;
-  const reflectionStorageKey = `my_day_reflection_${todayStr}`;
-
-  const [outcomes, setOutcomes] = useState<DailyOutcome[]>(() => {
-    try {
-      const saved = localStorage.getItem(outcomeStorageKey);
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return [
-      { id: '1', text: 'Finalize V3F submission documentation for Pawan Shakti', done: false },
-      { id: '2', text: 'Validate AgileX PiPER ROS 2 inverse kinematics test run', done: false },
-      { id: '3', text: 'Complete 4.5 hours deep work block without interruptions', done: false },
-    ];
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(outcomeStorageKey, JSON.stringify(outcomes));
-    } catch {}
-  }, [outcomes, outcomeStorageKey]);
-
-  useEffect(() => {
-    try {
-      const savedRef = localStorage.getItem(reflectionStorageKey);
-      if (savedRef) setReflectionText(savedRef);
-    } catch {}
-  }, [reflectionStorageKey]);
-
-  // Live queries
-  const allTasks = useLiveQuery(() => db.tasks.toArray(), []) || [];
-  const allEvents = useLiveQuery(() => db.events.toArray(), []) || [];
-
-  // Filter tasks due today or urgent
-  const todayTasks = allTasks.filter(
-    (t) => t.due_date === todayStr || (!t.done && (t.priority === 'urgent' || t.starred))
+  const tasksById = useMemo(() => new Map((tasks ?? []).map((t) => [t.id, t])), [tasks]);
+  const items: PlanItem[] = useMemo(
+    () => (plan ? pruneMissing(plan.items, new Set(tasksById.keys())) : []),
+    [plan, tasksById]
   );
-
-  const completedTodayTasks = allTasks.filter(
-    (t) => t.done && t.updated_at && t.updated_at.startsWith(todayStr)
+  const available = plan?.available_minutes ?? DEFAULT_AVAILABLE_MINUTES;
+  const load = planLoad(items, available);
+  const top = items.slice(0, TOP_COUNT);
+  const rest = items.slice(TOP_COUNT);
+  const onPlan = new Set(items.map((i) => i.task_id));
+  const candidates = useMemo(
+    () => rankTasks((tasks ?? []).filter((t) => !onPlan.has(t.id)), today),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tasks, items, today]
   );
+  const doneCount = items.filter((i) => tasksById.get(i.task_id)?.done).length;
 
-  // Filter events for today
-  const todayEvents = allEvents
-    .filter((e) => e.date === todayStr)
-    .sort((a, b) => (a.start_time || '00:00').localeCompare(b.start_time || '00:00'));
+  const savePlan = async (patch: Partial<DailyPlan>) => {
+    const ts = new Date().toISOString();
+    const base: DailyPlan = plan ?? {
+      id: today,
+      available_minutes: DEFAULT_AVAILABLE_MINUTES,
+      items: [],
+      rescue: false,
+      created_at: ts,
+      updated_at: ts,
+    };
+    await db.daily_plans.put({ ...base, ...patch, id: today, updated_at: ts });
+  };
 
-  // Toggle outcome done
-  const toggleOutcome = (id: string) => {
-    setOutcomes((prev) =>
-      prev.map((o) => (o.id === id ? { ...o, done: !o.done } : o))
+  const makePlan = async (opts: { rescue?: boolean; minutes?: number } = {}) => {
+    const minutes = opts.minutes ?? available;
+    const next = replan(items, tasks ?? [], today, { availableMinutes: minutes, rescue: opts.rescue });
+    await savePlan({ items: next, available_minutes: minutes, rescue: Boolean(opts.rescue) });
+    if (next.every((i) => tasksById.get(i.task_id)?.done)) setStatus('No open tasks to plan. Add one below.');
+    else if (opts.rescue) setStatus('Rescue mode: just one small step. Everything else can wait.');
+    else setStatus(`Planned ${next.length} task${next.length === 1 ? '' : 's'} for ${formatMinutes(minutes)}. Drag or use the arrows to reorder.`);
+  };
+
+  const setItems = (next: PlanItem[]) => savePlan({ items: next });
+
+  const move = (from: number, to: number) => {
+    if (to < 0 || to >= items.length) return;
+    void setItems(moveItem(items, from, to));
+    const t = tasksById.get(items[from].task_id);
+    setStatus(`Moved “${t?.text ?? 'task'}” to position ${to + 1}.`);
+  };
+
+  const remove = (index: number) => {
+    const t = tasksById.get(items[index].task_id);
+    void setItems(items.filter((_, i) => i !== index));
+    setStatus(`Removed “${t?.text ?? 'task'}” from today's plan. The task is still in Tasks.`);
+  };
+
+  const setMinutes = (index: number, minutes: number) => {
+    const m = Math.max(5, Math.min(480, Math.round(minutes) || 5));
+    void setItems(items.map((it, i) => (i === index ? { ...it, minutes: m } : it)));
+  };
+
+  const addExisting = async () => {
+    const t = tasksById.get(addTaskId);
+    if (!t) return;
+    await setItems([...items, { task_id: t.id, minutes: defaultEstimate(t) }]);
+    setAddTaskId('');
+    setStatus(`Added “${t.text}” to today's plan.`);
+  };
+
+  const capture = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const text = captureText.trim();
+    if (!text) return;
+    const { task } = await TaskService.create({
+      text,
+      area: areas[0]?.name || 'Personal',
+      priority: 'medium',
+      due_date: today,
+      starred: false,
+      done: false,
+    });
+    await setItems([...items, { task_id: task.id, minutes: defaultEstimate(task) }]);
+    setCaptureText('');
+    setStatus(`Added “${text}” to Tasks and today's plan.`);
+  };
+
+  const focusOn = (taskId: string) => {
+    handOffFocusTask(taskId);
+    onNavigate('focus');
+  };
+
+  const onDrop = (to: number) => {
+    if (dragIndex === null || dragIndex === to) return setDragIndex(null);
+    move(dragIndex, to);
+    setDragIndex(null);
+  };
+
+  const loading = tasks === undefined || plan === undefined;
+  const dateLabel = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+  const renderRow = (item: PlanItem, index: number, isTop: boolean) => {
+    const t = tasksById.get(item.task_id) as Task;
+    return (
+      <li
+        key={item.task_id}
+        draggable
+        onDragStart={() => setDragIndex(index)}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={() => onDrop(index)}
+        onDragEnd={() => setDragIndex(null)}
+        className={`flex items-start gap-2 sm:gap-3 p-3 rounded-xl border transition-colors ${
+          dragIndex === index ? 'opacity-60 border-dashed' : ''
+        } ${
+          t.done
+            ? 'bg-[var(--hub-done)] border-[var(--hub-done-border)]'
+            : isTop
+              ? 'bg-[var(--hub-surface)] border-[var(--hub-line)]'
+              : 'bg-[var(--hub-bg)] border-[var(--hub-line)]'
+        }`}
+      >
+        <GripVertical className="hidden sm:block w-4 h-4 mt-2.5 shrink-0 text-[var(--hub-muted)] cursor-grab" aria-hidden="true" />
+        <button
+          type="button"
+          onClick={() => void TaskService.toggleDone(t)}
+          aria-pressed={t.done}
+          aria-label={`${t.done ? 'Mark not done' : 'Mark done'}: ${t.text}`}
+          className={`mt-1.5 shrink-0 ${t.done ? 'text-[var(--hub-accent)]' : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'} cursor-pointer`}
+        >
+          {t.done ? <CheckCircle2 className="w-5 h-5" /> : <Circle className="w-5 h-5" />}
+        </button>
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm font-medium break-words ${t.done ? 'line-through text-[var(--hub-muted)]' : 'text-[var(--hub-ink)]'}`}>
+            {isTop && <span className="sr-only">Top {index + 1}: </span>}
+            {t.text}
+          </p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-[var(--hub-muted)]">
+            <span>{t.area}</span>
+            {t.due_date && t.due_date < today && !t.done && <span className="text-[var(--hub-red)] font-semibold">Overdue</span>}
+            <label className="inline-flex items-center gap-1">
+              <span className="sr-only">Minutes for: {t.text}</span>
+              <input
+                type="number"
+                min={5}
+                max={480}
+                step={5}
+                value={item.minutes}
+                onChange={(e) => setMinutes(index, Number(e.target.value))}
+                className="w-16 px-2 py-1 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs text-[var(--hub-ink)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--hub-accent)]"
+              />
+              <span aria-hidden="true">min</span>
+            </label>
+          </div>
+        </div>
+        <div className="flex items-center shrink-0">
+          {!t.done && (
+            <button type="button" onClick={() => focusOn(t.id)} className={iconBtn} aria-label={`Start a focus session: ${t.text}`} title="Focus on this">
+              <Timer className="w-4 h-4" />
+            </button>
+          )}
+          <button type="button" onClick={() => move(index, index - 1)} disabled={index === 0} className={iconBtn} aria-label={`Move up: ${t.text}`}>
+            <ChevronUp className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => move(index, index + 1)}
+            disabled={index === items.length - 1}
+            className={iconBtn}
+            aria-label={`Move down: ${t.text}`}
+          >
+            <ChevronDown className="w-4 h-4" />
+          </button>
+          <button type="button" onClick={() => remove(index)} className={iconBtn} aria-label={`Remove from today's plan: ${t.text}`}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </li>
     );
   };
 
-  // Add custom outcome
-  const handleAddOutcome = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newOutcomeText.trim()) return;
-    if (outcomes.length >= 3) {
-      setStatusMessage('Morning planning keeps you to your top 3 outcomes, so you can stay focused.');
-      return;
-    }
-    const newOutcome: DailyOutcome = {
-      id: generateId(),
-      text: newOutcomeText.trim(),
-      done: false,
-    };
-    setOutcomes((prev) => [...prev, newOutcome]);
-    setNewOutcomeText('');
-  };
-
-  // Quick Task add for Today
-  const handleAddQuickTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!quickTaskText.trim()) return;
-
-    await TaskService.create({
-      text: quickTaskText.trim(),
-      area: areas[0]?.name || 'PAWAN SHAKTI',
-      priority: 'high',
-      due_date: todayStr,
-      starred: true,
-      done: false,
-    });
-    setQuickTaskText('');
-  };
-
-  // Toggle task done in Dexie
-  const toggleTask = async (task: Task) => {
-    await TaskService.toggleDone(task);
-  };
-
-  // Carry forward uncompleted tasks to tomorrow
-  const handleCarryForward = async () => {
-    // Local calendar date (a UTC ISO string would give the wrong day early in the morning in IST).
-    const tomorrowStr = addDays(todayStr, 1);
-
-    const uncompleted = todayTasks.filter((t) => !t.done);
-    if (uncompleted.length === 0) {
-      setStatusMessage('Everything for today is done — nothing to carry forward.');
-      return;
-    }
-
-    for (const t of uncompleted) {
-      await TaskService.scheduleFor(t, tomorrowStr);
-    }
-
-    setStatusMessage(`Moved ${uncompleted.length} open task${uncompleted.length === 1 ? '' : 's'} to tomorrow.`);
-  };
-
-  // Save evening reflection
-  const handleSaveReflection = () => {
-    try {
-      localStorage.setItem(reflectionStorageKey, reflectionText);
-      setReflectionSaved(true);
-      setTimeout(() => setReflectionSaved(false), 3000);
-    } catch {}
-  };
-
-  // Date formatting
-  const todayDateObj = new Date();
-  const dateFormatted = todayDateObj.toLocaleDateString('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  });
-
-  const hourNow = todayDateObj.getHours();
-  const dayProgressPct = Math.min(100, Math.round((hourNow / 24) * 100));
-
   return (
-    <div className="space-y-6 max-w-6xl mx-auto pb-12 animate-fade-in">
-      <div role="status" aria-live="polite">
-        {statusMessage && (
-          <div className="hub-toast-enter p-3 rounded-xl bg-teal-500/10 border border-teal-500/30 text-teal-700 dark:text-teal-300 text-sm font-medium">
-            {statusMessage}
+    <div className="max-w-5xl mx-auto space-y-6 pb-12">
+      <div className="sr-only" role="status" aria-live="polite">
+        {status}
+      </div>
+
+      <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--hub-accent)]">{dateLabel}</p>
+          <h1 className="text-2xl font-bold font-heading text-[var(--hub-ink)] flex items-center gap-2">
+            <Compass className="w-6 h-6 text-[var(--hub-accent)]" aria-hidden="true" />
+            Daily Compass
+          </h1>
+          <p className="text-sm text-[var(--hub-muted)]">A realistic plan for the time you actually have.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setWrapOpen((o) => !o)} aria-expanded={wrapOpen} aria-controls="wrap-up" className={ghostBtn}>
+            <Moon className="w-4 h-4" aria-hidden="true" />
+            Evening wrap-up
+          </button>
+        </div>
+      </header>
+
+      {status && (
+        <p className="text-sm rounded-xl px-3 py-2 bg-[var(--hub-accent)]/10 border border-[var(--hub-accent)]/30 text-[var(--hub-ink)]" aria-hidden="true">
+          {status}
+        </p>
+      )}
+
+      {/* ---------------- Planner controls ---------------- */}
+      <section className={`${card} space-y-4`} aria-labelledby="plan-controls-title">
+        <h2 id="plan-controls-title" className="sr-only">
+          Plan settings
+        </h2>
+        <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+          <label className="text-sm font-semibold text-[var(--hub-ink)] sm:w-56">
+            Time I have for tasks today
+            <select
+              value={available}
+              onChange={(e) => void makePlan({ minutes: Number(e.target.value), rescue: false })}
+              className={`${input} mt-1 font-normal`}
+            >
+              {Array.from(new Set([...TIME_OPTIONS, available]))
+                .sort((a, b) => a - b)
+                .map((m) => (
+                  <option key={m} value={m}>
+                    {formatMinutes(m)}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => void makePlan({ rescue: false })} className={primaryBtn} disabled={loading}>
+              <Sparkles className="w-4 h-4" aria-hidden="true" />
+              {items.length ? 'Re-plan my day' : 'Plan my day'}
+            </button>
+            {!plan?.rescue && (
+              <button type="button" onClick={() => void makePlan({ rescue: true })} className={ghostBtn} disabled={loading}>
+                <LifeBuoy className="w-4 h-4" aria-hidden="true" />
+                Feeling overwhelmed
+              </button>
+            )}
+          </div>
+        </div>
+
+        {items.length > 0 && !plan?.rescue && (
+          <div>
+            <div className="flex justify-between text-xs text-[var(--hub-muted)] mb-1">
+              <span>
+                Planned {formatMinutes(load.plannedMinutes)} of {formatMinutes(available)}
+              </span>
+              <span>
+                {doneCount} of {items.length} done
+              </span>
+            </div>
+            <div
+              className="h-2 rounded-full bg-[var(--hub-bg)] border border-[var(--hub-line)] overflow-hidden"
+              role="progressbar"
+              aria-label="Planned time compared with time available"
+              aria-valuemin={0}
+              aria-valuemax={available}
+              aria-valuenow={Math.min(load.plannedMinutes, available)}
+              aria-valuetext={`${formatMinutes(load.plannedMinutes)} planned of ${formatMinutes(available)}`}
+            >
+              <div
+                className={`h-full ${load.state === 'over' ? 'bg-[var(--hub-amber)]' : 'bg-[var(--hub-accent)]'}`}
+                style={{ width: `${Math.min(100, (load.plannedMinutes / Math.max(1, available)) * 100)}%` }}
+              />
+            </div>
+            {load.state === 'over' && (
+              <p className="text-xs text-[var(--hub-ink)] mt-2">
+                This plan is {formatMinutes(load.overBy)} over your time. Consider moving the last task to tomorrow — finishing a
+                smaller plan feels better than half of a big one.
+              </p>
+            )}
           </div>
         )}
-      </div>
-      {/* Top Banner Header */}
-      <div className="relative overflow-hidden rounded-2xl p-6 sm:p-8 bg-gradient-to-br from-[var(--hub-card)] to-[var(--hub-card-hover)] border border-[var(--hub-line)] shadow-sm">
-        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[var(--hub-accent)]">
-              <Sun className="w-4 h-4 text-amber-500 animate-spin-slow" />
-              <span>Personal AI Operating System • My Day</span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[var(--hub-ink)] font-heading mt-1">
-              {dateFormatted}
-            </h1>
-            <p className="text-xs sm:text-sm text-[var(--hub-muted)] mt-1">
-              Prioritize, execute deep work, and synchronize your founder day with zero distractions.
-            </p>
-          </div>
+      </section>
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => onNavigate('health-routine')}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors shadow-sm cursor-pointer"
-            >
-              <Timer className="w-4 h-4" />
-              <span>4.5h Deep Work Timer</span>
+      {/* ---------------- Rescue ---------------- */}
+      {plan?.rescue && items[0] && tasksById.get(items[0].task_id) && (
+        <section className={`${card} space-y-3 border-[var(--hub-accent)]`} aria-labelledby="rescue-title">
+          <h2 id="rescue-title" className="text-base font-bold text-[var(--hub-ink)] flex items-center gap-2">
+            <LifeBuoy className="w-5 h-5 text-[var(--hub-accent)]" aria-hidden="true" />
+            Just one thing
+          </h2>
+          <p className="text-sm text-[var(--hub-muted)]">
+            Too much on your plate happens to everyone. Do only this for {RESCUE_MINUTES} minutes — everything else can wait.
+          </p>
+          <ul className="space-y-2">
+            {renderRow(items[0], 0, true)}
+          </ul>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => focusOn(items[0].task_id)} className={primaryBtn}>
+              <Timer className="w-4 h-4" aria-hidden="true" />
+              Start {RESCUE_MINUTES} minutes
             </button>
-            <button
-              onClick={() => setIsEveningOpen(!isEveningOpen)}
-              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-[var(--hub-card)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] hover:bg-[var(--hub-card-hover)] transition-colors cursor-pointer"
-            >
-              <Moon className="w-4 h-4 text-indigo-400" />
-              <span>Evening Review</span>
+            <button type="button" onClick={() => void makePlan({ rescue: false })} className={ghostBtn}>
+              I'm ready for the full plan
             </button>
           </div>
-        </div>
+        </section>
+      )}
 
-        {/* Day Progress Indicator */}
-        <div className="mt-6 pt-4 border-t border-[var(--hub-line)] flex items-center justify-between text-xs text-[var(--hub-muted)]">
-          <div className="flex items-center gap-2">
-            <Clock className="w-3.5 h-3.5 text-teal-400" />
-            <span>Day Progress: {hourNow}:00 hrs ({dayProgressPct}% elapsed)</span>
+      {/* ---------------- Top 3 + rest ---------------- */}
+      {!plan?.rescue && (
+        <section className={`${card} space-y-4`} aria-labelledby="top3-title">
+          <div className="flex items-center justify-between gap-2">
+            <h2 id="top3-title" className="text-base font-bold text-[var(--hub-ink)]">
+              Top 3 for today
+            </h2>
+            {items.length > 1 && <p className="hidden sm:block text-xs text-[var(--hub-muted)]">Drag or use the arrows to reorder</p>}
           </div>
-          <div className="flex items-center gap-4">
-            <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              {completedTodayTasks.length} tasks completed today
-            </span>
-          </div>
-        </div>
-      </div>
 
-      {/* Grid: Morning Planning Top 3 & Deep Work Status */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Morning Planning: Top 3 Core Outcomes */}
-        <div className="lg:col-span-2 rounded-2xl p-5 sm:p-6 bg-[var(--hub-card)] border border-[var(--hub-line)] shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                <Target className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-[var(--hub-ink)] font-heading">
-                  Morning Ritual: Top 3 Core Outcomes
-                </h2>
-                <p className="text-xs text-[var(--hub-muted)]">
-                  The three non-negotiable milestones that define success today.
-                </p>
-              </div>
+          {loading ? (
+            <div className="h-24 rounded-xl bg-[var(--hub-bg)] animate-pulse" aria-hidden="true" />
+          ) : items.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-[var(--hub-line)] p-6 text-center space-y-3">
+              <p className="text-sm text-[var(--hub-muted)]">
+                No plan yet. Pick how much time you have, then let the Compass suggest your best three — you can change anything.
+              </p>
+              <button type="button" onClick={() => void makePlan()} className={primaryBtn}>
+                <Sparkles className="w-4 h-4" aria-hidden="true" />
+                Plan my day
+              </button>
             </div>
-            <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-[var(--hub-bg)] border border-[var(--hub-line)] text-[var(--hub-accent)]">
-              {outcomes.filter((o) => o.done).length} / {outcomes.length} Done
-            </span>
-          </div>
+          ) : (
+            <ol className="space-y-2" aria-label="Top 3 tasks">
+              {top.map((it, i) => (
+                renderRow(it, i, true)
+              ))}
+            </ol>
+          )}
 
-          <div className="space-y-2.5 pt-1">
-            {outcomes.map((outcome, idx) => (
-              <div
-                key={outcome.id}
-                onClick={() => toggleOutcome(outcome.id)}
-                className={`flex items-start gap-3 p-3.5 rounded-xl border transition-all cursor-pointer select-none ${
-                  outcome.done
-                    ? 'bg-emerald-500/5 border-emerald-500/30 text-[var(--hub-muted)]'
-                    : 'bg-[var(--hub-bg)] border-[var(--hub-line)] hover:border-[var(--hub-accent)] text-[var(--hub-ink)]'
-                }`}
-              >
-                <button
-                  type="button"
-                  aria-pressed={outcome.done}
-                  aria-label={`${outcome.done ? 'Mark not done' : 'Mark done'}: ${outcome.text}`}
-                  className={`mt-0.5 shrink-0 rounded transition-colors ${
-                    outcome.done ? 'text-emerald-500' : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
-                  }`}
-                >
-                  {outcome.done ? (
-                    <CheckCircle2 className="w-5 h-5" />
-                  ) : (
-                    <Circle className="w-5 h-5" />
-                  )}
-                </button>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[var(--hub-card)] border border-[var(--hub-line)] text-[var(--hub-muted)]">
-                      Outcome #{idx + 1}
-                    </span>
-                  </div>
-                  <p
-                    className={`text-sm mt-1 leading-snug font-medium ${
-                      outcome.done ? 'line-through opacity-70' : ''
-                    }`}
-                  >
-                    {outcome.text}
-                  </p>
-                </div>
-              </div>
-            ))}
-
-            {outcomes.length < 3 && (
-              <form onSubmit={handleAddOutcome} className="flex gap-2 pt-1">
-                <input
-                  type="text"
-                  placeholder="Define your next critical outcome..."
-                  value={newOutcomeText}
-                  onChange={(e) => setNewOutcomeText(e.target.value)}
-                  className="flex-1 px-3.5 py-2.5 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs text-[var(--hub-ink)] placeholder-[var(--hub-muted)] focus:outline-none focus:border-[var(--hub-accent)]"
-                />
-                <button
-                  type="submit"
-                  className="px-4 py-2.5 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer shrink-0"
-                >
-                  Add
-                </button>
-              </form>
-            )}
-          </div>
-        </div>
-
-        {/* Deep Work & Circadian Health Snapshot */}
-        <div className="rounded-2xl p-5 sm:p-6 bg-[var(--hub-card)] border border-[var(--hub-line)] shadow-sm space-y-4 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-teal-500/10 text-teal-500 border border-teal-500/20">
-                <Flame className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-[var(--hub-ink)] font-heading">
-                  Founder Energy & Discipline
-                </h3>
-                <p className="text-xs text-[var(--hub-muted)]">Daily cognitive performance</p>
-              </div>
+          {rest.length > 0 && (
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-[var(--hub-muted)]">If there's time</h3>
+              <ol className="space-y-2" start={TOP_COUNT + 1} aria-label="More tasks if there's time">
+                {rest.map((it, i) => (
+                  renderRow(it, i + TOP_COUNT, false)
+                ))}
+              </ol>
             </div>
+          )}
 
-            <div className="space-y-3 mt-4">
-              <div className="p-3 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] flex items-center justify-between">
-                <div>
-                  <div className="text-[11px] font-semibold text-[var(--hub-muted)]">Deep Work Block</div>
-                  <div className="text-base font-extrabold text-teal-400 font-mono mt-0.5">4.5h Target</div>
-                </div>
-                <button
-                  onClick={() => onNavigate('health-routine')}
-                  aria-label="Open Routine & Health"
-                  title="Open Routine & Health"
-                  className="p-2 rounded-lg bg-teal-500/10 text-teal-400 hover:bg-teal-500/20 cursor-pointer"
-                >
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="p-3 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] flex items-center justify-between">
-                <div>
-                  <div className="text-[11px] font-semibold text-[var(--hub-muted)]">Sleep Rhythm</div>
-                  <div className="text-base font-extrabold text-indigo-400 font-mono mt-0.5">7.2h Circadian</div>
-                </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400">
-                  Optimal
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-2">
-            <button
-              onClick={() => onNavigate('health-routine')}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] transition-colors cursor-pointer"
-            >
-              <span>View Health & Discipline Hub</span>
-              <ChevronRight className="w-4 h-4 text-[var(--hub-muted)]" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Grid: Daily Timeline & Priority Tasks */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Merged Daily Timeline */}
-        <div className="rounded-2xl p-5 sm:p-6 bg-[var(--hub-card)] border border-[var(--hub-line)] shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-500 border border-indigo-500/20">
-                <CalendarIcon className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-[var(--hub-ink)] font-heading">
-                  Today's Schedule & Appointments
-                </h3>
-                <p className="text-xs text-[var(--hub-muted)]">
-                  {todayEvents.length > 0 ? `${todayEvents.length} scheduled event(s)` : 'No meetings scheduled today'}
-                </p>
-              </div>
-            </div>
-
-            <button
-              onClick={() => onNavigate('calendar')}
-              className="text-xs font-semibold text-[var(--hub-accent)] hover:underline flex items-center gap-1 cursor-pointer"
-            >
-              Calendar <ChevronRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
-            {todayEvents.length === 0 ? (
-              <div className="p-6 rounded-xl bg-[var(--hub-bg)] border border-dashed border-[var(--hub-line)] text-center space-y-2">
-                <Compass className="w-6 h-6 text-[var(--hub-muted)] mx-auto opacity-60" />
-                <p className="text-xs font-medium text-[var(--hub-muted)]">
-                  Clear calendar today! Open block for high-velocity deep engineering and R&D.
-                </p>
-                <button
-                  onClick={() => onNavigate('calendar')}
-                  className="px-3 py-1.5 rounded-lg bg-[var(--hub-card)] border border-[var(--hub-line)] text-xs text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer"
-                >
-                  Schedule Event
-                </button>
-              </div>
-            ) : (
-              todayEvents.map((event) => (
-                <div
-                  key={event.id}
-                  className="p-3.5 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] flex items-start gap-3"
-                >
-                  <div className="px-2.5 py-1 rounded-lg bg-[var(--hub-card)] border border-[var(--hub-line)] font-mono text-xs font-bold text-teal-400 shrink-0">
-                    {event.start_time || 'All Day'}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-sm font-bold text-[var(--hub-ink)] truncate">
-                      {event.title}
-                    </h4>
-                    <div className="flex items-center gap-2 mt-1 text-xs text-[var(--hub-muted)]">
-                      <span className="capitalize">{event.kind || 'Meeting'}</span>
-                      {event.place && <span>• {event.place}</span>}
-                      {event.area && (
-                        <span className="px-1.5 py-0.5 rounded bg-[var(--hub-card)] border border-[var(--hub-line)] text-[10px]">
-                          {event.area}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Priority Action Items for Today */}
-        <div className="rounded-2xl p-5 sm:p-6 bg-[var(--hub-card)] border border-[var(--hub-line)] shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-rose-500/10 text-rose-500 border border-rose-500/20">
-                <CheckCircle2 className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-[var(--hub-ink)] font-heading">
-                  Priority Tasks for Today
-                </h3>
-                <p className="text-xs text-[var(--hub-muted)]">
-                  {todayTasks.filter((t) => !t.done).length} pending • {completedTodayTasks.length} done
-                </p>
-              </div>
-            </div>
-
-            <button
-              onClick={() => onNavigate('tasks')}
-              className="text-xs font-semibold text-[var(--hub-accent)] hover:underline flex items-center gap-1 cursor-pointer"
-            >
-              All Tasks <ChevronRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          {/* Quick Task Capture */}
-          <form onSubmit={handleAddQuickTask} className="flex gap-2">
-            <input
-              type="text"
-              aria-label="New task for today"
-              placeholder="Quick capture a task for today..."
-              value={quickTaskText}
-              onChange={(e) => setQuickTaskText(e.target.value)}
-              className="flex-1 px-3.5 py-2.5 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs text-[var(--hub-ink)] placeholder-[var(--hub-muted)] focus:outline-none focus:border-[var(--hub-accent)]"
-            />
-            <button
-              type="submit"
-              className="px-3.5 py-2.5 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer shrink-0 flex items-center gap-1"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Capture</span>
-            </button>
-          </form>
-
-          {/* Task List */}
-          <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-            {todayTasks.length === 0 ? (
-              <div className="p-6 rounded-xl bg-[var(--hub-bg)] border border-dashed border-[var(--hub-line)] text-center">
-                <Check className="w-6 h-6 text-emerald-400 mx-auto" />
-                <p className="text-xs font-medium text-[var(--hub-muted)] mt-1">
-                  Zero pending tasks for today! Enjoy your evening or pick a strategic project milestone.
-                </p>
-              </div>
-            ) : (
-              todayTasks.map((task) => (
-                <div
-                  key={task.id}
-                  onClick={() => toggleTask(task)}
-                  className={`flex items-start gap-3 p-3 rounded-xl border transition-all cursor-pointer select-none ${
-                    task.done
-                      ? 'bg-emerald-500/5 border-emerald-500/20 text-[var(--hub-muted)]'
-                      : 'bg-[var(--hub-bg)] border-[var(--hub-line)] hover:border-[var(--hub-accent)] text-[var(--hub-ink)]'
-                  }`}
-                >
-                  <button
-                    type="button"
-                    aria-pressed={task.done}
-                    aria-label={`${task.done ? 'Mark not done' : 'Mark done'}: ${task.text}`}
-                    className={`mt-0.5 shrink-0 transition-colors ${
-                      task.done ? 'text-emerald-500' : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
-                    }`}
-                  >
-                    {task.done ? <CheckCircle2 className="w-4 h-4" /> : <Circle className="w-4 h-4" />}
+          {!loading && (
+            <div className="grid sm:grid-cols-2 gap-3 pt-2 border-t border-[var(--hub-line)]">
+              <form onSubmit={capture} className="space-y-1">
+                <label htmlFor="compass-capture" className="text-sm font-semibold text-[var(--hub-ink)]">
+                  Add a new task for today
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id="compass-capture"
+                    value={captureText}
+                    onChange={(e) => setCaptureText(e.target.value)}
+                    placeholder="What needs doing?"
+                    className={input}
+                  />
+                  <button type="submit" className={`${ghostBtn} shrink-0`} disabled={!captureText.trim()} aria-label="Add new task to today's plan">
+                    <Plus className="w-4 h-4" aria-hidden="true" />
                   </button>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`text-xs font-medium leading-snug truncate ${
-                          task.done ? 'line-through opacity-70' : ''
-                        }`}
-                      >
-                        {task.text}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 mt-1 text-[10px] text-[var(--hub-muted)]">
-                      <span className="px-1.5 py-0.2 rounded bg-[var(--hub-card)] border border-[var(--hub-line)]">
-                        {task.area}
-                      </span>
-                      {task.priority === 'urgent' && (
-                        <span className="px-1.5 py-0.2 rounded bg-rose-500/10 text-rose-400 font-bold">
-                          Urgent
-                        </span>
-                      )}
-                      {task.priority === 'high' && (
-                        <span className="px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 font-bold">
-                          High
-                        </span>
-                      )}
-                    </div>
+                </div>
+              </form>
+              {candidates.length > 0 && (
+                <div className="space-y-1">
+                  <label htmlFor="compass-add-existing" className="text-sm font-semibold text-[var(--hub-ink)]">
+                    Add an existing task
+                  </label>
+                  <div className="flex gap-2">
+                    <select id="compass-add-existing" value={addTaskId} onChange={(e) => setAddTaskId(e.target.value)} className={input}>
+                      <option value="">Choose a task…</option>
+                      {candidates.slice(0, 50).map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.text}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => void addExisting()}
+                      className={`${ghostBtn} shrink-0`}
+                      disabled={!addTaskId}
+                      aria-label="Add chosen task to today's plan"
+                    >
+                      <Plus className="w-4 h-4" aria-hidden="true" />
+                    </button>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ---------------- Today's schedule ---------------- */}
+      <section className={`${card} space-y-3`} aria-labelledby="schedule-title">
+        <div className="flex items-center justify-between">
+          <h2 id="schedule-title" className="text-base font-bold text-[var(--hub-ink)] flex items-center gap-2">
+            <CalendarIcon className="w-5 h-5 text-[var(--hub-accent)]" aria-hidden="true" />
+            Today's schedule
+          </h2>
+          <button type="button" onClick={() => onNavigate('calendar')} className="text-sm font-semibold text-[var(--hub-accent)] hover:underline cursor-pointer inline-flex items-center gap-1">
+            Calendar <ArrowRight className="w-4 h-4" aria-hidden="true" />
+          </button>
         </div>
-      </div>
+        {events.length === 0 ? (
+          <p className="text-sm text-[var(--hub-muted)]">Nothing scheduled — your whole day is open for the plan above.</p>
+        ) : (
+          <ul className="space-y-2">
+            {events
+              .slice()
+              .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''))
+              .map((e) => (
+                <li key={e.id} className="flex items-start gap-3 text-sm">
+                  <span className="font-mono text-xs font-semibold text-[var(--hub-ink)] w-14 shrink-0 pt-0.5">{e.start_time || 'All day'}</span>
+                  <span className="min-w-0 break-words text-[var(--hub-ink)]">{e.title}</span>
+                </li>
+              ))}
+          </ul>
+        )}
+      </section>
 
-      {/* Evening Review Workflow Panel */}
-      {isEveningOpen && (
-        <div className="rounded-2xl p-6 bg-gradient-to-br from-indigo-950/20 to-[var(--hub-card)] border border-indigo-500/30 shadow-lg space-y-4 animate-slide-down">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                <Moon className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-[var(--hub-ink)] font-heading">
-                  Evening Reflection & Carry-Forward Ritual
-                </h3>
-                <p className="text-xs text-[var(--hub-muted)]">
-                  Reflect on accomplishments, clear cognitive residue, and prepare tomorrow.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleCarryForward}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-semibold hover:bg-amber-500/20 transition-colors cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Carry Forward Incomplete</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="space-y-3 pt-2">
-            <textarea
-              rows={3}
-              placeholder="What went well today? What lessons did you learn from testing or engineering?"
-              value={reflectionText}
-              onChange={(e) => setReflectionText(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs text-[var(--hub-ink)] placeholder-[var(--hub-muted)] focus:outline-none focus:border-[var(--hub-accent)]"
-            />
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] text-[var(--hub-muted)]">
-                {reflectionSaved ? '✔ Reflection saved locally' : 'Auto-saved to your personal founder journal'}
-              </span>
-              <button
-                onClick={handleSaveReflection}
-                className="px-4 py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer"
-              >
-                Save Reflection
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* ---------------- Evening wrap-up ---------------- */}
+      {wrapOpen && (
+        <WrapUp
+          id="wrap-up"
+          plan={plan ?? undefined}
+          items={items}
+          tasksById={tasksById}
+          tomorrow={tomorrow}
+          areas={areas}
+          onDone={(msg) => {
+            setStatus(msg);
+            setWrapOpen(false);
+          }}
+        />
+      )}
+      {!wrapOpen && plan?.wrap_up && (
+        <p className="text-sm text-[var(--hub-muted)] flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-[var(--hub-accent)]" aria-hidden="true" />
+          Day wrapped up at {new Date(plan.wrap_up.wrapped_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.
+          {plan.wrap_up.first_action_task_id && tasksById.get(plan.wrap_up.first_action_task_id) && (
+            <> Tomorrow starts with “{tasksById.get(plan.wrap_up.first_action_task_id)?.text}”.</>
+          )}
+        </p>
       )}
     </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+
+interface WrapUpProps {
+  id: string;
+  plan: DailyPlan | undefined;
+  items: PlanItem[];
+  tasksById: Map<string, Task>;
+  tomorrow: string;
+  areas: Area[];
+  onDone: (message: string) => void;
+}
+
+const WrapUp: React.FC<WrapUpProps> = ({ id, plan, items, tasksById, tomorrow, areas, onDone }) => {
+  const split = splitForWrapUp(items, tasksById);
+  const [carry, setCarry] = useState<Set<string>>(() => new Set(split.open_ids));
+  const [wentWell, setWentWell] = useState(plan?.wrap_up?.went_well ?? '');
+  const [firstAction, setFirstAction] = useState<string>(split.open_ids[0] ?? '');
+  const [newFirst, setNewFirst] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const toggleCarry = (taskId: string) =>
+    setCarry((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const carried = split.open_ids.filter((tid) => carry.has(tid));
+      for (const tid of carried) {
+        const t = tasksById.get(tid);
+        if (t) await TaskService.scheduleFor(t, tomorrow);
+      }
+
+      let firstId = firstAction === '__new' ? '' : firstAction;
+      if (firstAction === '__new' && newFirst.trim()) {
+        const { task } = await TaskService.create({
+          text: newFirst.trim(),
+          area: areas[0]?.name || 'Personal',
+          priority: 'high',
+          due_date: tomorrow,
+          starred: false,
+          done: false,
+        });
+        firstId = task.id;
+      }
+
+      const ts = new Date().toISOString();
+      const today = plan?.id ?? getTodayISO();
+      await db.daily_plans.put({
+        ...(plan ?? { id: today, available_minutes: DEFAULT_AVAILABLE_MINUTES, items, rescue: false, created_at: ts }),
+        updated_at: ts,
+        wrap_up: {
+          wrapped_at: ts,
+          completed_ids: split.completed_ids,
+          carried_ids: carried,
+          went_well: wentWell.trim() || undefined,
+          first_action_task_id: firstId || undefined,
+        },
+      });
+
+      // Seed tomorrow's plan with the chosen first action, without overwriting a plan made already.
+      if (firstId && !(await db.daily_plans.get(tomorrow))) {
+        const t = tasksById.get(firstId);
+        await db.daily_plans.put({
+          id: tomorrow,
+          available_minutes: plan?.available_minutes ?? DEFAULT_AVAILABLE_MINUTES,
+          items: [{ task_id: firstId, minutes: t ? defaultEstimate(t) : 45 }],
+          rescue: false,
+          created_at: ts,
+          updated_at: ts,
+        });
+      }
+
+      onDone(
+        `Day wrapped up: ${split.completed_ids.length} done${carried.length ? `, ${carried.length} moved to tomorrow` : ''}. Rest well.`
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const titleOf = (tid: string) => tasksById.get(tid)?.text ?? 'Task';
+
+  return (
+    <section id={id} className={`${card} space-y-5`} aria-labelledby="wrap-title">
+      <h2 id="wrap-title" className="text-base font-bold text-[var(--hub-ink)] flex items-center gap-2">
+        <Moon className="w-5 h-5 text-[var(--hub-accent)]" aria-hidden="true" />
+        Evening wrap-up
+      </h2>
+
+      <div>
+        <h3 className="text-sm font-semibold text-[var(--hub-ink)]">
+          Done today {split.completed_ids.length > 0 && <span className="font-normal text-[var(--hub-muted)]">({split.completed_ids.length})</span>}
+        </h3>
+        {split.completed_ids.length === 0 ? (
+          <p className="text-sm text-[var(--hub-muted)] mt-1">Nothing from the plan was ticked off — that's okay. Some days are for showing up.</p>
+        ) : (
+          <ul className="mt-1 space-y-1 text-sm text-[var(--hub-ink)]">
+            {split.completed_ids.map((tid) => (
+              <li key={tid} className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-[var(--hub-accent)]" aria-hidden="true" />
+                <span className="break-words">{titleOf(tid)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {split.open_ids.length > 0 && (
+        <fieldset>
+          <legend className="text-sm font-semibold text-[var(--hub-ink)] flex items-center gap-1.5">
+            <RotateCcw className="w-4 h-4" aria-hidden="true" />
+            Move to tomorrow
+          </legend>
+          <div className="mt-1 space-y-1">
+            {split.open_ids.map((tid) => (
+              <label key={tid} className="flex items-start gap-2 text-sm text-[var(--hub-ink)] cursor-pointer">
+                <input type="checkbox" checked={carry.has(tid)} onChange={() => toggleCarry(tid)} className="w-4 h-4 mt-0.5" />
+                <span className="break-words">{titleOf(tid)}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
+
+      <label className="block text-sm font-semibold text-[var(--hub-ink)]">
+        What went well? <span className="font-normal text-[var(--hub-muted)]">(optional)</span>
+        <textarea
+          rows={2}
+          value={wentWell}
+          onChange={(e) => setWentWell(e.target.value)}
+          placeholder="One small win counts"
+          className={`${input} mt-1 font-normal`}
+        />
+      </label>
+
+      <div className="space-y-2">
+        <label htmlFor="first-action" className="text-sm font-semibold text-[var(--hub-ink)]">
+          Tomorrow's first action
+        </label>
+        <select id="first-action" value={firstAction} onChange={(e) => setFirstAction(e.target.value)} className={input}>
+          <option value="">Decide tomorrow</option>
+          {split.open_ids.map((tid) => (
+            <option key={tid} value={tid}>
+              {titleOf(tid)}
+            </option>
+          ))}
+          <option value="__new">Something new…</option>
+        </select>
+        {firstAction === '__new' && (
+          <input
+            aria-label="New first action for tomorrow"
+            value={newFirst}
+            onChange={(e) => setNewFirst(e.target.value)}
+            placeholder="e.g. Email the gearbox supplier"
+            className={input}
+          />
+        )}
+        <p className="text-xs text-[var(--hub-muted)]">It will be first on tomorrow's plan, so you can start without deciding.</p>
+      </div>
+
+      <button type="button" onClick={() => void save()} className={primaryBtn} disabled={saving || (firstAction === '__new' && !newFirst.trim())}>
+        <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
+        {saving ? 'Saving…' : 'Wrap up the day'}
+      </button>
+    </section>
   );
 };

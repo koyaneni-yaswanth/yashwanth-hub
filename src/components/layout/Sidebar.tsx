@@ -24,6 +24,8 @@ import {
   GraduationCap,
   Grid,
   Target,
+  Compass,
+  Timer,
 } from 'lucide-react';
 import type { NavigationTab } from '../../types';
 
@@ -84,7 +86,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       title: 'Daily & Notes',
       items: [
-        { id: 'my-day', label: 'My Day', icon: Sun },
+        { id: 'my-day', label: 'Daily Compass', icon: Compass },
+        { id: 'focus', label: 'Deep Work', icon: Timer },
         { id: 'notes', label: 'Notes', icon: FileText },
         { id: 'documents', label: 'Files & Docs', icon: FolderArchive },
         { id: 'knowledge-memory', label: 'Memory Vault', icon: Brain },
@@ -168,7 +171,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div className="flex items-center gap-3 min-w-0">
                 <Icon
                   className={`w-4 h-4 flex-none ${
-                    isActive ? 'text-white' : item.highlight ? 'text-teal-600 dark:text-teal-400' : ''
+                    isActive ? 'text-white' : item.highlight ? 'text-teal-700 dark:text-teal-400' : ''
                   }`}
                 />
                 <span className="truncate">{item.label}</span>
@@ -232,7 +235,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="mt-1 space-y-3 pb-2">
               {groupedTools.map((group) => (
                 <div key={group.title} className="space-y-0.5">
-                  <div className="px-3 pt-1 text-[10px] font-bold uppercase tracking-wider text-[var(--hub-muted)]/80">
+                  <div className="px-3 pt-1 text-[10px] font-bold uppercase tracking-wider text-[var(--hub-muted)]">
                     {group.title}
                   </div>
                   {group.items.map((item) => {

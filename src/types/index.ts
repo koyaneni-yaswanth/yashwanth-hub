@@ -587,7 +587,8 @@ export type NavigationTab =
   | 'notifications'
   | 'neo-memory'
   | 'system-health'
-  | 'goals';
+  | 'goals'
+  | 'focus';
 
 // ==========================================
 // REAL-TIME AI OPERATING SYSTEM SCHEMA (SUPABASE & DEXIE)
@@ -859,4 +860,73 @@ export interface HabitLog {
   habit_id: string;
   date: string; // YYYY-MM-DD (local)
   created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Daily Compass & Deep Work (Phase 1). Local-first tables; not yet synced to cloud.
+// ---------------------------------------------------------------------------
+
+/** One task placed on a day's plan, in the order the user wants to do it. */
+export interface PlanItem {
+  task_id: string;
+  /** Effort estimate in minutes for this task today. */
+  minutes: number;
+}
+
+export interface DailyWrapUp {
+  wrapped_at: string;
+  /** Plan task ids that were finished by wrap-up time. */
+  completed_ids: string[];
+  /** Plan task ids moved to tomorrow. */
+  carried_ids: string[];
+  went_well?: string;
+  /** Tomorrow's first action: an existing task, or free text that becomes one. */
+  first_action_task_id?: string;
+}
+
+export interface DailyPlan {
+  /** The calendar day, 'YYYY-MM-DD' — also the primary key (one plan per day). */
+  id: string;
+  available_minutes: number;
+  /** Ordered plan. The first three items are the day's Top 3. */
+  items: PlanItem[];
+  /** Overwhelm-rescue: the plan is cut to one small, doable step. */
+  rescue: boolean;
+  wrap_up?: DailyWrapUp;
+  created_at: string;
+  updated_at: string;
+}
+
+export type FocusPresetId = '25-5' | '50-10' | '90-20' | 'custom';
+
+export interface FocusDistraction {
+  id: string;
+  text: string;
+  at: string;
+  /** Set when the thought was turned into a task. */
+  task_id?: string;
+}
+
+export interface FocusSession {
+  id: string;
+  /** Local day the session started, 'YYYY-MM-DD'. */
+  date: string;
+  preset: FocusPresetId;
+  planned_minutes: number;
+  break_minutes: number;
+  task_id?: string;
+  goal_id?: string;
+  /** What the session was for, kept even if the task is later deleted. */
+  label: string;
+  started_at: string;
+  ended_at?: string;
+  /** Minutes actually focused (pauses excluded). */
+  actual_minutes: number;
+  /** True when the full planned time ran out, false when ended early. */
+  completed: boolean;
+  interruptions: number;
+  distractions: FocusDistraction[];
+  /** 1–5 self-rated focus quality from the end-of-session reflection. */
+  focus_rating?: number;
+  reflection?: string;
 }
