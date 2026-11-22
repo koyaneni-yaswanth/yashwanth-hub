@@ -207,3 +207,19 @@ test('replan keeps finished tasks, counts their time, and carries estimates over
   assert.equal(rescue.at(-1).task_id, done.id, 'rescue keeps finished work too');
   assert.equal(rescue.length, 2);
 });
+
+test('chart axis: niceTicks gives whole, evenly spaced steps that cover the max', async () => {
+  const { niceTicks, compactNumber } = await import('../src/components/charts/scale.ts');
+  assert.deepEqual(niceTicks(0), [0, 1]);
+  assert.deepEqual(niceTicks(3, 3), [0, 1, 2, 3]);
+  assert.deepEqual(niceTicks(9, 3), [0, 5, 10]);
+  assert.deepEqual(niceTicks(130, 3), [0, 50, 100, 150]);
+  for (const max of [1, 7, 42, 999, 12345]) {
+    const t = niceTicks(max, 3);
+    assert.ok(t.at(-1) >= max, `covers ${max}`);
+    assert.ok(t.every((v) => Number.isInteger(v)), `whole steps for ${max}`);
+  }
+  assert.equal(compactNumber(1284), '1,284');
+  assert.equal(compactNumber(12900), '12.9K');
+  assert.equal(compactNumber(4_200_000), '4.2M');
+});

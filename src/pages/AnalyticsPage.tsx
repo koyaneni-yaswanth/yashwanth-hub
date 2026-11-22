@@ -1,18 +1,20 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
-  TrendingUp,
-  PieChart,
   CheckCircle2,
   AlertCircle,
   IndianRupee,
-  Layers,
   Wind,
 } from 'lucide-react';
 import { db } from '../db';
 import type { Area } from '../types';
 import { formatINR, getTodayISO, isOverdue } from '../lib/utils';
 import { StatCard } from '../components/common/StatCard';
+import { ChartCard } from '../components/charts/ChartCard';
+import { ColumnChart, type ColumnDatum } from '../components/charts/ColumnChart';
+import { RankedBars, type RankedDatum } from '../components/charts/RankedBars';
+import { SegmentedBar, type Segment } from '../components/charts/SegmentedBar';
+import { addDays, parseDateKey, weekStart } from '../lib/habits';
 
 interface AnalyticsPageProps {
   currentArea: string;
@@ -27,6 +29,12 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
 }) => {
   const today = getTodayISO();
   const currentMonth = today.slice(0, 7);
+
+  // Time range for the trend and spending charts (open-task charts are always "right now").
+  const [rangeWeeks, setRangeWeeks] = useState<4 | 8 | 12>(8);
+  const thisWeek = weekStart(today);
+  const rangeStart = addDays(thisWeek, -(rangeWeeks - 1) * 7);
+  const inRange = (date: string) => date >= rangeStart;
 
   // Queries
   const allTasks = useLiveQuery(() => db.tasks.toArray(), []) || [];
@@ -44,7 +52,6 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
   const taskCompletionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
   // Expense Analytics
-  const totalSpendAllTime = expenses.reduce((sum, e) => sum + e.amount, 0);
   const currentMonthExpenses = expenses.filter((e) => e.date.startsWith(currentMonth));
   const currentMonthSpend = currentMonthExpenses.reduce((sum, e) => sum + e.amount, 0);
 
@@ -62,7 +69,7 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
     if (t.done) areaTaskCounts[t.area].done++;
   });
 
-  allExpenses.forEach((e) => {
+  allExpenses.filter((e) => inRange(e.date)).forEach((e) => {
     if (!areaTaskCounts[e.area]) {
       areaTaskCounts[e.area] = { total: 0, done: 0, spend: 0 };
     }
@@ -71,7 +78,7 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
 
   // Category breakdown for expenses
   const categoryTotals: Record<string, number> = {};
-  expenses.forEach((e) => {
+  expenses.filter((e) => inRange(e.date)).forEach((e) => {
     categoryTotals[e.category] = (categoryTotals[e.category] || 0) + e.amount;
   });
 
@@ -87,6 +94,39 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
   const planTasks = allTasks.filter((t) => t.plan !== undefined);
   const planCompleted = planTasks.filter((t) => t.done).length;
   const planRate = planTasks.length > 0 ? Math.round((planCompleted / planTasks.length) * 100) : 0;
+
+  // --- Chart data ---
+  const areaColor = (name: string) => areas.find((a) => a.name === name)?.color;
+  const areaRows: RankedDatum[] = Object.entries(areaTaskCounts)
+    .map(([name, d]) => ({ key: name, label: name, value: d.total - d.done, swatch: areaColor(name) }))
+    .filter((r) => r.value > 0 || areas.some((a) => a.name === r.label));
+  const spendRows: RankedDatum[] = Object.entries(areaTaskCounts).map(([name, d]) => ({
+    key: name,
+    label: name,
+    value: d.spend,
+    swatch: areaColor(name),
+  }));
+  const categoryRows: RankedDatum[] = Object.entries(categoryTotals).map(([cat, v]) => ({ key: cat, label: cat, value: v }));
+  const prioritySegments: Segment[] = [
+    { key: 'urgent', label: 'Urgent', value: priorityCounts.urgent, color: 'var(--viz-ord-4)', ink: 'var(--viz-ord-4-ink)' },
+    { key: 'high', label: 'High', value: priorityCounts.high, color: 'var(--viz-ord-3)', ink: 'var(--viz-ord-3-ink)' },
+    { key: 'medium', label: 'Medium', value: priorityCounts.medium, color: 'var(--viz-ord-2)', ink: 'var(--viz-ord-2-ink)' },
+    { key: 'low', label: 'Low', value: priorityCounts.low, color: 'var(--viz-ord-1)', ink: 'var(--viz-ord-1-ink)' },
+  ];
+  const rangeSpend = Object.values(categoryTotals).reduce((a, b) => a + b, 0);
+  const rangeLabel = `last ${rangeWeeks} weeks`;
+  const weeklyDone: ColumnDatum[] = Array.from({ length: rangeWeeks }, (_, i) => {
+    const wk = addDays(thisWeek, (i - (rangeWeeks - 1)) * 7);
+    const end = addDays(wk, 6);
+    const d = parseDateKey(wk);
+    return {
+      key: wk,
+      label: d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+      longLabel: `Week of ${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long' })}`,
+      value: tasks.filter((t) => t.done && t.updated_at && t.updated_at.slice(0, 10) >= wk && t.updated_at.slice(0, 10) <= end).length,
+      current: wk === thisWeek,
+    };
+  });
 
   return (
     <div className="space-y-6 pb-12">
@@ -129,166 +169,93 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
         />
       </div>
 
-      {/* Two Column Layout: Workspace Distribution & Task Priorities */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Workspace Areas Distribution */}
-        <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
-              <Layers className="w-4 h-4 text-teal-700 dark:text-teal-300" />
-              <span>Workspace Distribution</span>
-            </h3>
-            <span className="text-xs text-[var(--hub-muted)] font-medium">
-              Tasks & Capital
-            </span>
-          </div>
-
-          <div className="space-y-3.5">
-            {areas.map((area) => {
-              const data = areaTaskCounts[area.name] || { total: 0, done: 0, spend: 0 };
-              const taskPct = totalTasks > 0 ? Math.round((data.total / totalTasks) * 100) : 0;
-              const spendPct = totalSpendAllTime > 0 ? Math.round((data.spend / totalSpendAllTime) * 100) : 0;
-
-              return (
-                <div key={area.id} className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] space-y-2">
-                  <div className="flex items-center justify-between text-xs font-bold text-[var(--hub-ink)]">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="w-2.5 h-2.5 rounded-full flex-none"
-                        style={{ backgroundColor: area.color }}
-                      />
-                      <span>{area.name}</span>
-                    </div>
-                    <span className="text-[var(--hub-muted)] font-normal">
-                      {data.total} tasks • {formatINR(data.spend)} ({spendPct}%)
-                    </span>
-                  </div>
-
-                  {/* Task volume bar */}
-                  <div className="w-full h-1.5 rounded-full bg-[var(--hub-line)] overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-300"
-                      style={{
-                        width: `${taskPct}%`,
-                        backgroundColor: area.color || 'var(--hub-accent)',
-                      }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Task Priority Distribution */}
-        <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-blue-700 dark:text-blue-300" />
-              <span>Open Task Priority Matrix</span>
-            </h3>
-            <span className="text-xs text-[var(--hub-muted)] font-medium">
-              {openTasks} Open Actions
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-center">
-              <span className="text-xs font-bold text-red-700 dark:text-red-300 uppercase tracking-wider block">
-                Urgent
-              </span>
-              <span className="text-3xl font-bold font-heading text-red-700 dark:text-red-300 mt-1 block">
-                {priorityCounts.urgent}
-              </span>
-              <span className="text-[11px] text-red-800 dark:text-red-200 mt-1 block">
-                Critical blockers
-              </span>
-            </div>
-
-            <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-center">
-              <span className="text-xs font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider block">
-                High Priority
-              </span>
-              <span className="text-3xl font-bold font-heading text-amber-800 dark:text-amber-300 mt-1 block">
-                {priorityCounts.high}
-              </span>
-              <span className="text-[11px] text-amber-800 dark:text-amber-200 mt-1 block">
-                Key deliverables
-              </span>
-            </div>
-
-            <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-center">
-              <span className="text-xs font-bold text-blue-700 dark:text-blue-300 uppercase tracking-wider block">
-                Medium Priority
-              </span>
-              <span className="text-3xl font-bold font-heading text-blue-700 dark:text-blue-300 mt-1 block">
-                {priorityCounts.medium}
-              </span>
-              <span className="text-[11px] text-blue-800 dark:text-blue-200 mt-1 block">
-                Standard tasks
-              </span>
-            </div>
-
-            <div className="p-4 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] text-center">
-              <span className="text-xs font-bold text-[var(--hub-muted)] uppercase tracking-wider block">
-                Low Priority
-              </span>
-              <span className="text-3xl font-bold font-heading text-[var(--hub-ink)] mt-1 block">
-                {priorityCounts.low}
-              </span>
-              <span className="text-[11px] text-[var(--hub-muted)] mt-1 block">
-                Backlog / Someday
-              </span>
-            </div>
-          </div>
-
-          <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs text-[var(--hub-muted)] leading-relaxed">
-            <strong className="text-[var(--hub-ink)]">Execution Guidance:</strong> Founder bandwidth is best allocated by tackling all Urgent blockers before starting new Medium backlog items.
-          </div>
-        </div>
+      {/* One filter row scoping the time-based charts below */}
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Time range for trend and spending charts">
+        <span className="text-sm font-semibold text-[var(--hub-ink)] mr-1">Time range</span>
+        {([4, 8, 12] as const).map((w) => (
+          <button
+            key={w}
+            type="button"
+            onClick={() => setRangeWeeks(w)}
+            aria-pressed={rangeWeeks === w}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer ${
+              rangeWeeks === w
+                ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] border-[var(--hub-accent)]'
+                : 'bg-[var(--hub-surface)] text-[var(--hub-ink)] border-[var(--hub-line)] hover:bg-[var(--hub-surface-hover)]'
+            }`}
+          >
+            Last {w} weeks
+          </button>
+        ))}
+        <span className="text-xs text-[var(--hub-muted)]">Open-task charts always show right now.</span>
       </div>
 
-      {/* Expense Categories Breakdown */}
-      <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
-            <PieChart className="w-4 h-4 text-emerald-700 dark:text-emerald-300" />
-            <span>Cumulative Expenditure Breakdown</span>
-          </h3>
-          <span className="text-xs font-bold text-[var(--hub-ink)]">
-            Total: {formatINR(totalSpendAllTime)}
-          </span>
-        </div>
+      {/* Weekly completions */}
+      <ChartCard
+        title="Tasks completed per week"
+        subtitle={`${weeklyDone.reduce((a, w) => a + w.value, 0)} in the ${rangeLabel}, by the date a task was last updated while done`}
+        tableColumns={['Week starting', 'Tasks completed']}
+        tableRows={weeklyDone.map((w) => ({ label: w.longLabel ?? w.label, cells: [String(w.value)] }))}
+        empty={weeklyDone.every((w) => w.value === 0) ? `No completed tasks in the ${rangeLabel}.` : undefined}
+      >
+        <ColumnChart data={weeklyDone} label={`Tasks completed per week, ${rangeLabel}`} format={(v) => `${v}`} />
+      </ChartCard>
 
-        {totalSpendAllTime === 0 ? (
-          <div className="p-8 text-center text-xs text-[var(--hub-muted)]">
-            No expenses logged yet. Add your hardware procurement and operational bills in the Expenses module.
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {Object.keys(categoryTotals).map((cat) => {
-              const amount = categoryTotals[cat];
-              const pct = Math.round((amount / totalSpendAllTime) * 100);
-              return (
-                <div
-                  key={cat}
-                  className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)]"
-                >
-                  <div className="flex items-center justify-between text-xs font-semibold text-[var(--hub-ink)] mb-1">
-                    <span>{cat}</span>
-                    <span>{formatINR(amount)} ({pct}%)</span>
-                  </div>
-                  <div className="w-full h-2 rounded-full bg-[var(--hub-line)] overflow-hidden">
-                    <div
-                      className="h-full bg-[var(--hub-accent)] rounded-full transition-all duration-300"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Open tasks by priority: one whole, four ordered parts */}
+        <ChartCard
+          title="Open tasks by priority"
+          subtitle={`${openTasks} open · darker = more urgent`}
+          tableColumns={['Priority', 'Open tasks', 'Share']}
+          tableRows={prioritySegments.map((s) => ({
+            label: s.label,
+            cells: [String(s.value), openTasks ? `${Math.round((s.value / openTasks) * 100)}%` : '0%'],
+          }))}
+          empty={openTasks === 0 ? 'No open tasks — nothing waiting on you.' : undefined}
+        >
+          <SegmentedBar segments={prioritySegments} label="Open tasks by priority" unit="tasks" />
+          {priorityCounts.urgent > 0 && (
+            <p className="text-xs text-[var(--hub-muted)]">
+              Tip: clearing the {priorityCounts.urgent} urgent task{priorityCounts.urgent === 1 ? '' : 's'} first frees the most headspace.
+            </p>
+          )}
+        </ChartCard>
+
+        {/* Open tasks by workspace: compare parts by length */}
+        <ChartCard
+          title="Open tasks by workspace"
+          subtitle="Largest first"
+          tableColumns={['Workspace', 'Open tasks', 'Completed']}
+          tableRows={areaRows.map((r) => ({ label: r.label, cells: [String(r.value), String(areaTaskCounts[r.label]?.done ?? 0)] }))}
+          empty={areaRows.every((r) => r.value === 0) ? 'No open tasks in any workspace.' : undefined}
+        >
+          <RankedBars data={areaRows} label="Open tasks by workspace" showShare />
+        </ChartCard>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <ChartCard
+          title="Spending by category"
+          subtitle={`${formatINR(rangeSpend)} in the ${rangeLabel}`}
+          tableColumns={['Category', 'Amount', 'Share']}
+          tableRows={categoryRows.map((r) => ({
+            label: r.label,
+            cells: [formatINR(r.value), rangeSpend ? `${Math.round((r.value / rangeSpend) * 100)}%` : '0%'],
+          }))}
+          empty={rangeSpend === 0 ? `No expenses in the ${rangeLabel}. Add bills in the Expenses module.` : undefined}
+        >
+          <RankedBars data={categoryRows} label="Spending by category" format={formatINR} showShare />
+        </ChartCard>
+
+        <ChartCard
+          title="Spending by workspace"
+          subtitle={`The ${rangeLabel}, all workspaces`}
+          tableColumns={['Workspace', 'Amount']}
+          tableRows={spendRows.map((r) => ({ label: r.label, cells: [formatINR(r.value)] }))}
+          empty={spendRows.every((r) => r.value === 0) ? 'No spending recorded against a workspace yet.' : undefined}
+        >
+          <RankedBars data={spendRows.filter((r) => r.value > 0)} label="Spending by workspace" format={formatINR} showShare />
+        </ChartCard>
       </div>
     </div>
   );

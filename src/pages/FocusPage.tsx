@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Timer, Pause, Play, Square, Zap, BellOff, Lightbulb, Plus, CheckCircle2, Coffee, BarChart3 } from 'lucide-react';
+import { Timer, Pause, Play, Square, Zap, BellOff, Lightbulb, Plus, CheckCircle2, Coffee, BarChart3, ChevronLeft, ChevronRight } from 'lucide-react';
 import { db } from '../db';
 import type { FocusDistraction, FocusPresetId, FocusSession, Goal, Task } from '../types';
 import { generateId, getTodayISO } from '../lib/utils';
@@ -21,7 +21,9 @@ import {
   type RunningTimer,
 } from '../lib/focus';
 import { formatMinutes } from '../lib/dailyCompass';
-import { toDateKey } from '../lib/habits';
+import { addDays, parseDateKey, toDateKey } from '../lib/habits';
+import { ChartCard } from '../components/charts/ChartCard';
+import { ColumnChart, type ColumnDatum } from '../components/charts/ColumnChart';
 
 /** Survives reloads and tab switches, so a running session is never lost. */
 const RUN_KEY = 'yash_focus_running_v1';
@@ -295,9 +297,26 @@ export const FocusPage: React.FC = () => {
   };
 
   // --- insights ---
-  const week = useMemo(() => weeklyFocus(sessions, today), [sessions, today]);
+  // 0 = this week, -1 = last week, ...
+  const [weekOffset, setWeekOffset] = useState(0);
+  const weekAnchor = addDays(today, weekOffset * 7);
+  const week = useMemo(() => weeklyFocus(sessions, weekAnchor), [sessions, weekAnchor]);
+  const prevWeek = useMemo(() => weeklyFocus(sessions, addDays(weekAnchor, -7)), [sessions, weekAnchor]);
   const window3h = useMemo(() => bestFocusWindow(sessions), [sessions]);
-  const maxDay = Math.max(30, ...week.days.map((d) => d.minutes));
+  const focusDelta = week.totalMinutes - prevWeek.totalMinutes;
+  const weekTitle =
+    weekOffset === 0
+      ? 'This week'
+      : weekOffset === -1
+        ? 'Last week'
+        : `Week of ${parseDateKey(week.weekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+  const dayData: ColumnDatum[] = week.days.map((d) => ({
+    key: d.date,
+    label: weekdayLabel(d.date),
+    longLabel: parseDateKey(d.date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }),
+    value: d.minutes,
+    current: d.date === today,
+  }));
   const recent = sessions.slice(0, 8);
 
   return (
@@ -632,7 +651,26 @@ export const FocusPage: React.FC = () => {
       <section className={`${card} space-y-4`} aria-labelledby="focus-week-title">
         <h2 id="focus-week-title" className="text-base font-bold text-[var(--hub-ink)] flex items-center gap-2">
           <BarChart3 className="w-5 h-5 text-[var(--hub-accent)]" aria-hidden="true" />
-          This week
+          <span className="flex-1">{weekTitle}</span>
+          <span className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setWeekOffset((w) => w - 1)}
+              className="p-1.5 rounded-lg text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-surface-hover)] cursor-pointer"
+              aria-label="Show previous week"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setWeekOffset((w) => Math.min(0, w + 1))}
+              disabled={weekOffset === 0}
+              className="p-1.5 rounded-lg text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-surface-hover)] cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+              aria-label="Show next week"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </span>
         </h2>
 
         <dl className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -644,32 +682,28 @@ export const FocusPage: React.FC = () => {
           ].map(([k, v]) => (
             <div key={k} className="rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] p-3">
               <dt className="text-xs text-[var(--hub-muted)]">{k}</dt>
-              <dd className="text-lg font-bold text-[var(--hub-ink)] font-mono">{v}</dd>
+              <dd className="text-lg font-semibold text-[var(--hub-ink)]">{v}</dd>
+              {k === 'Focus time' && (week.totalMinutes > 0 || prevWeek.totalMinutes > 0) && (
+                <dd className="text-xs text-[var(--hub-muted)] mt-0.5">
+                  {focusDelta === 0
+                    ? 'Same as the week before'
+                    : `${focusDelta > 0 ? '▲' : '▼'} ${formatMinutes(Math.abs(focusDelta))} vs the week before`}
+                </dd>
+              )}
             </div>
           ))}
         </dl>
 
-        <div>
-          <h3 className="sr-only">Focus minutes per day</h3>
-          <ol className="grid grid-cols-7 gap-1.5 items-end h-32" aria-label="Focus minutes per day this week">
-            {week.days.map((d) => (
-              <li key={d.date} className="flex flex-col items-center justify-end h-full gap-1">
-                <span className="text-[10px] font-mono text-[var(--hub-muted)]">{d.minutes || ''}</span>
-                <div
-                  className={`w-full max-w-10 rounded-md ${d.date === today ? 'bg-[var(--hub-accent)]' : 'bg-[var(--hub-accent)]/45'}`}
-                  style={{ height: `${Math.max(d.minutes ? 6 : 2, (d.minutes / maxDay) * 100)}%` }}
-                  aria-hidden="true"
-                />
-                <span className="text-xs text-[var(--hub-muted)]">
-                  <span aria-hidden="true">{weekdayLabel(d.date)}</span>
-                  <span className="sr-only">
-                    {weekdayLabel(d.date)}: {formatMinutes(d.minutes)}
-                  </span>
-                </span>
-              </li>
-            ))}
-          </ol>
-        </div>
+        <ChartCard
+          bare
+          title="Focus minutes per day"
+          subtitle={weekOffset === 0 ? 'Today is highlighted' : undefined}
+          tableColumns={['Day', 'Focus minutes']}
+          tableRows={dayData.map((d) => ({ label: d.longLabel ?? d.label, cells: [String(d.value)] }))}
+          empty={week.totalMinutes === 0 ? 'No focus sessions this week yet.' : undefined}
+        >
+          <ColumnChart data={dayData} label={`Focus minutes per day, ${weekTitle.toLowerCase()}`} format={(v) => formatMinutes(v)} />
+        </ChartCard>
 
         <p className="text-sm text-[var(--hub-ink)] flex items-start gap-2">
           <Zap className="w-4 h-4 mt-0.5 shrink-0 text-[var(--hub-amber)]" aria-hidden="true" />
