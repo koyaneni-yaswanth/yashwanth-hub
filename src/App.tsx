@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, initializeDatabase } from './db';
 import type { NavigationTab } from './types';
@@ -17,46 +17,140 @@ import { RealtimeSyncManager } from './services/sync/realtimeSyncManager';
 import { CapacitorService } from './services/native/capacitorService';
 import { IntegrationVaultService } from './services/integrationVaultService';
 import { SupabaseAuthService } from './services/auth/supabaseAuthService';
-
-// Pages
-import { DashboardPage } from './pages/DashboardPage';
-import { ProjectsPage } from './pages/ProjectsPage';
-import { TasksPage } from './pages/TasksPage';
-import { CalendarPage } from './pages/CalendarPage';
-import { MeetingsPage } from './pages/MeetingsPage';
-import { TravelPage } from './pages/TravelPage';
-import { NotesPage } from './pages/NotesPage';
-import { FilesAndPhotosPage } from './pages/FilesAndPhotosPage';
-import { GmailPage } from './pages/GmailPage';
-import { IntegrationsPage } from './pages/IntegrationsPage';
-import { NeoMemoryCenterPage } from './pages/NeoMemoryCenterPage';
-import { SystemHealthSyncCenterPage } from './pages/SystemHealthSyncCenterPage';
-import { ExpensesPage } from './pages/ExpensesPage';
-import { ContactsPage } from './pages/ContactsPage';
-import { WindPlanPage } from './pages/WindPlanPage';
-import { AIAssistantPage } from './pages/AIAssistantPage';
-import { NotificationsPage } from './pages/NotificationsPage';
-import { AnalyticsPage } from './pages/AnalyticsPage';
-import { AutomationsPage } from './pages/AutomationsPage';
-import { SettingsPage } from './pages/SettingsPage';
-import { StartupCommandPage } from './pages/StartupCommandPage';
-import { RoboticsLabPage } from './pages/RoboticsLabPage';
-import { FinancePage } from './pages/FinancePage';
-import { HealthRoutinePage } from './pages/HealthRoutinePage';
-import { KnowledgeMemoryPage } from './pages/KnowledgeMemoryPage';
-import { MyDayPage } from './pages/MyDayPage';
-import { LearningCareerPage } from './pages/LearningCareerPage';
 import { QuickCaptureModal } from './components/common/QuickCaptureModal';
+import { PageErrorBoundary } from './components/common/PageErrorBoundary';
+import { PageSkeleton } from './components/common/PageSkeleton';
+import { TAB_TITLES, buildTabUrl, documentTitleFor, readTabFromSearch } from './lib/navigation';
+
+// Pages are code-split: each one downloads only when first opened (or prefetched while idle).
+const pageLoaders = {
+  DashboardPage: () => import('./pages/DashboardPage'),
+  ProjectsPage: () => import('./pages/ProjectsPage'),
+  TasksPage: () => import('./pages/TasksPage'),
+  CalendarPage: () => import('./pages/CalendarPage'),
+  MeetingsPage: () => import('./pages/MeetingsPage'),
+  TravelPage: () => import('./pages/TravelPage'),
+  NotesPage: () => import('./pages/NotesPage'),
+  FilesAndPhotosPage: () => import('./pages/FilesAndPhotosPage'),
+  GmailPage: () => import('./pages/GmailPage'),
+  IntegrationsPage: () => import('./pages/IntegrationsPage'),
+  SystemHealthSyncCenterPage: () => import('./pages/SystemHealthSyncCenterPage'),
+  ContactsPage: () => import('./pages/ContactsPage'),
+  AIAssistantPage: () => import('./pages/AIAssistantPage'),
+  NotificationsPage: () => import('./pages/NotificationsPage'),
+  AnalyticsPage: () => import('./pages/AnalyticsPage'),
+  AutomationsPage: () => import('./pages/AutomationsPage'),
+  SettingsPage: () => import('./pages/SettingsPage'),
+  StartupCommandPage: () => import('./pages/StartupCommandPage'),
+  RoboticsLabPage: () => import('./pages/RoboticsLabPage'),
+  FinancePage: () => import('./pages/FinancePage'),
+  HealthRoutinePage: () => import('./pages/HealthRoutinePage'),
+  KnowledgeMemoryPage: () => import('./pages/KnowledgeMemoryPage'),
+  MyDayPage: () => import('./pages/MyDayPage'),
+  LearningCareerPage: () => import('./pages/LearningCareerPage'),
+  GoalsHabitsPage: () => import('./pages/GoalsHabitsPage'),
+};
+
+const DashboardPage = lazy(() => pageLoaders.DashboardPage().then((m) => ({ default: m.DashboardPage })));
+const ProjectsPage = lazy(() => pageLoaders.ProjectsPage().then((m) => ({ default: m.ProjectsPage })));
+const TasksPage = lazy(() => pageLoaders.TasksPage().then((m) => ({ default: m.TasksPage })));
+const CalendarPage = lazy(() => pageLoaders.CalendarPage().then((m) => ({ default: m.CalendarPage })));
+const MeetingsPage = lazy(() => pageLoaders.MeetingsPage().then((m) => ({ default: m.MeetingsPage })));
+const TravelPage = lazy(() => pageLoaders.TravelPage().then((m) => ({ default: m.TravelPage })));
+const NotesPage = lazy(() => pageLoaders.NotesPage().then((m) => ({ default: m.NotesPage })));
+const FilesAndPhotosPage = lazy(() => pageLoaders.FilesAndPhotosPage().then((m) => ({ default: m.FilesAndPhotosPage })));
+const GmailPage = lazy(() => pageLoaders.GmailPage().then((m) => ({ default: m.GmailPage })));
+const IntegrationsPage = lazy(() => pageLoaders.IntegrationsPage().then((m) => ({ default: m.IntegrationsPage })));
+const SystemHealthSyncCenterPage = lazy(() => pageLoaders.SystemHealthSyncCenterPage().then((m) => ({ default: m.SystemHealthSyncCenterPage })));
+const ContactsPage = lazy(() => pageLoaders.ContactsPage().then((m) => ({ default: m.ContactsPage })));
+const AIAssistantPage = lazy(() => pageLoaders.AIAssistantPage().then((m) => ({ default: m.AIAssistantPage })));
+const NotificationsPage = lazy(() => pageLoaders.NotificationsPage().then((m) => ({ default: m.NotificationsPage })));
+const AnalyticsPage = lazy(() => pageLoaders.AnalyticsPage().then((m) => ({ default: m.AnalyticsPage })));
+const AutomationsPage = lazy(() => pageLoaders.AutomationsPage().then((m) => ({ default: m.AutomationsPage })));
+const SettingsPage = lazy(() => pageLoaders.SettingsPage().then((m) => ({ default: m.SettingsPage })));
+const StartupCommandPage = lazy(() => pageLoaders.StartupCommandPage().then((m) => ({ default: m.StartupCommandPage })));
+const RoboticsLabPage = lazy(() => pageLoaders.RoboticsLabPage().then((m) => ({ default: m.RoboticsLabPage })));
+const FinancePage = lazy(() => pageLoaders.FinancePage().then((m) => ({ default: m.FinancePage })));
+const HealthRoutinePage = lazy(() => pageLoaders.HealthRoutinePage().then((m) => ({ default: m.HealthRoutinePage })));
+const KnowledgeMemoryPage = lazy(() => pageLoaders.KnowledgeMemoryPage().then((m) => ({ default: m.KnowledgeMemoryPage })));
+const MyDayPage = lazy(() => pageLoaders.MyDayPage().then((m) => ({ default: m.MyDayPage })));
+const LearningCareerPage = lazy(() => pageLoaders.LearningCareerPage().then((m) => ({ default: m.LearningCareerPage })));
+const GoalsHabitsPage = lazy(() => pageLoaders.GoalsHabitsPage().then((m) => ({ default: m.GoalsHabitsPage })));
 
 function HubMain() {
   const { isDark } = useTheme();
-  const [currentTab, setCurrentTab] = useState<NavigationTab>('dashboard');
+  // The active tab lives in the URL (?tab=...), so refresh, Back/Forward and shared links all work.
+  const [currentTab, setCurrentTab] = useState<NavigationTab>(
+    () => (typeof window !== 'undefined' && readTabFromSearch(window.location.search)) || 'dashboard'
+  );
   const [currentArea, setCurrentArea] = useState<string>('All');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isQuickCaptureOpen, setIsQuickCaptureOpen] = useState(false);
   const [isDbReady, setIsDbReady] = useState(false);
+  // URL writes wait until OAuth / deep-link callback params have been read, so they're never clobbered.
+  const [isRoutingReady, setIsRoutingReady] = useState(false);
   const [oauthError, setOauthError] = useState<{ message: string; hint?: string } | null>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  const hasNavigatedRef = useRef(false);
+  const hasSyncedUrlRef = useRef(false);
+
+  // Mirror the active tab into the URL and browser history.
+  useEffect(() => {
+    if (!isRoutingReady) return;
+    const { pathname, search } = window.location;
+    const params = new URLSearchParams(search);
+    params.delete('tab');
+    // Another flow (e.g. a NeoSapien OAuth callback) still owns the query string — leave it alone.
+    if ([...params.keys()].length > 0) return;
+    // Compare the raw value so an unknown ?tab=... (which fell back to Home) is cleaned up too.
+    const urlTab = new URLSearchParams(search).get('tab');
+    const expectedTab = currentTab === 'dashboard' ? null : currentTab;
+    if (urlTab !== expectedTab) {
+      const url = buildTabUrl(currentTab, pathname);
+      // The first sync (e.g. landing on Integrations after an OAuth redirect) replaces rather than adds an entry.
+      if (hasSyncedUrlRef.current) window.history.pushState({ tab: currentTab }, '', url);
+      else window.history.replaceState({ tab: currentTab }, '', url);
+    }
+    hasSyncedUrlRef.current = true;
+  }, [currentTab, isRoutingReady]);
+
+  // Browser Back / Forward.
+  useEffect(() => {
+    const onPopState = () => setCurrentTab(readTabFromSearch(window.location.search) || 'dashboard');
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  // Per-page document title, scroll reset and focus hand-off for keyboard / screen-reader users.
+  useEffect(() => {
+    document.title = documentTitleFor(currentTab);
+    if (!hasNavigatedRef.current) {
+      hasNavigatedRef.current = true;
+      return;
+    }
+    window.scrollTo({ top: 0 });
+    mainRef.current?.focus({ preventScroll: true });
+  }, [currentTab]);
+
+  // Warm the most-used pages in the background once the app is idle, so first visits are instant.
+  useEffect(() => {
+    if (!isRoutingReady) return;
+    const warm = () => {
+      [pageLoaders.TasksPage, pageLoaders.CalendarPage, pageLoaders.ProjectsPage, pageLoaders.AIAssistantPage, pageLoaders.DashboardPage]
+        .forEach((load) => load().catch(() => {}));
+    };
+    const w = window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (w.requestIdleCallback) {
+      const id = w.requestIdleCallback(warm, { timeout: 4000 });
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const id = window.setTimeout(warm, 2000);
+    return () => window.clearTimeout(id);
+  }, [isRoutingReady]);
 
   // Initialize IndexedDB, Supabase Auth Session, Fleet Identity, Realtime and Reminder Engine
   useEffect(() => {
@@ -100,7 +194,7 @@ function HubMain() {
       const searchParams = new URLSearchParams(search);
       const hashParams = new URLSearchParams(hash.replace(/^#/, ''));
 
-      const requestedTab = searchParams.get('tab') as NavigationTab | null;
+      const requestedTab = readTabFromSearch(search);
       if (requestedTab) {
         setCurrentTab(requestedTab);
       }
@@ -187,11 +281,14 @@ function HubMain() {
         window.history.replaceState(null, '', window.location.pathname);
       } else if (searchParams.has('neo_code')) {
         setCurrentTab('integrations');
-      } else if (requestedTab) {
-        window.history.replaceState(null, '', window.location.pathname);
       }
     };
-    initApp();
+    initApp()
+      .catch((err) => console.error('[App] initialization failed:', err))
+      .finally(() => {
+        setIsDbReady(true);
+        setIsRoutingReady(true);
+      });
 
     // Global Keyboard Shortcuts (Ctrl+K for Command Palette, Ctrl+Q for Quick Capture)
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -280,6 +377,8 @@ function HubMain() {
         );
       case 'learning-career':
         return <LearningCareerPage />;
+      case 'goals':
+        return <GoalsHabitsPage currentArea={currentArea} areas={areas} />;
       case 'tasks':
         return <TasksPage currentArea={currentArea} areas={areas} />;
       case 'calendar':
@@ -363,6 +462,9 @@ function HubMain() {
 
   return (
     <div className="min-h-screen bg-[var(--hub-bg)] text-[var(--hub-ink)] flex flex-col font-sans transition-colors duration-200">
+      <a href="#main-content" className="hub-skip-link">
+        Skip to content
+      </a>
       {/* Top Header */}
       <Header
         currentArea={currentArea}
@@ -390,18 +492,27 @@ function HubMain() {
         />
 
         {/* Dynamic Page Content */}
-        <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 overflow-x-hidden pb-24 lg:pb-8 safe-area-content-pb">
+        <main
+          id="main-content"
+          ref={mainRef}
+          tabIndex={-1}
+          aria-label={TAB_TITLES[currentTab]}
+          className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 overflow-x-hidden pb-24 lg:pb-8 safe-area-content-pb focus:outline-none"
+        >
           {!isDbReady ? (
-            <div className="flex items-center justify-center min-h-[50vh]">
-              <div className="text-center space-y-3">
-                <div className="w-8 h-8 border-3 border-[var(--hub-accent)] border-t-transparent rounded-full animate-spin mx-auto" />
-                <p className="text-xs font-semibold text-[var(--hub-muted)]">
-                  Booting Jarvis Personal AI Operating System...
-                </p>
-              </div>
-            </div>
+            <PageSkeleton label="Booting Jarvis Personal AI Operating System" />
           ) : (
-            renderActiveTab()
+            <PageErrorBoundary
+              resetKey={currentTab}
+              pageName={TAB_TITLES[currentTab]}
+              onGoHome={() => setCurrentTab('dashboard')}
+            >
+              <Suspense fallback={<PageSkeleton label={`Loading ${TAB_TITLES[currentTab]}`} />}>
+                <div key={currentTab} className="hub-page-enter">
+                  {renderActiveTab()}
+                </div>
+              </Suspense>
+            </PageErrorBoundary>
           )}
         </main>
       </div>
@@ -479,7 +590,7 @@ function HubMain() {
                   setOauthError(null);
                   setCurrentTab('integrations');
                 }}
-                className="px-4 py-2 rounded-xl bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer"
               >
                 Open Integrations Settings
               </button>

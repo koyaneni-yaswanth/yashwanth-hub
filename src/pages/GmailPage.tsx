@@ -111,7 +111,7 @@ export const GmailPage: React.FC<GmailPageProps> = ({ onNavigateToTasks }) => {
           <button
             onClick={handleFetchMessages}
             disabled={isLoading}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             <span>{isLoading ? 'Scanning...' : 'Sync Gmail'}</span>
@@ -131,7 +131,7 @@ export const GmailPage: React.FC<GmailPageProps> = ({ onNavigateToTasks }) => {
           </p>
           <a
             href="#integrations"
-            className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-bold hover:bg-[var(--hub-accent-hover)]"
+            className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-bold hover:bg-[var(--hub-accent-hover)]"
           >
             Go to Connection Center
           </a>
@@ -165,7 +165,7 @@ export const GmailPage: React.FC<GmailPageProps> = ({ onNavigateToTasks }) => {
                   onClick={() => setFilterMode(f.id)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
                     filterMode === f.id
-                      ? 'bg-[var(--hub-accent)] text-white'
+                      ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)]'
                       : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-bg)]'
                   }`}
                 >
@@ -235,7 +235,7 @@ export const GmailPage: React.FC<GmailPageProps> = ({ onNavigateToTasks }) => {
                       </button>
                       <button
                         onClick={() => openDraftModal(item)}
-                        className="flex items-center gap-1 px-3 py-1 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer"
+                        className="flex items-center gap-1 px-3 py-1 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer"
                       >
                         <Send className="w-3 h-3" />
                         <span>Draft Reply</span>
@@ -303,7 +303,7 @@ export const GmailPage: React.FC<GmailPageProps> = ({ onNavigateToTasks }) => {
             <button
               onClick={handleSaveDraft}
               disabled={isLoading}
-              className="px-5 py-2 rounded-lg bg-[var(--hub-accent)] text-white font-bold hover:bg-[var(--hub-accent-hover)] cursor-pointer disabled:opacity-50"
+              className="px-5 py-2 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] font-bold hover:bg-[var(--hub-accent-hover)] cursor-pointer disabled:opacity-50"
             >
               Save to Gmail Drafts
             </button>

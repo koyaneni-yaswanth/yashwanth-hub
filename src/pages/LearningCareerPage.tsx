@@ -216,7 +216,7 @@ export const LearningCareerPage: React.FC = () => {
             onClick={() => setActiveTab('skills')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer shrink-0 ${
               activeTab === 'skills'
-                ? 'bg-[var(--hub-accent)] text-white'
+                ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)]'
                 : 'bg-[var(--hub-bg)] border border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
             }`}
           >
@@ -227,7 +227,7 @@ export const LearningCareerPage: React.FC = () => {
             onClick={() => setActiveTab('papers')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer shrink-0 ${
               activeTab === 'papers'
-                ? 'bg-[var(--hub-accent)] text-white'
+                ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)]'
                 : 'bg-[var(--hub-bg)] border border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
             }`}
           >
@@ -238,7 +238,7 @@ export const LearningCareerPage: React.FC = () => {
             onClick={() => setActiveTab('cv')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer shrink-0 ${
               activeTab === 'cv'
-                ? 'bg-[var(--hub-accent)] text-white'
+                ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)]'
                 : 'bg-[var(--hub-bg)] border border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
             }`}
           >
@@ -249,7 +249,7 @@ export const LearningCareerPage: React.FC = () => {
             onClick={() => setActiveTab('goals')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer shrink-0 ${
               activeTab === 'goals'
-                ? 'bg-[var(--hub-accent)] text-white'
+                ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)]'
                 : 'bg-[var(--hub-bg)] border border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
             }`}
           >

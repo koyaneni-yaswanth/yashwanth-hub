@@ -203,7 +203,7 @@ export const FinancePage: React.FC<FinancePageProps> = ({ currentArea, areas }) 
             </button>
             <button
               onClick={() => setIsModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-all cursor-pointer shadow-xs"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-all cursor-pointer shadow-xs"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Record Expense</span>
@@ -265,7 +265,7 @@ export const FinancePage: React.FC<FinancePageProps> = ({ currentArea, areas }) 
               onClick={() => setActiveTab(tab.id as any)}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                 isActive
-                  ? 'bg-[var(--hub-accent)] text-white shadow-xs'
+                  ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] shadow-xs'
                   : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-surface)]'
               }`}
             >
@@ -384,7 +384,7 @@ export const FinancePage: React.FC<FinancePageProps> = ({ currentArea, areas }) 
             </h3>
             <button
               onClick={() => setIsAddGrantOpen(true)}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold cursor-pointer"
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Add Grant Record</span>
@@ -460,7 +460,7 @@ export const FinancePage: React.FC<FinancePageProps> = ({ currentArea, areas }) 
             <button type="button" onClick={() => setIsEditTreasuryOpen(false)} className="px-3 py-1.5 rounded-lg border border-[var(--hub-line)] text-[var(--hub-muted)] cursor-pointer">
               Cancel
             </button>
-            <button type="submit" className="px-4 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white font-semibold cursor-pointer">
+            <button type="submit" className="px-4 py-1.5 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] font-semibold cursor-pointer">
               Save Balance
             </button>
           </div>
@@ -528,7 +528,7 @@ export const FinancePage: React.FC<FinancePageProps> = ({ currentArea, areas }) 
             <button type="button" onClick={() => setIsAddGrantOpen(false)} className="px-3 py-1.5 rounded-lg border border-[var(--hub-line)] text-[var(--hub-muted)] cursor-pointer">
               Cancel
             </button>
-            <button type="submit" className="px-4 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white font-semibold cursor-pointer">
+            <button type="submit" className="px-4 py-1.5 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] font-semibold cursor-pointer">
               Save Grant
             </button>
           </div>
@@ -598,7 +598,7 @@ export const FinancePage: React.FC<FinancePageProps> = ({ currentArea, areas }) 
             </button>
             <button
               type="submit"
-              className="px-4 py-2 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer"
+              className="px-4 py-2 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer"
             >
               Save Transaction
             </button>

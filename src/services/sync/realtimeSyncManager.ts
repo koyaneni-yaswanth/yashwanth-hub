@@ -1,5 +1,7 @@
 import { getSupabaseClient, isSupabaseConfigured } from '../../lib/supabase';
 import { db } from '../../db';
+import { SyncQueueService } from './syncQueueService';
+import { resolveRemoteUpsert, resolveRemoteDelete } from './conflict';
 
 export class RealtimeSyncManager {
   private static channels: any[] = [];
@@ -23,13 +25,23 @@ export class RealtimeSyncManager {
           'postgres_changes',
           { event: '*', schema: 'public', table: 'tasks' },
           async (payload: any) => {
+            // Never let a cloud echo overwrite a newer local edit that is still waiting to upload.
             if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-              if (payload.new) {
-                await db.tasks.put(payload.new);
+              if (payload.new?.id) {
+                const [local, pending] = await Promise.all([
+                  db.tasks.get(payload.new.id),
+                  SyncQueueService.hasPendingChange('tasks', payload.new.id),
+                ]);
+                if (resolveRemoteUpsert(local, payload.new, pending) === 'apply') {
+                  await db.tasks.put(payload.new);
+                }
               }
             } else if (payload.eventType === 'DELETE') {
               if (payload.old?.id) {
-                await db.tasks.delete(payload.old.id);
+                const pending = await SyncQueueService.hasPendingChange('tasks', payload.old.id);
+                if (resolveRemoteDelete(pending) === 'apply') {
+                  await db.tasks.delete(payload.old.id);
+                }
               }
             }
           }

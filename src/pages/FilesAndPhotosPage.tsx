@@ -179,7 +179,7 @@ export const FilesAndPhotosPage: React.FC<FilesAndPhotosPageProps> = ({ currentA
           {activeTab === 'drive' && isConnected && (
             <button
               onClick={() => setIsCreateDocModalOpen(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>New Google Doc / Sheet</span>
@@ -190,7 +190,7 @@ export const FilesAndPhotosPage: React.FC<FilesAndPhotosPageProps> = ({ currentA
             <button
               onClick={handleStartPhotosPicker}
               disabled={isOpeningPicker}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs disabled:opacity-50"
             >
               <Camera className="w-3.5 h-3.5" />
               <span>Select from Google Photos</span>
@@ -200,7 +200,7 @@ export const FilesAndPhotosPage: React.FC<FilesAndPhotosPageProps> = ({ currentA
           {activeTab === 'vault' && (
             <button
               onClick={() => setIsUploadModalOpen(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Upload Local File</span>
@@ -215,7 +215,7 @@ export const FilesAndPhotosPage: React.FC<FilesAndPhotosPageProps> = ({ currentA
           onClick={() => setActiveTab('drive')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
             activeTab === 'drive'
-              ? 'bg-[var(--hub-accent)] text-white shadow-xs'
+              ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] shadow-xs'
               : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-surface)]'
           }`}
         >
@@ -227,7 +227,7 @@ export const FilesAndPhotosPage: React.FC<FilesAndPhotosPageProps> = ({ currentA
           onClick={() => setActiveTab('photos')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
             activeTab === 'photos'
-              ? 'bg-[var(--hub-accent)] text-white shadow-xs'
+              ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] shadow-xs'
               : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-surface)]'
           }`}
         >
@@ -239,7 +239,7 @@ export const FilesAndPhotosPage: React.FC<FilesAndPhotosPageProps> = ({ currentA
           onClick={() => setActiveTab('vault')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
             activeTab === 'vault'
-              ? 'bg-[var(--hub-accent)] text-white shadow-xs'
+              ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] shadow-xs'
               : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-surface)]'
           }`}
         >
@@ -262,7 +262,7 @@ export const FilesAndPhotosPage: React.FC<FilesAndPhotosPageProps> = ({ currentA
               </p>
               <a
                 href="#integrations"
-                className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-bold"
+                className="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-bold"
               >
                 Go to Connection Center
               </a>
@@ -514,7 +514,7 @@ export const FilesAndPhotosPage: React.FC<FilesAndPhotosPageProps> = ({ currentA
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-lg bg-[var(--hub-accent)] text-white font-bold hover:bg-[var(--hub-accent-hover)] cursor-pointer"
+              className="px-5 py-2 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] font-bold hover:bg-[var(--hub-accent-hover)] cursor-pointer"
             >
               Create in Google Drive
             </button>
@@ -580,7 +580,7 @@ export const FilesAndPhotosPage: React.FC<FilesAndPhotosPageProps> = ({ currentA
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-lg bg-[var(--hub-accent)] text-white font-bold hover:bg-[var(--hub-accent-hover)] cursor-pointer"
+              className="px-5 py-2 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] font-bold hover:bg-[var(--hub-accent-hover)] cursor-pointer"
             >
               Save to Local Vault
             </button>

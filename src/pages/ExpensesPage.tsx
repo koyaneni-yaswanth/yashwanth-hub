@@ -224,7 +224,7 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ currentArea, areas }
         </div>
         <button
           onClick={openCreateModal}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--hub-accent)] text-white text-sm font-semibold hover:bg-[var(--hub-accent-hover)] transition-all cursor-pointer shadow-xs self-start sm:self-auto"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-sm font-semibold hover:bg-[var(--hub-accent-hover)] transition-all cursor-pointer shadow-xs self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
           <span>Add Expense</span>
@@ -638,7 +638,7 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ currentArea, areas }
             </button>
             <button
               type="submit"
-              className="px-5 py-2 text-sm font-semibold rounded-lg bg-[var(--hub-accent)] text-white hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
+              className="px-5 py-2 text-sm font-semibold rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
             >
               {editingExpense ? 'Save Changes' : 'Log Expense'}
             </button>

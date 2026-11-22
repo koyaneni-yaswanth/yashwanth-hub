@@ -23,6 +23,7 @@ import {
   ChevronRight,
   GraduationCap,
   Grid,
+  Target,
 } from 'lucide-react';
 import type { NavigationTab } from '../../types';
 
@@ -68,6 +69,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: CheckSquare,
       badge: openTasksCount > 0 ? openTasksCount : undefined,
     },
+    { id: 'goals', label: 'Goals & Habits', icon: Target },
     { id: 'calendar', label: 'Calendar', icon: Calendar },
     {
       id: 'projects',
@@ -157,7 +159,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               aria-current={isActive ? 'page' : undefined}
               className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 cursor-pointer text-left ${
                 isActive
-                  ? 'bg-[var(--hub-accent)] text-white shadow-xs font-semibold'
+                  ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] shadow-xs font-semibold'
                   : item.highlight
                   ? 'text-teal-700 dark:text-teal-300 bg-teal-500/10 hover:bg-teal-500/15'
                   : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-bg)]'
@@ -243,7 +245,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         aria-current={isActive ? 'page' : undefined}
                         className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 cursor-pointer text-left ${
                           isActive
-                            ? 'bg-[var(--hub-accent)] text-white font-semibold'
+                            ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] font-semibold'
                             : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-bg)]'
                         }`}
                       >

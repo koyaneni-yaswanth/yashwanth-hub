@@ -205,6 +205,7 @@ export const HealthRoutinePage: React.FC = () => {
                   type="checkbox"
                   checked={item.done}
                   onChange={() => toggleRoutine(item.id)}
+                  aria-label={item.title}
                   className="w-4 h-4 rounded text-teal-600 cursor-pointer flex-none"
                   onClick={(e) => e.stopPropagation()}
                 />

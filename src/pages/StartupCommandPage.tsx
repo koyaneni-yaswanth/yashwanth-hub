@@ -318,7 +318,7 @@ export const StartupCommandPage: React.FC = () => {
               onClick={() => setActiveTab(tab.id as any)}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                 isActive
-                  ? 'bg-[var(--hub-accent)] text-white shadow-xs'
+                  ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] shadow-xs'
                   : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-surface)]'
               }`}
             >
@@ -338,6 +338,7 @@ export const StartupCommandPage: React.FC = () => {
               <select
                 value={filterCategory}
                 onChange={(e) => setFilterCategory(e.target.value)}
+                aria-label="Filter category"
                 className="py-1 px-2.5 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs text-[var(--hub-ink)] font-medium cursor-pointer"
               >
                 <option value="All">All Categories ({assessmentItems.length})</option>
@@ -414,6 +415,8 @@ export const StartupCommandPage: React.FC = () => {
 
                       <button
                         onClick={() => setExpandedItem(isExpanded ? null : item.id)}
+                        aria-expanded={isExpanded}
+                        aria-label={`${isExpanded ? 'Collapse' : 'Expand'} details: ${item.parameter}`}
                         className="p-1.5 text-[var(--hub-muted)] hover:text-[var(--hub-ink)] cursor-pointer"
                       >
                         {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}

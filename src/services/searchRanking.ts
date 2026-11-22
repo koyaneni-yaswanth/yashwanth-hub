@@ -15,7 +15,9 @@ export interface SearchHit {
     | 'meeting'
     | 'event'
     | 'contact'
-    | 'expense';
+    | 'expense'
+    | 'goal'
+    | 'habit';
   title: string;
   subtitle: string;
   targetTab: NavigationTab;
@@ -34,6 +36,9 @@ export interface SearchableCorpus {
   events: any[];
   contacts: any[];
   expenses: any[];
+  goals?: any[];
+  goal_milestones?: any[];
+  habits?: any[];
 }
 
 function scoreMatch(rawQuery: string, tokens: string[], primaryText: string, secondaryText = ''): number {
@@ -166,14 +171,16 @@ export function rankUniversalSearchCorpus(
   }
 
   for (const n of corpus.notes || []) {
-    const score = scoreMatch(q, tokens, n.title, `${n.body || ''} ${n.area || ''}`);
+    const tags = Array.isArray(n.tags) ? n.tags.join(' ') : '';
+    const score = scoreMatch(q, tokens, n.title, `${n.body || ''} ${n.area || ''} ${tags} ${n.kind || ''}`);
     if (score > 0) {
+      const kindLabel = n.kind && n.kind !== 'note' ? n.kind.charAt(0).toUpperCase() + n.kind.slice(1) : 'Note';
       hits.push({
         id: `note_${n.id}`,
         entityType: 'note',
         title: n.title,
-        subtitle: `Note • ${n.area || 'Personal'}`,
-        targetTab: 'notes',
+        subtitle: `${kindLabel} • ${n.area || 'Personal'}${tags ? ` • #${n.tags.join(' #')}` : ''}`,
+        targetTab: n.kind && n.kind !== 'note' ? 'knowledge-memory' : 'notes',
         area: n.area,
         score: score + (n.pinned ? 2 : 0),
       });
@@ -273,6 +280,54 @@ export function rankUniversalSearchCorpus(
         targetTab: 'finance',
         area: x.area,
         score,
+      });
+    }
+  }
+
+  const goalTitles = new Map<string, string>();
+  for (const g of corpus.goals || []) {
+    goalTitles.set(g.id, g.title);
+    const score = scoreMatch(q, tokens, g.title, `${g.why || ''} ${g.area || ''} ${g.status || ''}`);
+    if (score > 0) {
+      hits.push({
+        id: `goal_${g.id}`,
+        entityType: 'goal',
+        title: g.title,
+        subtitle: `Goal • ${g.area}${g.status && g.status !== 'active' ? ` • ${g.status}` : ''}`,
+        targetTab: 'goals',
+        area: g.area,
+        score: score + (g.status === 'active' ? 3 : 0),
+      });
+    }
+  }
+
+  for (const m of corpus.goal_milestones || []) {
+    const goalTitle = goalTitles.get(m.goal_id) || '';
+    const score = scoreMatch(q, tokens, m.title, goalTitle);
+    if (score > 0) {
+      hits.push({
+        id: `milestone_${m.id}`,
+        entityType: 'goal',
+        title: m.title,
+        subtitle: `Milestone • ${goalTitle || 'Goal'}${m.done ? ' • done' : ''}`,
+        targetTab: 'goals',
+        score,
+      });
+    }
+  }
+
+  for (const h of corpus.habits || []) {
+    if (h.archived) continue;
+    const score = scoreMatch(q, tokens, h.title, `${h.area || ''} ${goalTitles.get(h.goal_id) || ''}`);
+    if (score > 0) {
+      hits.push({
+        id: `habit_${h.id}`,
+        entityType: 'habit',
+        title: h.title,
+        subtitle: `Habit • ${h.weekly_target >= 7 ? 'Every day' : `${h.weekly_target}× a week`} • ${h.area}`,
+        targetTab: 'goals',
+        area: h.area,
+        score: score + 1,
       });
     }
   }

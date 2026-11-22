@@ -26,6 +26,8 @@ import {
   BarChart3,
   Gavel,
   AlertTriangle,
+  Target,
+  Repeat,
 } from 'lucide-react';
 import type { NavigationTab, Area } from '../../types';
 import { useTheme } from '../../context/ThemeContext';
@@ -53,6 +55,8 @@ const ENTITY_ICON_MAP: Record<SearchHit['entityType'], React.ElementType> = {
   event: Calendar,
   contact: Users,
   expense: IndianRupee,
+  goal: Target,
+  habit: Repeat,
 };
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
@@ -97,6 +101,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const navItems = [
     { label: 'Go to Home Dashboard', tab: 'dashboard' as NavigationTab, icon: Command, category: 'Navigation' },
     { label: 'Go to My Day (Daily OS)', tab: 'my-day' as NavigationTab, icon: Sun, category: 'Navigation' },
+    { label: 'Go to Goals & Habits', tab: 'goals' as NavigationTab, icon: Target, category: 'Navigation' },
     { label: 'Go to Projects & Workspaces', tab: 'projects' as NavigationTab, icon: FolderKanban, category: 'Navigation' },
     { label: 'Go to AI Chief of Staff', tab: 'ai-assistant' as NavigationTab, icon: Sparkles, category: 'Navigation' },
     { label: 'Go to Automations & Scheduler', tab: 'automations' as NavigationTab, icon: Zap, category: 'Navigation' },
@@ -176,6 +181,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search and commands"
         className="relative w-full max-w-2xl bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
@@ -190,7 +198,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               setSelectedIndex(0);
             }}
             onKeyDown={handleKeyDown}
-            placeholder="Universal search across tasks, projects, decisions, risks, notes, memories, robotics... (ESC)"
+            placeholder="Search pages, tasks, goals, habits, notes, reflections…"
+            aria-label="Search the hub"
             className="flex-1 bg-transparent text-sm sm:text-base text-[var(--hub-ink)] focus:outline-none placeholder:text-[var(--hub-muted)]"
           />
           <kbd className="hidden sm:inline px-2 py-0.5 text-[10px] font-mono text-[var(--hub-muted)] bg-[var(--hub-bg)] border border-[var(--hub-line)] rounded">
@@ -218,7 +227,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   onMouseEnter={() => setSelectedIndex(idx)}
                   className={`flex items-center justify-between p-3 rounded-xl cursor-pointer text-xs sm:text-sm transition-colors ${
                     isSelected
-                      ? 'bg-[var(--hub-accent)] text-white font-medium'
+                      ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] font-medium'
                       : 'hover:bg-[var(--hub-bg)] text-[var(--hub-ink)]'
                   }`}
                 >

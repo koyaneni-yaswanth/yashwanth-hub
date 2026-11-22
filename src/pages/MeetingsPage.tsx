@@ -249,7 +249,7 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({ currentArea, areas }
         </div>
         <button
           onClick={openCreateModal}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--hub-accent)] text-white text-sm font-semibold hover:bg-[var(--hub-accent-hover)] transition-all cursor-pointer shadow-xs self-start sm:self-auto"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-sm font-semibold hover:bg-[var(--hub-accent-hover)] transition-all cursor-pointer shadow-xs self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
           <span>New Meeting</span>
@@ -270,7 +270,7 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({ currentArea, areas }
             onClick={() => setStatusTab(tab.id)}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
               statusTab === tab.id
-                ? 'bg-[var(--hub-accent)] text-white'
+                ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)]'
                 : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
             }`}
           >
@@ -578,7 +578,7 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({ currentArea, areas }
             </button>
             <button
               type="submit"
-              className="px-5 py-2 text-sm font-semibold rounded-lg bg-[var(--hub-accent)] text-white hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
+              className="px-5 py-2 text-sm font-semibold rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
             >
               {editingMeeting ? 'Save Changes' : 'Schedule Meeting'}
             </button>
@@ -664,7 +664,7 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({ currentArea, areas }
               <button
                 type="button"
                 onClick={() => setIsBriefModalOpen(false)}
-                className="px-4 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold cursor-pointer"
+                className="px-4 py-1.5 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold cursor-pointer"
               >
                 Close
               </button>
@@ -726,7 +726,7 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({ currentArea, areas }
             <button
               type="button"
               onClick={() => setIsFollowUpModalOpen(false)}
-              className="px-4 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold cursor-pointer"
+              className="px-4 py-1.5 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold cursor-pointer"
             >
               Done
             </button>

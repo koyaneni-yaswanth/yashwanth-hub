@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { isSupabaseConfigured, getSupabaseClient } from '../lib/supabase';
 import { db } from '../db';
+import { SyncQueueService } from '../services/sync/syncQueueService';
 
 export type SyncStatus = 'local' | 'synced' | 'syncing' | 'offline' | 'error';
 
@@ -10,6 +11,8 @@ interface SyncContextType {
   cloudConfigured: boolean;
   lastSyncTime: Date | null;
   queueCount: number;
+  /** Queued changes whose last upload attempt failed (still safe on this device). */
+  failedCount: number;
   syncNow: () => Promise<void>;
   statusMessage: string;
 }
@@ -22,18 +25,22 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [cloudConfigured, setCloudConfigured] = useState<boolean>(false);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [queueCount, setQueueCount] = useState<number>(0);
+  const [failedCount, setFailedCount] = useState<number>(0);
   const [statusMessage, setStatusMessage] = useState<string>('Local Mode (IndexedDB)');
 
   const refreshSyncState = useCallback(async () => {
     const configured = isSupabaseConfigured();
     setCloudConfigured(configured);
 
+    let qCount = 0;
+    let fCount = 0;
     try {
-      const qCount = await db.sync_queue.count();
-      setQueueCount(qCount);
+      [qCount, fCount] = await Promise.all([db.sync_queue.count(), SyncQueueService.getFailedCount()]);
     } catch {
-      setQueueCount(0);
+      // Queue unreadable — treat as empty rather than blocking the UI.
     }
+    setQueueCount(qCount);
+    setFailedCount(fCount);
 
     if (!navigator.onLine) {
       setStatus('offline');
@@ -54,8 +61,13 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
+    if (fCount > 0) {
+      setStatus('error');
+      setStatusMessage(`${fCount} change${fCount === 1 ? '' : 's'} couldn't sync yet — safe on this device, will retry`);
+      return;
+    }
     setStatus('synced');
-    setStatusMessage('Connected to Cloud');
+    setStatusMessage(qCount > 0 ? `${qCount} change${qCount === 1 ? '' : 's'} waiting to sync` : 'All changes synced');
   }, []);
 
   useEffect(() => {
@@ -74,11 +86,16 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     refreshSyncState();
     const interval = setInterval(refreshSyncState, 15000);
+    // Refresh immediately whenever the queue changes (enqueue or flush).
+    const unsubscribeQueue = SyncQueueService.subscribe(() => {
+      refreshSyncState();
+    });
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       clearInterval(interval);
+      unsubscribeQueue();
     };
   }, [refreshSyncState]);
 
@@ -110,26 +127,19 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      // Sync pending queue items
-      const queue = await db.sync_queue.toArray();
-      for (const item of queue) {
-        try {
-          if (item.action === 'INSERT' || item.action === 'UPDATE') {
-            await (client.from(item.table_name) as any).upsert(item.payload);
-          } else if (item.action === 'DELETE') {
-            await (client.from(item.table_name) as any).delete().eq('id', item.record_id);
-          }
-          await db.sync_queue.delete(item.id);
-        } catch (itemErr) {
-          console.error('Queue item sync error:', itemErr);
-        }
-      }
-
-      const remaining = await db.sync_queue.count();
+      // Upload through the same queue flush used everywhere else: rejected writes stay queued.
+      const { failed } = await SyncQueueService.flushQueue();
+      const [remaining, failedNow] = await Promise.all([db.sync_queue.count(), SyncQueueService.getFailedCount()]);
       setQueueCount(remaining);
+      setFailedCount(failedNow);
       setLastSyncTime(new Date());
-      setStatus('synced');
-      setStatusMessage('Cloud Synced');
+      if (failed > 0) {
+        setStatus('error');
+        setStatusMessage(`${failed} change${failed === 1 ? '' : 's'} couldn't sync — kept on this device and will retry`);
+      } else {
+        setStatus('synced');
+        setStatusMessage('Cloud Synced');
+      }
     } catch (err: any) {
       console.error('Sync failed:', err);
       setStatus('error');
@@ -145,6 +155,7 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
         cloudConfigured,
         lastSyncTime,
         queueCount,
+        failedCount,
         syncNow,
         statusMessage,
       }}

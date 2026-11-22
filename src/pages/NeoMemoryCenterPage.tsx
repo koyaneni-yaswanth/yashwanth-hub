@@ -414,6 +414,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
               <select
                 value={selectedAreaFilter}
                 onChange={(e) => setSelectedAreaFilter(e.target.value)}
+                aria-label="Filter by workspace area"
                 className="px-3 py-2 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-border)] text-xs font-medium focus:outline-none"
               >
                 <option value="All">All Workspace Areas</option>
@@ -427,6 +428,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
               <select
                 value={selectedSourceFilter}
                 onChange={(e) => setSelectedSourceFilter(e.target.value)}
+                aria-label="Filter by source"
                 className="px-3 py-2 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-border)] text-xs font-medium focus:outline-none"
               >
                 <option value="all">All Sources</option>
@@ -439,6 +441,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
               <select
                 value={selectedPlatformFilter}
                 onChange={(e) => setSelectedPlatformFilter(e.target.value)}
+                aria-label="Filter by platform"
                 className="px-3 py-2 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-border)] text-xs font-medium focus:outline-none"
               >
                 <option value="all">All Platforms</option>
@@ -941,7 +944,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white font-semibold cursor-pointer"
+                    className="px-4 py-1.5 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] font-semibold cursor-pointer"
                   >
                     Save Correction
                   </button>

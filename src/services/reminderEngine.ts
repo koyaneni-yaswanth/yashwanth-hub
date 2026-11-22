@@ -1,21 +1,44 @@
 import { db } from '../db';
 import type { AppNotification } from '../types';
-import { generateId, getTodayISO, isOverdue } from '../lib/utils';
+import { generateId } from '../lib/utils';
 
 import { CapacitorService } from './native/capacitorService';
+import {
+  DEFAULT_NOTIFICATION_PREFS,
+  DUPLICATE_WINDOW_MS,
+  findRecentDuplicate,
+  isWithinQuietHours,
+  parseNotificationPrefs,
+  shouldRaiseAlert,
+  type NotificationPrefs,
+} from './notificationRules';
 
 export class ReminderEngine {
   private static STORAGE_QUIET_HOURS = 'yash_quiet_hours';
+  private static STORAGE_PREFS = 'yash_notification_prefs';
+
+  public static getPrefs(): NotificationPrefs {
+    if (typeof window === 'undefined') return DEFAULT_NOTIFICATION_PREFS;
+    try {
+      return parseNotificationPrefs(
+        localStorage.getItem(this.STORAGE_PREFS),
+        localStorage.getItem(this.STORAGE_QUIET_HOURS)
+      );
+    } catch {
+      return DEFAULT_NOTIFICATION_PREFS;
+    }
+  }
+
+  public static savePrefs(prefs: NotificationPrefs): void {
+    try {
+      localStorage.setItem(this.STORAGE_PREFS, JSON.stringify(prefs));
+    } catch {
+      // Storage unavailable (private mode) — prefs apply for this session only.
+    }
+  }
 
   public static isQuietHours(): boolean {
-    if (typeof window === 'undefined') return false;
-    const raw = localStorage.getItem(this.STORAGE_QUIET_HOURS);
-    const { start = 22, end = 7 } = raw ? JSON.parse(raw) : {};
-    const currentHour = new Date().getHours();
-    if (start > end) {
-      return currentHour >= start || currentHour < end;
-    }
-    return currentHour >= start && currentHour < end;
+    return isWithinQuietHours(new Date().getHours(), this.getPrefs());
   }
 
   public static async requestBrowserPermission(): Promise<boolean> {
@@ -36,6 +59,12 @@ export class ReminderEngine {
     priority: AppNotification['priority'] = 'medium',
     actionLink?: string
   ): Promise<AppNotification> {
+    // De-duplicate: an identical unread notification from the last few hours is reused, not repeated.
+    const since = new Date(Date.now() - DUPLICATE_WINDOW_MS).toISOString();
+    const recent = await db.notifications.where('created_at').aboveOrEqual(since).toArray();
+    const duplicate = findRecentDuplicate(recent, { title, message, type, action_link: actionLink }, Date.now());
+    if (duplicate) return duplicate;
+
     const notif: AppNotification = {
       id: generateId(),
       title,
@@ -49,8 +78,8 @@ export class ReminderEngine {
 
     await db.notifications.add(notif);
 
-    // Deliver alert if outside quiet hours
-    if (!this.isQuietHours()) {
+    // Pop-up / push alert only if the user wants this type and it's outside quiet hours
+    if (shouldRaiseAlert(type, new Date().getHours(), this.getPrefs())) {
       if (CapacitorService.isNative()) {
         // Native Capacitor Local Notifications
         CapacitorService.scheduleNotification(title, message, undefined, undefined, actionLink);

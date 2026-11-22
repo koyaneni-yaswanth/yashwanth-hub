@@ -142,7 +142,7 @@ export const NotesPage: React.FC<NotesPageProps> = ({ currentArea, areas }) => {
         </div>
         <button
           onClick={openCreateModal}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--hub-accent)] text-white text-sm font-semibold hover:bg-[var(--hub-accent-hover)] transition-all cursor-pointer shadow-xs self-start sm:self-auto"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-sm font-semibold hover:bg-[var(--hub-accent-hover)] transition-all cursor-pointer shadow-xs self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
           <span>New Note</span>
@@ -157,6 +157,7 @@ export const NotesPage: React.FC<NotesPageProps> = ({ currentArea, areas }) => {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            aria-label="Search notes"
             placeholder="Search note titles, content or tags..."
             className="w-full pl-9 pr-4 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--hub-accent)] placeholder:text-[var(--hub-muted)]"
           />
@@ -165,6 +166,7 @@ export const NotesPage: React.FC<NotesPageProps> = ({ currentArea, areas }) => {
         <select
           value={selectedAreaFilter}
           onChange={(e) => setSelectedAreaFilter(e.target.value)}
+          aria-label="Filter by workspace area"
           className="w-full sm:w-auto py-2 px-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)] text-sm font-medium cursor-pointer"
         >
           <option value="All">All Areas</option>
@@ -345,7 +347,7 @@ export const NotesPage: React.FC<NotesPageProps> = ({ currentArea, areas }) => {
             </button>
             <button
               type="submit"
-              className="px-5 py-2 text-sm font-semibold rounded-lg bg-[var(--hub-accent)] text-white hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
+              className="px-5 py-2 text-sm font-semibold rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
             >
               {editingNote ? 'Save Changes' : 'Save Note'}
             </button>

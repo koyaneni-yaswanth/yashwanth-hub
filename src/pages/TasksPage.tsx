@@ -13,11 +13,11 @@ import {
 } from 'lucide-react';
 import { db } from '../db';
 import type { Task, Area, Priority } from '../types';
-import { formatShortDate, getTodayISO, isOverdue, generateId } from '../lib/utils';
+import { formatShortDate, getTodayISO, isOverdue } from '../lib/utils';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
-import { SyncQueueService } from '../services/sync/syncQueueService';
+import { TaskService } from '../services/sync/taskService';
 import { IntegrationVaultService } from '../services/integrationVaultService';
 
 interface TasksPageProps {
@@ -122,36 +122,19 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
     e.preventDefault();
     if (!formText.trim()) return;
 
-    const now = new Date().toISOString();
+    const fields = {
+      text: formText.trim(),
+      description: formDescription.trim() || undefined,
+      area: formArea,
+      priority: formPriority,
+      due_date: formDueDate || undefined,
+      notes: formNotes.trim() || undefined,
+    };
 
     if (editingTask) {
-      const updateData = {
-        text: formText.trim(),
-        description: formDescription.trim() || undefined,
-        area: formArea,
-        priority: formPriority,
-        due_date: formDueDate || undefined,
-        notes: formNotes.trim() || undefined,
-        updated_at: now,
-      };
-      await db.tasks.update(editingTask.id, updateData);
-      SyncQueueService.enqueueChange('tasks', editingTask.id, 'UPDATE', { ...editingTask, ...updateData });
+      await TaskService.update(editingTask, fields);
     } else {
-      const newTask: Task = {
-        id: generateId(),
-        text: formText.trim(),
-        description: formDescription.trim() || undefined,
-        area: formArea,
-        priority: formPriority,
-        due_date: formDueDate || undefined,
-        starred: false,
-        done: false,
-        notes: formNotes.trim() || undefined,
-        created_at: now,
-        updated_at: now,
-      };
-      await db.tasks.add(newTask);
-      SyncQueueService.enqueueChange('tasks', newTask.id, 'INSERT', newTask);
+      await TaskService.create({ ...fields, starred: false, done: false });
     }
 
     setIsModalOpen(false);
@@ -159,16 +142,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
 
   const handleToggleTask = async (task: Task) => {
     const nextDone = !task.done;
-    const updated = {
-      ...task,
-      done: nextDone,
-      updated_at: new Date().toISOString(),
-    };
-    await db.tasks.update(task.id, {
-      done: updated.done,
-      updated_at: updated.updated_at,
-    });
-    SyncQueueService.enqueueChange('tasks', task.id, 'UPDATE', updated);
+    await TaskService.toggleDone(task);
 
     // Asynchronously dispatch task status to Google Tasks and NeoSapien MCP if synced/connected
     try {
@@ -231,33 +205,17 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
   };
 
   const handleToggleStar = async (task: Task) => {
-    const updated = {
-      ...task,
-      starred: !task.starred,
-      updated_at: new Date().toISOString(),
-    };
-    await db.tasks.update(task.id, {
-      starred: updated.starred,
-      updated_at: updated.updated_at,
-    });
-    SyncQueueService.enqueueChange('tasks', task.id, 'UPDATE', updated);
+    await TaskService.toggleStar(task);
   };
 
   const handleConfirmDelete = async () => {
-    if (taskToDelete) {
-      await db.tasks.delete(taskToDelete);
-      SyncQueueService.enqueueChange('tasks', taskToDelete, 'DELETE', { id: taskToDelete });
-      setTaskToDelete(null);
-    }
+    const task = allTasks.find((t) => t.id === taskToDelete);
+    if (task) await TaskService.remove(task);
+    setTaskToDelete(null);
   };
 
   const handleClearDone = async () => {
-    const doneTasks = allTasks.filter((t) => t.done);
-    const doneIds = doneTasks.map((t) => t.id);
-    await db.tasks.bulkDelete(doneIds);
-    for (const t of doneTasks) {
-      SyncQueueService.enqueueChange('tasks', t.id, 'DELETE', { id: t.id });
-    }
+    await TaskService.removeMany(allTasks.filter((t) => t.done));
   };
 
   const renderTaskItem = (task: Task) => {
@@ -277,6 +235,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
           type="checkbox"
           checked={task.done}
           onChange={() => handleToggleTask(task)}
+          aria-label={`Mark ${task.done ? 'not done' : 'done'}: ${task.text}`}
           className="mt-1 w-4 h-4 rounded text-[var(--hub-accent)] focus:ring-[var(--hub-accent)] cursor-pointer flex-none"
         />
 
@@ -381,7 +340,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
           </button>
           <button
             onClick={openCreateModal}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--hub-accent)] text-white text-sm font-semibold hover:bg-[var(--hub-accent-hover)] transition-all cursor-pointer shadow-xs"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-sm font-semibold hover:bg-[var(--hub-accent-hover)] transition-all cursor-pointer shadow-xs"
           >
             <Plus className="w-4 h-4" />
             <span>New Task</span>
@@ -412,6 +371,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              aria-label="Search tasks"
               placeholder="Search tasks, descriptions or notes..."
               className="w-full pl-9 pr-4 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--hub-accent)] placeholder:text-[var(--hub-muted)]"
             />
@@ -423,6 +383,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
             <select
               value={selectedAreaFilter}
               onChange={(e) => setSelectedAreaFilter(e.target.value)}
+              aria-label="Filter by workspace area"
               className="w-full sm:w-auto py-2 px-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)] text-sm font-medium cursor-pointer"
             >
               <option value="All">All Areas</option>
@@ -451,7 +412,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
               onClick={() => setStatusFilter(tab.id)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
                 statusFilter === tab.id
-                  ? 'bg-[var(--hub-accent)] text-white'
+                  ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)]'
                   : 'bg-[var(--hub-bg)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
               }`}
             >
@@ -598,7 +559,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
             </button>
             <button
               type="submit"
-              className="px-5 py-2 text-sm font-semibold rounded-lg bg-[var(--hub-accent)] text-white hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
+              className="px-5 py-2 text-sm font-semibold rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
             >
               {editingTask ? 'Save Changes' : 'Create Task'}
             </button>

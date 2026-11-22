@@ -1,4 +1,6 @@
 import Dexie, { type Table } from 'dexie';
+import { createSingleFlight, runWithLock, type LockManagerLike } from '../lib/singleFlight';
+import { planSeedRepair, seedAreaId } from './seedRepair';
 import type {
   Task,
   EventItem,
@@ -30,6 +32,10 @@ import type {
   QuarantinedRecord,
   DataAuditLog,
   AIConversation,
+  Goal,
+  GoalMilestone,
+  Habit,
+  HabitLog,
   RoboticsProjectRecord,
 } from '../types';
 import { generateId, getTodayISO } from '../lib/utils';
@@ -66,6 +72,10 @@ export class YashwanthHubDatabase extends Dexie {
   data_audit_logs!: Table<DataAuditLog, string>;
   ai_conversations!: Table<AIConversation, string>;
   robotics_records!: Table<RoboticsProjectRecord, string>;
+  goals!: Table<Goal, string>;
+  goal_milestones!: Table<GoalMilestone, string>;
+  habits!: Table<Habit, string>;
+  habit_logs!: Table<HabitLog, string>;
 
   constructor() {
     super('YashwanthHubDB');
@@ -120,6 +130,14 @@ export class YashwanthHubDatabase extends Dexie {
       ai_conversations: 'id, title, agent_id, project_id, updated_at',
       robotics_records: 'id, project, category, status, created_at',
     });
+
+    // Goals & habits. Additive only: no existing table or data is touched.
+    this.version(8).stores({
+      goals: 'id, area, status, updated_at',
+      goal_milestones: 'id, goal_id, week_start, done',
+      habits: 'id, goal_id, area, archived',
+      habit_logs: 'id, habit_id, date',
+    });
   }
 }
 
@@ -133,20 +151,53 @@ export const DEFAULT_AREAS = [
   { name: 'Personal', color: '#059669', description: 'Health, personal development & finances' },
 ];
 
-export async function initializeDatabase() {
+/**
+ * Seeds and migrates the local database exactly once.
+ * - Single-flight within a tab (React StrictMode runs effects twice in dev).
+ * - A Web Lock serialises it across tabs, so two tabs opened together can't
+ *   both see an empty table and both seed it.
+ * - Built-in areas use stable ids and bulkPut, so even without Web Locks a
+ *   repeated seed overwrites rather than duplicates them.
+ */
+export const initializeDatabase = createSingleFlight(() =>
+  runWithLock(
+    typeof navigator !== 'undefined' ? (navigator.locks as LockManagerLike | undefined) : undefined,
+    'yash-hub-db-init',
+    runInitializeDatabase
+  )
+);
+
+/** Repairs duplicates left by the old first-run seeding race (see seedRepair.ts for the rules). */
+async function repairSeedDuplicates() {
+  const [areas, notifications] = await Promise.all([db.areas.toArray(), db.notifications.toArray()]);
+  const plan = planSeedRepair(areas, notifications, DEFAULT_AREAS);
+  if (plan.areaIdsToDelete.length) await db.areas.bulkDelete(plan.areaIdsToDelete);
+  if (plan.notificationIdsToDelete.length) await db.notifications.bulkDelete(plan.notificationIdsToDelete);
+  for (const id of plan.notificationIdsToMarkRead) await db.notifications.update(id, { read: true });
+  const removed = plan.areaIdsToDelete.length + plan.notificationIdsToDelete.length;
+  if (removed > 0) {
+    console.info(
+      `[db] Removed ${plan.areaIdsToDelete.length} duplicate seed area(s) and ${plan.notificationIdsToDelete.length} duplicate notification(s).`
+    );
+  }
+}
+
+async function runInitializeDatabase() {
   try {
+    await repairSeedDuplicates();
+
     const areaCount = await db.areas.count();
     if (areaCount === 0) {
       const now = new Date().toISOString();
       const areasToInsert: Area[] = DEFAULT_AREAS.map((a) => ({
-        id: generateId(),
+        id: seedAreaId(a.name),
         name: a.name,
         color: a.color,
         description: a.description,
         created_at: now,
         updated_at: now,
       }));
-      await db.areas.bulkAdd(areasToInsert);
+      await db.areas.bulkPut(areasToInsert);
     }
 
     // Seed projects if empty

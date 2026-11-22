@@ -308,7 +308,7 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
                 onClick={() => setManualType(t)}
                 className={`px-3 py-1 rounded-lg text-xs font-semibold capitalize transition-colors cursor-pointer ${
                   parsed.type === t
-                    ? 'bg-[var(--hub-accent)] text-white shadow-xs'
+                    ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] shadow-xs'
                     : 'bg-[var(--hub-bg)] border border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
                 }`}
               >
@@ -429,7 +429,7 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
               <button
                 type="submit"
                 disabled={!rawText.trim() || isSubmitting}
-                className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors shadow-sm cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors shadow-sm cursor-pointer disabled:opacity-50"
               >
                 {successMessage ? (
                   <>

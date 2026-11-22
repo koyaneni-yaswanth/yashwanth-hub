@@ -370,7 +370,7 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
         <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={handleStartNewConversation}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer shadow-xs"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer shadow-xs"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>New Chat</span>
@@ -434,7 +434,7 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
                 onClick={() => setIsConfigOpen(!isConfigOpen)}
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium border cursor-pointer ${
                   isConfigOpen
-                    ? 'bg-[var(--hub-accent)] text-white border-[var(--hub-accent)]'
+                    ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] border-[var(--hub-accent)]'
                     : 'bg-[var(--hub-bg)] border-[var(--hub-line)] text-[var(--hub-ink)]'
                 }`}
               >
@@ -446,7 +446,7 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
                 onClick={() => setIsToolsOpen(!isToolsOpen)}
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium border cursor-pointer ${
                   isToolsOpen
-                    ? 'bg-[var(--hub-accent)] text-white border-[var(--hub-accent)]'
+                    ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] border-[var(--hub-accent)]'
                     : 'bg-[var(--hub-bg)] border-[var(--hub-line)] text-[var(--hub-ink)]'
                 }`}
               >
@@ -488,7 +488,7 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
                   onClick={() => setSelectedMode(m.id)}
                   className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
                     selectedMode === m.id
-                      ? 'bg-[var(--hub-accent)] text-white border-[var(--hub-accent)]'
+                      ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] border-[var(--hub-accent)]'
                       : 'bg-[var(--hub-bg)] border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
                   }`}
                 >
@@ -519,7 +519,7 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
               }}
               className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all cursor-pointer ${
                 active
-                  ? 'bg-[var(--hub-accent)] text-white border-[var(--hub-accent)] shadow-xs'
+                  ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] border-[var(--hub-accent)] shadow-xs'
                   : 'bg-[var(--hub-surface)] border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:border-[var(--hub-accent)]/40'
               }`}
             >
@@ -737,7 +737,7 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
                     <div
                       className={`max-w-[92%] sm:max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed space-y-3 ${
                         msg.role === 'user'
-                          ? 'bg-[var(--hub-accent)] text-white rounded-tr-sm'
+                          ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] rounded-tr-sm'
                           : 'bg-[var(--hub-bg)] border border-[var(--hub-line)] text-[var(--hub-ink)] rounded-tl-sm'
                       }`}
                     >
@@ -858,6 +858,7 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
                 type="text"
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
+                aria-label="Message Jarvis AI"
                 placeholder="Ask your Chief of Staff (e.g., Plan my day, What is blocking Pawan Shakti?)..."
                 disabled={isProcessing}
                 className="flex-1 px-4 py-2.5 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-surface)] text-sm text-[var(--hub-ink)] focus:outline-none focus:ring-2 focus:ring-[var(--hub-accent)]"
@@ -865,7 +866,7 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
               <button
                 type="submit"
                 disabled={isProcessing || !inputMessage.trim()}
-                className="p-2.5 rounded-xl bg-[var(--hub-accent)] text-white hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer disabled:opacity-50"
+                className="p-2.5 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer disabled:opacity-50"
                 aria-label="Send message"
               >
                 <Send className="w-4 h-4" />

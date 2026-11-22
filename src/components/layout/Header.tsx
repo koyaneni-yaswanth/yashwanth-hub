@@ -12,6 +12,7 @@ import {
   Plus,
   UserCheck,
   LogIn,
+  AlertTriangle,
 } from 'lucide-react';
 import { db } from '../../db';
 import { TurbineLogo } from '../common/TurbineLogo';
@@ -42,7 +43,7 @@ export const Header: React.FC<HeaderProps> = ({
   turbineDuration = 8,
 }) => {
   const { isDark, toggleTheme } = useTheme();
-  const { status } = useSync();
+  const { status, queueCount, failedCount, statusMessage } = useSync();
   const [authState, setAuthState] = React.useState<AuthState>(() => SupabaseAuthService.getState());
 
   React.useEffect(() => {
@@ -69,15 +70,22 @@ export const Header: React.FC<HeaderProps> = ({
     if (status === 'offline') {
       return {
         icon: <WifiOff className="w-3.5 h-3.5 text-red-500" />,
-        title: 'Offline — changes saved locally',
-        label: 'Offline',
+        title: queueCount > 0 ? `Offline — ${queueCount} change(s) saved locally, will sync when online` : 'Offline — changes saved locally',
+        label: queueCount > 0 ? `Offline · ${queueCount}` : 'Offline',
+      };
+    }
+    if (status === 'error') {
+      return {
+        icon: <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />,
+        title: statusMessage,
+        label: failedCount > 0 ? `Sync issue · ${failedCount}` : 'Sync issue',
       };
     }
     if (status === 'synced') {
       return {
         icon: <Cloud className="w-3.5 h-3.5 text-emerald-500" />,
-        title: 'Cloud synced',
-        label: 'Synced',
+        title: statusMessage || 'Cloud synced',
+        label: queueCount > 0 ? `${queueCount} pending` : 'Synced',
       };
     }
     return {
@@ -122,19 +130,20 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Center: Clean Search Bar (Desktop) */}
         <button
           onClick={onOpenCommandPalette}
-          className="hidden md:flex items-center gap-2 px-3.5 py-2 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)]/80 text-xs text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:border-[var(--hub-accent)] transition-all cursor-pointer w-64 lg:w-72 justify-between"
+          aria-label="Search (Ctrl+K)"
+          className="hidden md:flex items-center gap-2 px-3.5 py-2 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)]/80 text-xs text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:border-[var(--hub-accent)] transition-all cursor-pointer md:w-52 lg:w-64 xl:w-72 min-w-0 justify-between"
         >
-          <span className="flex items-center gap-2">
-            <Search className="w-3.5 h-3.5" />
-            <span>Search tasks, notes, projects...</span>
+          <span className="flex items-center gap-2 min-w-0">
+            <Search className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">Search tasks, notes, projects...</span>
           </span>
-          <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded">
+          <kbd className="shrink-0 px-1.5 py-0.5 text-[10px] font-mono bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded">
             Ctrl K
           </kbd>
         </button>
 
         {/* Right: Essential Controls Only */}
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Mobile Search Icon */}
           <button
             onClick={onOpenCommandPalette}
@@ -169,7 +178,7 @@ export const Header: React.FC<HeaderProps> = ({
           {onOpenQuickCapture && (
             <button
               onClick={onOpenQuickCapture}
-              className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer shadow-xs"
+              className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold whitespace-nowrap hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer shadow-xs"
               title="Quick Add or Voice Capture (Ctrl+Q)"
               aria-label="Quick Add"
             >
@@ -186,9 +195,9 @@ export const Header: React.FC<HeaderProps> = ({
                 ? `${authState.user.email || 'Signed in'} • ${syncInfo.title}`
                 : syncInfo.title
             }
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)]/60 text-xs font-medium text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:border-[var(--hub-accent)]/40 transition-colors cursor-pointer"
+            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)]/60 text-xs font-medium text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:border-[var(--hub-accent)]/40 transition-colors cursor-pointer"
           >
-            {authState.configured ? (
+            {authState.configured && status !== 'offline' && status !== 'error' ? (
               authState.user ? (
                 <UserCheck className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
               ) : (
@@ -198,7 +207,7 @@ export const Header: React.FC<HeaderProps> = ({
               syncInfo.icon
             )}
             <span className="max-w-[84px] truncate">
-              {authState.configured
+              {authState.configured && status !== 'offline' && status !== 'error'
                 ? authState.user
                   ? authState.user.email?.split('@')[0] || 'Account'
                   : 'Sign In'
@@ -210,12 +219,12 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={() => onNavigate('notifications')}
             className="relative p-2 rounded-xl text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-bg)] transition-colors cursor-pointer"
-            aria-label="Notifications"
+            aria-label={unreadNotifs.length > 0 ? `Notifications (${unreadNotifs.length} unread)` : 'Notifications'}
             title="Notifications"
           >
             <Bell className="w-4 h-4" />
             {unreadNotifs.length > 0 && (
-              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500" />
+              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500 ring-2 ring-[var(--hub-surface)]" />
             )}
           </button>
 
@@ -233,6 +242,25 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </button>
         </div>
+      </div>
+      {/* Offline / sync-problem notice — visible on every screen size, announced politely */}
+      <div role="status" aria-live="polite" className="max-w-7xl mx-auto">
+        {(status === 'offline' || (status === 'error' && failedCount > 0)) && (
+          <p
+            className={`mt-2 flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-medium ${
+              status === 'offline'
+                ? 'bg-[var(--hub-bg)] text-[var(--hub-muted)] border border-[var(--hub-line)]'
+                : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30'
+            }`}
+          >
+            {status === 'offline' ? <WifiOff className="w-3.5 h-3.5 shrink-0" /> : <AlertTriangle className="w-3.5 h-3.5 shrink-0" />}
+            <span className="min-w-0">
+              {status === 'offline'
+                ? "You're offline. Everything you change is saved on this device and syncs when you reconnect."
+                : statusMessage}
+            </span>
+          </p>
+        )}
       </div>
     </header>
   );

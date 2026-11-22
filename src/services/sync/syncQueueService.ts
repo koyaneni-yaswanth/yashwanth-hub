@@ -98,8 +98,20 @@ export class SyncQueueService {
           await db.sync_queue.delete(item.id);
           processed++;
         } catch (itemErr) {
+          // Keep the change queued (never discard it) and record why, so the UI can show it.
           console.warn(`Failed to sync item ${item.id} for table ${item.table_name}:`, itemErr);
           failed++;
+          const message =
+            itemErr && typeof itemErr === 'object' && 'message' in itemErr
+              ? String((itemErr as { message: unknown }).message)
+              : String(itemErr);
+          await db.sync_queue
+            .update(item.id, {
+              attempts: (item.attempts || 0) + 1,
+              last_error: message.slice(0, 300),
+              last_attempt_at: new Date().toISOString(),
+            })
+            .catch(() => {});
         }
       }
     } finally {
@@ -109,6 +121,21 @@ export class SyncQueueService {
     }
 
     return { processed, failed };
+  }
+
+  /** True when this record has a local INSERT/UPDATE that hasn't reached the cloud yet. */
+  public static async hasPendingChange(tableName: string, recordId: string): Promise<boolean> {
+    const count = await db.sync_queue
+      .where('record_id')
+      .equals(recordId)
+      .filter((i) => i.table_name === tableName && i.action !== 'DELETE')
+      .count();
+    return count > 0;
+  }
+
+  /** Number of queued changes whose last upload attempt failed. */
+  public static async getFailedCount(): Promise<number> {
+    return db.sync_queue.filter((i) => (i.attempts || 0) > 0).count();
   }
 
   /**

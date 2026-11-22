@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   CheckCircle2,
@@ -34,6 +34,7 @@ import {
   SlidersHorizontal,
   ChevronDown,
   ChevronUp,
+  Undo2,
 } from 'lucide-react';
 import { db } from '../db';
 import type { Task, Area, Priority } from '../types';
@@ -49,6 +50,8 @@ import { StatCard } from '../components/common/StatCard';
 import { Badge } from '../components/common/Badge';
 import { Neo1DeviceCard } from '../components/neo/Neo1DeviceCard';
 import { IntegrationVaultService } from '../services/integrationVaultService';
+import { TaskService } from '../services/sync/taskService';
+import { TodayProgress } from '../components/home/TodayProgress';
 
 interface DashboardPageProps {
   currentArea: string;
@@ -258,12 +261,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
   const pawanProject = allProjects.find((p) => p.area === 'PAWAN SHAKTI');
 
-  const handleMoveToToday = async (task: Task) => {
-    await db.tasks.update(task.id, {
-      due_date: today,
-      updated_at: new Date().toISOString(),
-    });
-  };
+  // Every Home task edit goes through the same persistence + cloud-sync path as the Tasks page.
+  const handleMoveToToday = (task: Task) => TaskService.scheduleFor(task, today);
 
   const handleFinishDailyPlan = () => {
     setDailyPlanNotice('Daily plan saved — your top focus priorities are ready.');
@@ -295,20 +294,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     e.preventDefault();
     if (!quickText.trim()) return;
 
-    const now = new Date().toISOString();
-    const newTask: Task = {
-      id: generateId(),
+    await TaskService.create({
       text: quickText.trim(),
       area: quickArea,
       priority: quickPriority,
       due_date: quickDate || undefined,
       starred: false,
       done: false,
-      created_at: now,
-      updated_at: now,
-    };
-
-    await db.tasks.add(newTask);
+    });
     setQuickText('');
     setShowQuickOptions(false);
     setQuickAddedToast('Task added!');
@@ -323,23 +316,66 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     onNavigate('ai-assistant');
   };
 
-  const handleToggleTask = async (task: Task) => {
-    await db.tasks.update(task.id, {
-      done: !task.done,
-      updated_at: new Date().toISOString(),
-    });
+  const handleToggleTask = (task: Task) => TaskService.toggleDone(task);
+
+  const handleToggleStar = (task: Task) => TaskService.toggleStar(task);
+
+  // Delete with undo: the task leaves the list at once, but the cloud delete is held
+  // until the undo window closes, so undoing never races an already-synced delete.
+  const UNDO_WINDOW_MS = 6000;
+  const [pendingDelete, setPendingDelete] = useState<Task | null>(null);
+  const pendingDeleteRef = useRef<{ task: Task; timer: number } | null>(null);
+
+  const commitPendingDelete = useCallback(() => {
+    const pending = pendingDeleteRef.current;
+    if (!pending) return;
+    window.clearTimeout(pending.timer);
+    pendingDeleteRef.current = null;
+    TaskService.commitRemove(pending.task.id);
+  }, []);
+
+  // Finalize a pending delete if the user leaves Home or closes the app mid-window.
+  useEffect(() => {
+    window.addEventListener('pagehide', commitPendingDelete);
+    return () => {
+      window.removeEventListener('pagehide', commitPendingDelete);
+      commitPendingDelete();
+    };
+  }, [commitPendingDelete]);
+
+  const handleDeleteTask = async (task: Task) => {
+    commitPendingDelete(); // a second delete finalizes the first
+    await TaskService.removeLocally(task);
+    const timer = window.setTimeout(() => {
+      commitPendingDelete();
+      setPendingDelete(null);
+    }, UNDO_WINDOW_MS);
+    pendingDeleteRef.current = { task, timer };
+    setPendingDelete(task);
   };
 
-  const handleToggleStar = async (task: Task) => {
-    await db.tasks.update(task.id, {
-      starred: !task.starred,
-      updated_at: new Date().toISOString(),
-    });
-  };
+  const handleUndoDelete = useCallback(async () => {
+    const pending = pendingDeleteRef.current;
+    if (!pending) return;
+    window.clearTimeout(pending.timer);
+    pendingDeleteRef.current = null;
+    setPendingDelete(null);
+    await TaskService.restore(pending.task);
+  }, []);
 
-  const handleDeleteTask = async (id: string) => {
-    await db.tasks.delete(id);
-  };
+  // Ctrl/Cmd+Z undoes while the toast is showing (but not while typing in a field).
+  useEffect(() => {
+    if (!pendingDelete) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.key.toLowerCase() !== 'z') return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      e.preventDefault();
+      handleUndoDelete();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [pendingDelete, handleUndoDelete]);
 
   const scheduleCount = upcomingEvents.length + upcomingMeetings.length;
 
@@ -363,7 +399,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             onClick={() => setIsFocusMode(!isFocusMode)}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
               isFocusMode
-                ? 'bg-[var(--hub-accent)] text-white border-[var(--hub-accent)]'
+                ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] border-[var(--hub-accent)]'
                 : 'bg-[var(--hub-surface)] border-[var(--hub-line)] text-[var(--hub-ink)] hover:border-[var(--hub-accent)]/50'
             }`}
           >
@@ -391,7 +427,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
       </div>
 
+      <TodayProgress tasks={tasks} today={today} currentArea={currentArea} onNavigate={onNavigate} />
+
       {/* Notices */}
+      <div role="status" aria-live="polite">
       {(dailyPlanNotice || weeklyReviewNotice || quickAddedToast) && (
         <div className="p-3 rounded-xl bg-teal-500/10 border border-teal-500/30 text-teal-700 dark:text-teal-300 text-xs font-semibold flex items-center justify-between">
           <span className="flex items-center gap-2">
@@ -410,6 +449,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </button>
         </div>
       )}
+      </div>
 
       {/* 2. Unified "Do Anything" Bar — Add Task, Ask AI, or Voice Capture in One Place */}
       <div
@@ -423,6 +463,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               type="text"
               value={quickText}
               onChange={(e) => setQuickText(e.target.value)}
+              aria-label="Add a task, capture a thought, or ask AI"
               placeholder="Add a task, capture a thought, or ask Jarvis AI..."
               className="flex-1 min-w-0 px-3 py-2.5 rounded-xl bg-[var(--hub-bg)]/70 border border-transparent focus:border-[var(--hub-accent)]/40 text-[var(--hub-ink)] text-sm focus:outline-none placeholder:text-[var(--hub-muted)]"
             />
@@ -466,7 +507,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <button
               type="submit"
               disabled={!quickText.trim()}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[var(--hub-accent)] text-white text-xs sm:text-sm font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer flex-none shadow-xs disabled:opacity-40"
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs sm:text-sm font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer flex-none shadow-xs disabled:opacity-40"
             >
               <Plus className="w-4 h-4" />
               <span className="hidden sm:inline">Add</span>
@@ -556,7 +597,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <div className="flex flex-wrap items-center justify-center gap-2.5 pt-2">
               <button
                 onClick={() => setIsTimerRunning(!isTimerRunning)}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer"
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer"
               >
                 {isTimerRunning ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                 <span>{isTimerRunning ? 'Pause' : 'Start'}</span>
@@ -616,7 +657,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 setIsFocusMode(true);
                 setIsTimerRunning(true);
               }}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer"
             >
               <Play className="w-3.5 h-3.5" />
               <span>Focus</span>
@@ -709,9 +750,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                         <Star className={`w-4 h-4 ${task.starred ? 'fill-amber-500' : ''}`} />
                       </button>
                       <button
-                        onClick={() => handleDeleteTask(task.id)}
+                        onClick={() => handleDeleteTask(task)}
                         className="p-1 rounded-lg text-[var(--hub-muted)] hover:text-red-600 hover:bg-[var(--hub-bg)] cursor-pointer"
                         title="Delete task"
+                        aria-label={`Delete task: ${task.text}`}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -825,11 +867,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </button>
         <button
           type="button"
-          onClick={() => onNavigate('notes')}
+          onClick={() => onNavigate('knowledge-memory')}
           className="flex items-center gap-2.5 px-3.5 py-3 rounded-2xl bg-[var(--hub-surface)] border border-[var(--hub-line)] hover:border-rose-500/50 text-xs font-semibold text-[var(--hub-ink)] transition-all cursor-pointer"
         >
           <FileText className="w-4 h-4 text-rose-500 shrink-0" />
-          <span>Notes</span>
+          <span>Memory Vault</span>
         </button>
         <button
           type="button"
@@ -846,6 +888,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         <button
           type="button"
           onClick={toggleMoreDetails}
+          aria-expanded={showMoreDetails}
           className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-[var(--hub-surface)]/70 border border-[var(--hub-line)] hover:border-[var(--hub-accent)]/40 text-xs font-semibold text-[var(--hub-muted)] hover:text-[var(--hub-ink)] transition-all cursor-pointer"
         >
           <span>
@@ -1165,7 +1208,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               </button>
               <button
                 onClick={handleFinishDailyPlan}
-                className="px-5 py-2 rounded-xl bg-[var(--hub-accent)] hover:bg-[var(--hub-accent-hover)] text-white text-xs font-semibold cursor-pointer"
+                className="px-5 py-2 rounded-xl bg-[var(--hub-accent)] hover:bg-[var(--hub-accent-hover)] text-[var(--hub-accent-ink)] text-xs font-semibold cursor-pointer"
               >
                 Save Plan
               </button>
@@ -1265,6 +1308,39 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </div>
         </div>
       )}
+
+      {/* Undo toast for deleted tasks */}
+      <div
+        role="status"
+        aria-live="polite"
+        className="fixed inset-x-0 bottom-24 lg:bottom-6 z-50 flex justify-center px-4 pointer-events-none"
+      >
+        {pendingDelete && (
+          <div
+            key={pendingDelete.id}
+            className="hub-toast-enter pointer-events-auto relative overflow-hidden flex items-center gap-3 max-w-md w-full sm:w-auto pl-4 pr-2 py-2.5 rounded-2xl bg-[var(--hub-ink)] text-[var(--hub-bg)] shadow-xl"
+          >
+            <Trash2 className="w-4 h-4 shrink-0 opacity-70" />
+            <span className="text-sm min-w-0 flex-1">
+              Deleted <span className="font-semibold truncate inline-block max-w-[12rem] sm:max-w-[16rem] align-bottom">"{pendingDelete.text}"</span>
+            </span>
+            <button
+              type="button"
+              onClick={handleUndoDelete}
+              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-semibold bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer"
+              title="Undo (Ctrl+Z)"
+            >
+              <Undo2 className="w-4 h-4" />
+              Undo
+            </button>
+            <span
+              aria-hidden="true"
+              className="hub-toast-timer absolute left-0 bottom-0 h-0.5 bg-[var(--hub-accent)]"
+              style={{ animationDuration: `${UNDO_WINDOW_MS}ms` }}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 };

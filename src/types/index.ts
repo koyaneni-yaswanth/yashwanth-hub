@@ -158,12 +158,16 @@ export interface TravelRecord {
   updated_at: string;
 }
 
+/** What kind of entry a note is in the Memory Vault. Absent = plain note. */
+export type NoteKind = 'note' | 'reflection' | 'decision' | 'lesson';
+
 export interface Note {
   id: string;
   title: string;
   body: string;
   area?: string;
   pinned: boolean;
+  kind?: NoteKind;
   tags?: string[];
   project_id?: string;
   created_at: string;
@@ -247,6 +251,9 @@ export interface SyncQueueItem {
   payload: any;
   created_at: string;
   attempts: number;
+  /** Last error from the cloud, kept so failures are visible rather than silently retried. */
+  last_error?: string;
+  last_attempt_at?: string;
 }
 
 // Notifications & Reminders
@@ -579,7 +586,8 @@ export type NavigationTab =
   | 'wind-plan'
   | 'notifications'
   | 'neo-memory'
-  | 'system-health';
+  | 'system-health'
+  | 'goals';
 
 // ==========================================
 // REAL-TIME AI OPERATING SYSTEM SCHEMA (SUPABASE & DEXIE)
@@ -801,4 +809,54 @@ export interface AIConversation {
   total_cost_usd: number;
   created_at: string;
   updated_at: string;
+}
+
+// ==========================================
+// GOALS & HABITS (local-first; stored on this device)
+// ==========================================
+
+export type GoalStatus = 'active' | 'paused' | 'achieved';
+
+export interface Goal {
+  id: string;
+  title: string;
+  /** Why this goal matters — shown as motivation on the goal card. */
+  why?: string;
+  area: string;
+  target_date?: string; // YYYY-MM-DD
+  status: GoalStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A concrete step planned for one week (week_start = that week's Monday, YYYY-MM-DD). */
+export interface GoalMilestone {
+  id: string;
+  goal_id: string;
+  title: string;
+  week_start: string;
+  done: boolean;
+  done_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Habit {
+  id: string;
+  title: string;
+  goal_id?: string;
+  area: string;
+  /** Check-ins per Mon–Sun week; 7 = daily. */
+  weekly_target: number;
+  archived: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/** One check-in. id is `${habit_id}:${date}` so a day can never be logged twice. */
+export interface HabitLog {
+  id: string;
+  habit_id: string;
+  date: string; // YYYY-MM-DD (local)
+  created_at: string;
 }

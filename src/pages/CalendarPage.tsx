@@ -300,7 +300,7 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
                 onClick={() => setViewMode(mode)}
                 className={`px-3 py-1.5 rounded-lg capitalize transition-colors cursor-pointer ${
                   viewMode === mode
-                    ? 'bg-[var(--hub-accent)] text-white'
+                    ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)]'
                     : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
                 }`}
               >
@@ -311,7 +311,7 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
 
           <button
             onClick={() => openCreateModal()}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--hub-accent)] text-white text-sm font-semibold hover:bg-[var(--hub-accent-hover)] transition-all cursor-pointer shadow-xs"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-sm font-semibold hover:bg-[var(--hub-accent-hover)] transition-all cursor-pointer shadow-xs"
           >
             <Plus className="w-4 h-4" />
             <span>Add Event</span>
@@ -432,7 +432,7 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
                     <span
                       className={`text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full ${
                         cell.isToday
-                          ? 'bg-[var(--hub-accent)] text-white'
+                          ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)]'
                           : 'text-[var(--hub-ink)]'
                       }`}
                     >
@@ -688,7 +688,7 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
             </button>
             <button
               type="submit"
-              className="px-5 py-2 text-sm font-semibold rounded-lg bg-[var(--hub-accent)] text-white hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
+              className="px-5 py-2 text-sm font-semibold rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
             >
               {editingEvent ? 'Save Changes' : 'Schedule Event'}
             </button>

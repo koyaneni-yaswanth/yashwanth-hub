@@ -16,6 +16,15 @@
     --hub-done: #e3f1ec;
     --hub-done-border: #9ad4c4;
     --hub-card-shadow: 0 1px 3px 0 rgba(18, 38, 43, 0.05), 0 1px 2px -1px rgba(18, 38, 43, 0.05);
+    --hub-surface-hover: #eef5f4;
+    --hub-surface-raised: #ffffff;
+    /* Aliases for token names some pages use; they previously resolved to nothing
+       (borders fell back to the text colour, card backgrounds to transparent). */
+    --hub-border: var(--hub-line);
+    --hub-card: var(--hub-surface);
+    --hub-card-bg: var(--hub-surface);
+    --hub-card-hover: var(--hub-surface-hover);
+    color-scheme: light;
   }
 
   :root.dark, html[data-theme="dark"], body.dark {
@@ -33,6 +42,14 @@
     --hub-done: #143a37;
     --hub-done-border: #1f5752;
     --hub-card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+    --hub-surface-hover: #1c3438;
+    --hub-surface-raised: #1b3236;
+    --hub-border: var(--hub-line);
+    --hub-card: var(--hub-surface);
+    --hub-card-bg: var(--hub-surface);
+    --hub-card-hover: var(--hub-surface-hover);
+    /* Native controls (selects, scrollbars, date pickers) follow the app theme. */
+    color-scheme: dark;
   }
 
   body {
@@ -66,9 +83,113 @@
   animation: spin-turbine var(--turbine-duration, 8s) linear infinite;
 }
 
+/* Page enter transition */
+@keyframes hub-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.hub-page-enter {
+  animation: hub-page-in 220ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* Toasts */
+@keyframes hub-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes hub-toast-countdown {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
+.hub-toast-enter {
+  animation: hub-toast-in 200ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.hub-toast-timer {
+  width: 0%;
+  animation-name: hub-toast-countdown;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+}
+
+/* Loading skeleton shimmer */
+@keyframes hub-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.hub-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--hub-line) 0%,
+    var(--hub-surface-subtle) 50%,
+    var(--hub-line) 100%
+  );
+  background-size: 200% 100%;
+  animation: hub-shimmer 1.4s ease-in-out infinite;
+  opacity: 0.7;
+}
+
+/* Skip link: hidden until keyboard-focused */
+.hub-skip-link {
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 100;
+  padding: 0.5rem 0.875rem;
+  border-radius: 0.75rem;
+  background: var(--hub-accent);
+  color: var(--hub-accent-ink);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  transform: translateY(-200%);
+  transition: transform 150ms ease;
+}
+
+.hub-skip-link:focus {
+  transform: none;
+  outline: 2px solid var(--hub-ink);
+  outline-offset: 2px;
+}
+
+/* Visible keyboard focus everywhere, without rings on mouse clicks */
+:where(button, a, [role='button'], summary, select, input, textarea, [tabindex]:not([tabindex='-1'])):focus-visible {
+  outline: 2px solid var(--hub-accent);
+  outline-offset: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .animate-turbine {
+  .animate-turbine,
+  .hub-page-enter,
+  .hub-skeleton,
+  .hub-toast-enter {
     animation: none;
+  }
+  .hub-skip-link {
+    transition: none;
   }
 }
 

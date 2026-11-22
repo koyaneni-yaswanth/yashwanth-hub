@@ -11,6 +11,7 @@ import {
   Moon,
   ExternalLink,
   ShieldAlert,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { db } from '../db';
 import type { NotificationType, NavigationTab } from '../types';
@@ -19,6 +20,18 @@ import { ReminderEngine } from '../services/reminderEngine';
 import { Badge } from '../components/common/Badge';
 
 import { CapacitorService } from '../services/native/capacitorService';
+import { ConfirmDialog } from '../components/common/ConfirmDialog';
+import { TAB_TITLES, isNavigationTab } from '../lib/navigation';
+import type { NotificationPrefs } from '../services/notificationRules';
+
+const ALERT_TYPES: { id: NotificationType; label: string }[] = [
+  { id: 'meeting', label: 'Meetings' },
+  { id: 'deadline', label: 'Deadlines' },
+  { id: 'ai', label: 'AI suggestions' },
+  { id: 'system', label: 'System' },
+];
+
+const hourLabel = (h: number) => `${String(h).padStart(2, '0')}:00`;
 
 interface NotificationsPageProps {
   onNavigate: (tab: NavigationTab) => void;
@@ -27,6 +40,16 @@ interface NotificationsPageProps {
 export const NotificationsPage: React.FC<NotificationsPageProps> = ({ onNavigate }) => {
   const [filterType, setFilterType] = useState<string>('all');
   const [permissionGranted, setPermissionGranted] = useState(false);
+  const [prefs, setPrefs] = useState<NotificationPrefs>(() => ReminderEngine.getPrefs());
+  const [prefsSaved, setPrefsSaved] = useState(false);
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
+
+  const updatePrefs = (next: NotificationPrefs) => {
+    setPrefs(next);
+    ReminderEngine.savePrefs(next);
+    setPrefsSaved(true);
+    window.setTimeout(() => setPrefsSaved(false), 2000);
+  };
 
   React.useEffect(() => {
     CapacitorService.checkNotificationPermissions().then((granted) => {
@@ -53,9 +76,9 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({ onNavigate
 
   const handleMarkAllRead = async () => {
     const unreadIds = allNotifications.filter((n) => !n.read).map((n) => n.id);
-    for (const id of unreadIds) {
-      await db.notifications.update(id, { read: true });
-    }
+    await db.transaction('rw', db.notifications, async () => {
+      for (const id of unreadIds) await db.notifications.update(id, { read: true });
+    });
   };
 
   const handleDeleteNotif = async (id: string) => {
@@ -63,9 +86,7 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({ onNavigate
   };
 
   const handleClearAll = async () => {
-    if (confirm('Clear all notifications?')) {
-      await db.notifications.clear();
-    }
+    await db.notifications.clear();
   };
 
   const handleRequestPermission = async () => {
@@ -121,9 +142,10 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({ onNavigate
 
           {allNotifications.length > 0 && (
             <button
-              onClick={handleClearAll}
+              onClick={() => setConfirmClearAll(true)}
               className="p-2 rounded-lg text-[var(--hub-muted)] hover:text-red-600 hover:bg-[var(--hub-bg)] cursor-pointer"
               title="Clear all notifications"
+              aria-label="Clear all notifications"
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -150,7 +172,7 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({ onNavigate
       )}
 
       {/* Filter Tabs */}
-      <div className="flex flex-wrap items-center gap-2 bg-[var(--hub-surface)] border border-[var(--hub-line)] p-2 rounded-xl shadow-xs">
+      <div role="group" aria-label="Filter notifications" className="flex flex-wrap items-center gap-2 bg-[var(--hub-surface)] border border-[var(--hub-line)] p-2 rounded-xl shadow-xs">
         {[
           { id: 'all', label: `All (${allNotifications.length})` },
           { id: 'unread', label: `Unread (${unreadCount})` },
@@ -161,10 +183,12 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({ onNavigate
         ].map((tab) => (
           <button
             key={tab.id}
+            type="button"
+            aria-pressed={filterType === tab.id}
             onClick={() => setFilterType(tab.id)}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
               filterType === tab.id
-                ? 'bg-[var(--hub-accent)] text-white'
+                ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)]'
                 : 'bg-[var(--hub-bg)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
             }`}
           >
@@ -178,8 +202,25 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({ onNavigate
         {filteredNotifs.length === 0 ? (
           <div className="p-12 text-center text-xs text-[var(--hub-muted)]">
             <CheckCircle2 className="w-8 h-8 mx-auto text-teal-600 mb-2 opacity-60" />
-            <p className="font-semibold text-sm text-[var(--hub-ink)]">All clear!</p>
-            <p className="mt-1">No unread notifications or alerts requiring your attention.</p>
+            <p className="font-semibold text-sm text-[var(--hub-ink)]">
+              {allNotifications.length === 0 ? 'Nothing here yet' : 'All clear'}
+            </p>
+            <p className="mt-1 max-w-sm mx-auto">
+              {allNotifications.length === 0
+                ? 'Reminders for meetings, deadlines and AI suggestions will appear here.'
+                : filterType === 'unread'
+                  ? 'You have read everything. Nice.'
+                  : 'No notifications of this type right now.'}
+            </p>
+            {filterType !== 'all' && allNotifications.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setFilterType('all')}
+                className="mt-3 text-xs font-semibold text-[var(--hub-accent)] hover:underline cursor-pointer"
+              >
+                Show all notifications
+              </button>
+            )}
           </div>
         ) : (
           filteredNotifs.map((notif) => (
@@ -224,7 +265,11 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({ onNavigate
                         }}
                         className="text-teal-700 dark:text-teal-300 font-bold hover:underline flex items-center gap-1 cursor-pointer"
                       >
-                        <span>Open action</span>
+                        <span>
+                          {notif.action_link && isNavigationTab(notif.action_link)
+                            ? `Open ${TAB_TITLES[notif.action_link]}`
+                            : 'Open link'}
+                        </span>
                         <ExternalLink className="w-3 h-3" />
                       </button>
                     )}
@@ -238,6 +283,7 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({ onNavigate
                     onClick={() => handleMarkAsRead(notif.id)}
                     className="p-1.5 rounded-lg text-[var(--hub-muted)] hover:text-teal-600 hover:bg-[var(--hub-bg)] cursor-pointer"
                     title="Mark as read"
+                    aria-label={`Mark as read: ${notif.title}`}
                   >
                     <Check className="w-4 h-4" />
                   </button>
@@ -245,7 +291,8 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({ onNavigate
                 <button
                   onClick={() => handleDeleteNotif(notif.id)}
                   className="p-1.5 rounded-lg text-[var(--hub-muted)] hover:text-red-600 hover:bg-[var(--hub-bg)] cursor-pointer"
-                  title="Delete notification"
+                  title="Dismiss notification"
+                  aria-label={`Dismiss: ${notif.title}`}
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -255,15 +302,115 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({ onNavigate
         )}
       </div>
 
-      {/* Quiet Hours Settings Info */}
-      <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-4 flex items-center justify-between text-xs text-[var(--hub-muted)] shadow-xs">
-        <div className="flex items-center gap-2">
-          <Moon className="w-4 h-4 text-purple-500" />
-          <span>
-            <strong>Quiet Hours:</strong> 22:00 to 07:00 (Sound & push notifications are automatically muted during these hours).
+      {/* Notification preferences */}
+      <section
+        aria-labelledby="notif-prefs-heading"
+        className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-4 sm:p-5 shadow-xs space-y-4"
+      >
+        <div className="flex items-center justify-between gap-2">
+          <h3 id="notif-prefs-heading" className="text-sm font-bold text-[var(--hub-ink)] flex items-center gap-2">
+            <SlidersHorizontal className="w-4 h-4 text-[var(--hub-accent)]" />
+            Preferences
+          </h3>
+          <span role="status" aria-live="polite" className="text-xs font-medium text-[var(--hub-accent)]">
+            {prefsSaved ? 'Saved' : ''}
           </span>
         </div>
-      </div>
+
+        <fieldset className="space-y-2">
+          <legend className="text-xs font-semibold text-[var(--hub-muted)] flex items-center gap-1.5 mb-2">
+            <Moon className="w-3.5 h-3.5" />
+            Quiet hours
+          </legend>
+          <label className="flex items-center gap-2 text-sm text-[var(--hub-ink)] cursor-pointer">
+            <input
+              type="checkbox"
+              checked={prefs.quietHoursEnabled}
+              onChange={(e) => updatePrefs({ ...prefs, quietHoursEnabled: e.target.checked })}
+              className="w-4 h-4 accent-[var(--hub-accent)]"
+            />
+            Mute pop-up alerts during quiet hours
+          </label>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-[var(--hub-ink)]">
+            <label htmlFor="quiet-start" className="text-[var(--hub-muted)]">
+              From
+            </label>
+            <select
+              id="quiet-start"
+              value={prefs.quietStart}
+              disabled={!prefs.quietHoursEnabled}
+              onChange={(e) => updatePrefs({ ...prefs, quietStart: Number(e.target.value) })}
+              className="px-2.5 py-1.5 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-sm disabled:opacity-50"
+            >
+              {Array.from({ length: 24 }, (_, h) => (
+                <option key={h} value={h}>
+                  {hourLabel(h)}
+                </option>
+              ))}
+            </select>
+            <label htmlFor="quiet-end" className="text-[var(--hub-muted)]">
+              to
+            </label>
+            <select
+              id="quiet-end"
+              value={prefs.quietEnd}
+              disabled={!prefs.quietHoursEnabled}
+              onChange={(e) => updatePrefs({ ...prefs, quietEnd: Number(e.target.value) })}
+              className="px-2.5 py-1.5 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-sm disabled:opacity-50"
+            >
+              {Array.from({ length: 24 }, (_, h) => (
+                <option key={h} value={h}>
+                  {hourLabel(h)}
+                </option>
+              ))}
+            </select>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend className="text-xs font-semibold text-[var(--hub-muted)] mb-2">
+            Pop-up alerts for (everything still appears in this inbox)
+          </legend>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {ALERT_TYPES.map((t) => {
+              const enabled = !prefs.mutedAlertTypes.includes(t.id);
+              return (
+                <label key={t.id} className="flex items-center gap-2 text-sm text-[var(--hub-ink)] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={enabled}
+                    onChange={(e) =>
+                      updatePrefs({
+                        ...prefs,
+                        mutedAlertTypes: e.target.checked
+                          ? prefs.mutedAlertTypes.filter((x) => x !== t.id)
+                          : [...prefs.mutedAlertTypes, t.id],
+                      })
+                    }
+                    className="w-4 h-4 accent-[var(--hub-accent)]"
+                  />
+                  {t.label}
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
+        <p className="text-[11px] text-[var(--hub-muted)]">
+          Repeated reminders are merged: an identical unread notification is not added again within 12 hours.
+        </p>
+      </section>
+
+      <ConfirmDialog
+        isOpen={confirmClearAll}
+        onClose={() => setConfirmClearAll(false)}
+        onConfirm={() => {
+          handleClearAll();
+          setConfirmClearAll(false);
+        }}
+        title="Clear all notifications?"
+        message="Every notification in this inbox will be permanently removed."
+        confirmLabel="Clear all"
+      />
     </div>
   );
 };

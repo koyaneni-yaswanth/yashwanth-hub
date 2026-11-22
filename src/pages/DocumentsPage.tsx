@@ -167,7 +167,7 @@ export const DocumentsPage: React.FC<DocumentsPageProps> = ({ currentArea, areas
         </div>
         <button
           onClick={() => setIsUploadOpen(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--hub-accent)] text-white text-sm font-semibold hover:bg-[var(--hub-accent-hover)] transition-all cursor-pointer shadow-xs self-start sm:self-auto"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-sm font-semibold hover:bg-[var(--hub-accent-hover)] transition-all cursor-pointer shadow-xs self-start sm:self-auto"
         >
           <Upload className="w-4 h-4" />
           <span>Upload Document</span>
@@ -269,7 +269,7 @@ export const DocumentsPage: React.FC<DocumentsPageProps> = ({ currentArea, areas
 
                   <button
                     onClick={() => handleDownload(doc)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer transition-colors"
                   >
                     <Download className="w-3.5 h-3.5" />
                     <span>Download</span>
@@ -303,7 +303,7 @@ export const DocumentsPage: React.FC<DocumentsPageProps> = ({ currentArea, areas
             <input
               type="file"
               onChange={handleFileChange}
-              className="w-full text-xs text-[var(--hub-muted)] file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-[var(--hub-accent)] file:text-white hover:file:bg-[var(--hub-accent-hover)] file:cursor-pointer"
+              className="w-full text-xs text-[var(--hub-muted)] file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-[var(--hub-accent)] file:text-[var(--hub-accent-ink)] hover:file:bg-[var(--hub-accent-hover)] file:cursor-pointer"
               required
             />
           </div>
@@ -380,7 +380,7 @@ export const DocumentsPage: React.FC<DocumentsPageProps> = ({ currentArea, areas
             </button>
             <button
               type="submit"
-              className="px-5 py-2 text-sm font-semibold rounded-lg bg-[var(--hub-accent)] text-white hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
+              className="px-5 py-2 text-sm font-semibold rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
             >
               Save to Vault
             </button>
@@ -428,7 +428,7 @@ export const DocumentsPage: React.FC<DocumentsPageProps> = ({ currentArea, areas
               <button
                 type="button"
                 onClick={() => handleDownload(previewDoc)}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold cursor-pointer"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold cursor-pointer"
               >
                 <Download className="w-4 h-4" />
                 <span>Download File</span>

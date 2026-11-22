@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db';
-import type { Task, EventItem, Area, NavigationTab } from '../types';
+import type { Task, Area, NavigationTab } from '../types';
 import { getTodayISO, generateId } from '../lib/utils';
+import { addDays } from '../lib/habits';
+import { TaskService } from '../services/sync/taskService';
 import {
   Sun,
   Moon,
@@ -13,14 +15,11 @@ import {
   Plus,
   ArrowRight,
   Flame,
-  Zap,
   Target,
-  Sparkles,
   Timer,
   ChevronRight,
   RotateCcw,
   Check,
-  AlertCircle,
   Compass,
 } from 'lucide-react';
 
@@ -37,6 +36,13 @@ interface DailyOutcome {
 
 export const MyDayPage: React.FC<MyDayPageProps> = ({ onNavigate, areas = [] }) => {
   const todayStr = getTodayISO();
+  // Inline, screen-reader-announced feedback instead of blocking alert() dialogs.
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  useEffect(() => {
+    if (!statusMessage) return;
+    const id = window.setTimeout(() => setStatusMessage(null), 5000);
+    return () => window.clearTimeout(id);
+  }, [statusMessage]);
   const [newOutcomeText, setNewOutcomeText] = useState('');
   const [quickTaskText, setQuickTaskText] = useState('');
   const [reflectionText, setReflectionText] = useState('');
@@ -75,7 +81,6 @@ export const MyDayPage: React.FC<MyDayPageProps> = ({ onNavigate, areas = [] }) 
   // Live queries
   const allTasks = useLiveQuery(() => db.tasks.toArray(), []) || [];
   const allEvents = useLiveQuery(() => db.events.toArray(), []) || [];
-  const allProjects = useLiveQuery(() => db.projects.toArray(), []) || [];
 
   // Filter tasks due today or urgent
   const todayTasks = allTasks.filter(
@@ -103,7 +108,7 @@ export const MyDayPage: React.FC<MyDayPageProps> = ({ onNavigate, areas = [] }) 
     e.preventDefault();
     if (!newOutcomeText.trim()) return;
     if (outcomes.length >= 3) {
-      alert('Morning Planning is designed for your Top 3 critical outcomes to maintain peak focus.');
+      setStatusMessage('Morning planning keeps you to your top 3 outcomes, so you can stay focused.');
       return;
     }
     const newOutcome: DailyOutcome = {
@@ -120,51 +125,38 @@ export const MyDayPage: React.FC<MyDayPageProps> = ({ onNavigate, areas = [] }) 
     e.preventDefault();
     if (!quickTaskText.trim()) return;
 
-    const newTask: Task = {
-      id: generateId(),
+    await TaskService.create({
       text: quickTaskText.trim(),
-      area: areas[0]?.name || 'Pawan Shakti',
+      area: areas[0]?.name || 'PAWAN SHAKTI',
       priority: 'high',
       due_date: todayStr,
       starred: true,
       done: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-
-    await db.tasks.add(newTask);
+    });
     setQuickTaskText('');
   };
 
   // Toggle task done in Dexie
   const toggleTask = async (task: Task) => {
-    const updatedDone = !task.done;
-    await db.tasks.update(task.id, {
-      done: updatedDone,
-      updated_at: new Date().toISOString(),
-    });
+    await TaskService.toggleDone(task);
   };
 
   // Carry forward uncompleted tasks to tomorrow
   const handleCarryForward = async () => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+    // Local calendar date (a UTC ISO string would give the wrong day early in the morning in IST).
+    const tomorrowStr = addDays(todayStr, 1);
 
     const uncompleted = todayTasks.filter((t) => !t.done);
     if (uncompleted.length === 0) {
-      alert('All tasks for today are completed! Nothing to carry forward.');
+      setStatusMessage('Everything for today is done — nothing to carry forward.');
       return;
     }
 
     for (const t of uncompleted) {
-      await db.tasks.update(t.id, {
-        due_date: tomorrowStr,
-        updated_at: new Date().toISOString(),
-      });
+      await TaskService.scheduleFor(t, tomorrowStr);
     }
 
-    alert(`Successfully carried forward ${uncompleted.length} task(s) to tomorrow (${tomorrowStr}).`);
+    setStatusMessage(`Moved ${uncompleted.length} open task${uncompleted.length === 1 ? '' : 's'} to tomorrow.`);
   };
 
   // Save evening reflection
@@ -190,6 +182,13 @@ export const MyDayPage: React.FC<MyDayPageProps> = ({ onNavigate, areas = [] }) 
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-12 animate-fade-in">
+      <div role="status" aria-live="polite">
+        {statusMessage && (
+          <div className="hub-toast-enter p-3 rounded-xl bg-teal-500/10 border border-teal-500/30 text-teal-700 dark:text-teal-300 text-sm font-medium">
+            {statusMessage}
+          </div>
+        )}
+      </div>
       {/* Top Banner Header */}
       <div className="relative overflow-hidden rounded-2xl p-6 sm:p-8 bg-gradient-to-br from-[var(--hub-card)] to-[var(--hub-card-hover)] border border-[var(--hub-line)] shadow-sm">
         <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -209,7 +208,7 @@ export const MyDayPage: React.FC<MyDayPageProps> = ({ onNavigate, areas = [] }) 
           <div className="flex items-center gap-3">
             <button
               onClick={() => onNavigate('health-routine')}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors shadow-sm cursor-pointer"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors shadow-sm cursor-pointer"
             >
               <Timer className="w-4 h-4" />
               <span>4.5h Deep Work Timer</span>
@@ -275,6 +274,8 @@ export const MyDayPage: React.FC<MyDayPageProps> = ({ onNavigate, areas = [] }) 
               >
                 <button
                   type="button"
+                  aria-pressed={outcome.done}
+                  aria-label={`${outcome.done ? 'Mark not done' : 'Mark done'}: ${outcome.text}`}
                   className={`mt-0.5 shrink-0 rounded transition-colors ${
                     outcome.done ? 'text-emerald-500' : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
                   }`}
@@ -313,7 +314,7 @@ export const MyDayPage: React.FC<MyDayPageProps> = ({ onNavigate, areas = [] }) 
                 />
                 <button
                   type="submit"
-                  className="px-4 py-2.5 rounded-xl bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer shrink-0"
+                  className="px-4 py-2.5 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer shrink-0"
                 >
                   Add
                 </button>
@@ -345,6 +346,8 @@ export const MyDayPage: React.FC<MyDayPageProps> = ({ onNavigate, areas = [] }) 
                 </div>
                 <button
                   onClick={() => onNavigate('health-routine')}
+                  aria-label="Open Routine & Health"
+                  title="Open Routine & Health"
                   className="p-2 rounded-lg bg-teal-500/10 text-teal-400 hover:bg-teal-500/20 cursor-pointer"
                 >
                   <ArrowRight className="w-4 h-4" />
@@ -474,6 +477,7 @@ export const MyDayPage: React.FC<MyDayPageProps> = ({ onNavigate, areas = [] }) 
           <form onSubmit={handleAddQuickTask} className="flex gap-2">
             <input
               type="text"
+              aria-label="New task for today"
               placeholder="Quick capture a task for today..."
               value={quickTaskText}
               onChange={(e) => setQuickTaskText(e.target.value)}
@@ -481,7 +485,7 @@ export const MyDayPage: React.FC<MyDayPageProps> = ({ onNavigate, areas = [] }) 
             />
             <button
               type="submit"
-              className="px-3.5 py-2.5 rounded-xl bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer shrink-0 flex items-center gap-1"
+              className="px-3.5 py-2.5 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer shrink-0 flex items-center gap-1"
             >
               <Plus className="w-4 h-4" />
               <span>Capture</span>
@@ -510,6 +514,8 @@ export const MyDayPage: React.FC<MyDayPageProps> = ({ onNavigate, areas = [] }) 
                 >
                   <button
                     type="button"
+                    aria-pressed={task.done}
+                    aria-label={`${task.done ? 'Mark not done' : 'Mark done'}: ${task.text}`}
                     className={`mt-0.5 shrink-0 transition-colors ${
                       task.done ? 'text-emerald-500' : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
                     }`}
@@ -592,7 +598,7 @@ export const MyDayPage: React.FC<MyDayPageProps> = ({ onNavigate, areas = [] }) 
               </span>
               <button
                 onClick={handleSaveReflection}
-                className="px-4 py-2 rounded-xl bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer"
               >
                 Save Reflection
               </button>

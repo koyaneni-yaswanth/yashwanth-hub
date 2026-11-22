@@ -232,7 +232,7 @@ export const AutomationsPage: React.FC = () => {
           <button
             onClick={loadData}
             disabled={isLoading}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
@@ -435,7 +435,7 @@ export const AutomationsPage: React.FC = () => {
                     <button
                       onClick={() => handleRunNow(auto)}
                       disabled={isDispatching}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer disabled:opacity-50"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer disabled:opacity-50"
                     >
                       <Play className={`w-3 h-3 ${isDispatching ? 'animate-spin' : ''}`} />
                       <span>{isDispatching ? 'Dispatching...' : 'Run Now'}</span>
@@ -701,7 +701,7 @@ export const AutomationsPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={isCreating}
-                className="px-4 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white font-semibold cursor-pointer disabled:opacity-50"
+                className="px-4 py-1.5 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] font-semibold cursor-pointer disabled:opacity-50"
               >
                 {isCreating ? 'Saving...' : 'Create Schedule'}
               </button>

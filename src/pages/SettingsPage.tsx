@@ -626,6 +626,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
                 type="text"
                 value={googleClientId}
                 onChange={(e) => setGoogleClientId(e.target.value)}
+                aria-label="Google OAuth client ID"
                 placeholder="123456789-abcdefg.apps.googleusercontent.com"
                 className="flex-1 py-2 px-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs text-[var(--hub-ink)] font-mono"
               />
@@ -650,7 +651,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
             <>
               <button
                 onClick={handleConnectRedirectFallback}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
               >
                 <CalendarDays className="w-3.5 h-3.5" />
                 <span>Use Full-Page Redirect (Recommended)</span>
@@ -668,7 +669,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
               <button
                 onClick={handleSyncGoogleCalendar}
                 disabled={isGoogleSyncing}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer disabled:opacity-50"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isGoogleSyncing ? 'animate-spin' : ''}`} />
                 <span>{isGoogleSyncing ? 'Syncing...' : 'Sync Google Calendar Now'}</span>
@@ -779,6 +780,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
             value={neoTranscriptInput}
             onChange={(e) => setNeoTranscriptInput(e.target.value)}
             rows={3}
+            aria-label="Transcript or meeting notes to analyse"
             placeholder="Paste raw conversation transcript or meeting audio notes here. Jarvis will automatically detect action items and task commitments..."
             className="w-full p-2.5 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs text-[var(--hub-ink)] focus:outline-none focus:ring-2 focus:ring-purple-500"
           />
@@ -819,7 +821,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
                 onClick={() => setTheme(item.id)}
                 className={`flex flex-col items-center justify-center p-3.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
                   isSelected
-                    ? 'bg-[var(--hub-accent)] text-white border-[var(--hub-accent)] shadow-xs'
+                    ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] border-[var(--hub-accent)] shadow-xs'
                     : 'bg-[var(--hub-bg)] border-[var(--hub-line)] text-[var(--hub-ink)] hover:border-[var(--hub-muted)]'
                 }`}
               >
@@ -839,7 +841,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
           </h3>
           <button
             onClick={openCreateArea}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Add Area</span>
@@ -896,7 +898,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
         <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={handleGenerateBackup}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Export Complete JSON Backup</span>
@@ -930,6 +932,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
             value={restoreText}
             onChange={(e) => setRestoreText(e.target.value)}
             rows={3}
+            aria-label="Backup JSON to import"
             placeholder="Paste your exported backup JSON text here..."
             className="w-full p-2.5 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] font-mono text-[11px] text-[var(--hub-ink)] focus:outline-none focus:ring-2 focus:ring-[var(--hub-accent)]"
           />
@@ -988,6 +991,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
                   type="text"
                   value={supabaseUrl}
                   onChange={(e) => setSupabaseUrl(e.target.value)}
+                  aria-label="Supabase project URL"
                   placeholder="https://xyzcompany.supabase.co"
                   className="w-full py-2 px-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs text-[var(--hub-ink)] font-mono"
                 />
@@ -1000,6 +1004,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
                   type="password"
                   value={supabaseKey}
                   onChange={(e) => setSupabaseKey(e.target.value)}
+                  aria-label="Supabase anon key"
                   placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
                   className="w-full py-2 px-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs text-[var(--hub-ink)] font-mono"
                 />
@@ -1026,7 +1031,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
             <div className="flex flex-wrap items-center gap-3 pt-1">
               <button
                 onClick={handleSaveSupabase}
-                className="px-4 py-2 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer"
+                className="px-4 py-2 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer"
               >
                 Save Credentials
               </button>
@@ -1167,7 +1172,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
             </button>
             <button
               type="submit"
-              className="px-5 py-2 text-sm font-semibold rounded-lg bg-[var(--hub-accent)] text-white hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
+              className="px-5 py-2 text-sm font-semibold rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
             >
               {editingArea ? 'Save Changes' : 'Create Area'}
             </button>
@@ -1194,7 +1199,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
           <div className="flex justify-end gap-3 pt-3 border-t border-[var(--hub-line)]">
             <button
               onClick={handleCopySchema}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold cursor-pointer"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold cursor-pointer"
             >
               {schemaCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
               <span>{schemaCopied ? 'Copied to Clipboard!' : 'Copy SQL Schema'}</span>

@@ -183,7 +183,7 @@ export const RoboticsLabPage: React.FC = () => {
 
           <button
             onClick={() => setIsLogOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-all cursor-pointer shadow-xs self-start lg:self-auto"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-all cursor-pointer shadow-xs self-start lg:self-auto"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Log Experiment</span>
@@ -245,7 +245,7 @@ export const RoboticsLabPage: React.FC = () => {
               onClick={() => setSelectedProject(tab.id as any)}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                 isActive
-                  ? 'bg-[var(--hub-accent)] text-white shadow-xs'
+                  ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] shadow-xs'
                   : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-surface)]'
               }`}
             >
@@ -334,7 +334,7 @@ export const RoboticsLabPage: React.FC = () => {
                           onClick={() => handleStatusChange(item.id, st)}
                           className={`px-2 py-1 rounded border text-[10px] font-semibold cursor-pointer ${
                             item.status === st
-                              ? 'bg-[var(--hub-accent)] text-white border-[var(--hub-accent)]'
+                              ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] border-[var(--hub-accent)]'
                               : 'border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
                           }`}
                         >
@@ -465,7 +465,7 @@ export const RoboticsLabPage: React.FC = () => {
             </button>
             <button
               type="submit"
-              className="px-4 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white font-semibold cursor-pointer"
+              className="px-4 py-1.5 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] font-semibold cursor-pointer"
             >
               Save Experiment Log
             </button>

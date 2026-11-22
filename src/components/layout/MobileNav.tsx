@@ -55,7 +55,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
         <button
           onClick={onOpenQuickCapture}
           aria-label="Quick Add"
-          className="-mt-4 flex items-center justify-center w-12 h-12 rounded-2xl bg-[var(--hub-accent)] text-white shadow-lg hover:bg-[var(--hub-accent-hover)] active:scale-95 transition-all cursor-pointer border-2 border-[var(--hub-surface)]"
+          className="-mt-4 flex items-center justify-center w-12 h-12 rounded-2xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] shadow-lg hover:bg-[var(--hub-accent-hover)] active:scale-95 transition-all cursor-pointer border-2 border-[var(--hub-surface)]"
         >
           <Plus className="w-6 h-6" />
         </button>

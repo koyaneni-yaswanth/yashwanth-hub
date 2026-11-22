@@ -499,7 +499,7 @@ export const IntegrationsPage: React.FC = () => {
         <button
           onClick={handleTriggerFullSync}
           disabled={isSyncingAll}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs disabled:opacity-50"
+          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs disabled:opacity-50"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${isSyncingAll ? 'animate-spin' : ''}`} />
           <span>{isSyncingAll ? 'Synchronizing...' : 'Sync All Services'}</span>
@@ -577,7 +577,7 @@ export const IntegrationsPage: React.FC = () => {
                 type="button"
                 onClick={handleSupabaseGoogleLogin}
                 disabled={isAuthBusy}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-bold hover:bg-[var(--hub-accent-hover)] cursor-pointer disabled:opacity-50"
+                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-bold hover:bg-[var(--hub-accent-hover)] cursor-pointer disabled:opacity-50"
               >
                 <Cloud className="w-4 h-4" />
                 <span>Sign In with Google (Supabase Auth)</span>
@@ -706,6 +706,7 @@ export const IntegrationsPage: React.FC = () => {
                   type="text"
                   value={googleClientId}
                   onChange={(e) => setGoogleClientId(e.target.value)}
+                  aria-label="Google OAuth client ID"
                   placeholder="e.g. 123456789-abcdefg.apps.googleusercontent.com"
                   className={`flex-1 px-3 py-2 rounded-lg border bg-[var(--hub-bg)] text-xs text-[var(--hub-ink)] font-mono ${
                     googleClientId && !GoogleAuthService.isValidClientId(googleClientId)
@@ -801,7 +802,7 @@ export const IntegrationsPage: React.FC = () => {
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
               <button
                 onClick={() => handleConnectRedirectFallback()}
-                className="flex-1 flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-bold hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
+                className="flex-1 flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-bold hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
               >
                 <Cloud className="w-4 h-4" />
                 <span>Connect Google Workspace (PKCE Offline Sync)</span>
@@ -908,7 +909,7 @@ export const IntegrationsPage: React.FC = () => {
             <button
               onClick={handleTriggerSyncNow}
               disabled={isSyncingNow}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isSyncingNow ? 'animate-spin' : ''}`} />
               <span>{isSyncingNow ? 'Syncing...' : 'Sync Now'}</span>
@@ -1242,7 +1243,7 @@ export const IntegrationsPage: React.FC = () => {
                 <button
                   onClick={handleSyncMcpNow}
                   disabled={isSyncingMCP}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--hub-accent)] text-white text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer disabled:opacity-50"
                 >
                   <RefreshCw className={`w-3 h-3 ${isSyncingMCP ? 'animate-spin' : ''}`} />
                   <span>{isSyncingMCP ? 'Syncing...' : 'Sync Now'}</span>

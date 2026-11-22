@@ -21,6 +21,9 @@ export class UniversalSearchService {
       events,
       contacts,
       expenses,
+      goals,
+      goal_milestones,
+      habits,
     ] = await Promise.all([
       db.tasks.toArray(),
       db.projects.toArray(),
@@ -32,6 +35,9 @@ export class UniversalSearchService {
       db.events.toArray(),
       db.contacts.toArray(),
       db.expenses.toArray(),
+      db.goals.toArray().catch(() => []),
+      db.goal_milestones.toArray().catch(() => []),
+      db.habits.toArray().catch(() => []),
     ]);
 
     const privacy = NeoSapienMemoryService.getPrivacySettings();
@@ -51,6 +57,9 @@ export class UniversalSearchService {
         events,
         contacts,
         expenses,
+        goals,
+        goal_milestones,
+        habits,
       },
       { limit, includeNeoMemories: allowNeo }
     );

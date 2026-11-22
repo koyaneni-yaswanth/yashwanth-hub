@@ -136,7 +136,7 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
             <button
               onClick={handleRunSync}
               disabled={isSyncing}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--hub-accent)] hover:bg-[var(--hub-accent-hover)] text-white text-xs font-semibold cursor-pointer shadow-xs disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--hub-accent)] hover:bg-[var(--hub-accent-hover)] text-[var(--hub-accent-ink)] text-xs font-semibold cursor-pointer shadow-xs disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
               <span>{isSyncing ? 'Synchronizing...' : 'Sync Now'}</span>
@@ -284,7 +284,7 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => handleResolveConflict(conf.id, 'local')}
-                    className="px-3 py-1.5 rounded-lg bg-[var(--hub-accent)] hover:bg-[var(--hub-accent-hover)] text-white text-xs font-semibold"
+                    className="px-3 py-1.5 rounded-lg bg-[var(--hub-accent)] hover:bg-[var(--hub-accent-hover)] text-[var(--hub-accent-ink)] text-xs font-semibold"
                   >
                     Keep Local Version
                   </button>
