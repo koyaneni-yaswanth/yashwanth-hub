@@ -16,6 +16,7 @@ import {
   Calendar as CalendarIcon,
   ArrowRight,
   RotateCcw,
+  PartyPopper,
 } from 'lucide-react';
 import { db } from '../db';
 import type { Area, DailyPlan, NavigationTab, PlanItem, Task } from '../types';
@@ -385,6 +386,15 @@ export const MyDayPage: React.FC<MyDayPageProps> = ({ onNavigate, areas = [] }) 
             </h2>
             {items.length > 1 && <p className="hidden sm:block text-xs text-[var(--hub-muted)]">Drag or use the arrows to reorder</p>}
           </div>
+
+          {top.length > 0 && top.every((i) => tasksById.get(i.task_id)?.done) && (
+            <div className="hub-rise flex items-center gap-3 rounded-xl px-4 py-3 bg-[var(--hub-done)] border border-[var(--hub-done-border)]">
+              <PartyPopper className="w-5 h-5 shrink-0 text-[var(--hub-accent)]" aria-hidden="true" />
+              <p className="text-sm text-[var(--hub-ink)]">
+                <span className="font-semibold">Top {top.length} done.</span> That's the day that mattered — anything more is a bonus.
+              </p>
+            </div>
+          )}
 
           {loading ? (
             <div className="h-24 rounded-xl bg-[var(--hub-bg)] animate-pulse" aria-hidden="true" />

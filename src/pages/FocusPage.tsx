@@ -47,6 +47,9 @@ interface ActiveSession {
 
 type Phase = 'setup' | 'running' | 'reflect' | 'break';
 
+/** Circumference of the progress ring (r = 54 in a 120 viewBox). */
+const RING_CIRCUMFERENCE = 2 * Math.PI * 54;
+
 function loadActive(): ActiveSession | null {
   try {
     const raw = localStorage.getItem(RUN_KEY);
@@ -426,13 +429,40 @@ export const FocusPage: React.FC = () => {
               Focusing on
             </h2>
             <p className="text-lg font-bold text-[var(--hub-ink)] break-words">{active.label}</p>
-            <p
-              className="font-mono font-bold text-6xl sm:text-7xl tabular-nums text-[var(--hub-ink)]"
-              role="timer"
-              aria-label={`${formatClock(remaining)} remaining`}
-            >
-              {formatClock(remaining)}
-            </p>
+            <div className="relative mx-auto w-64 h-64 sm:w-72 sm:h-72 grid place-items-center">
+              {/* Decorative: soft halo that breathes while the clock runs. */}
+              {!isPaused && (
+                <div
+                  className="hub-breathe absolute inset-6 rounded-full"
+                  style={{ background: 'radial-gradient(circle, var(--hub-glow) 0%, transparent 70%)' }}
+                  aria-hidden="true"
+                />
+              )}
+              <svg
+                viewBox="0 0 120 120"
+                className={`hub-focus-ring absolute inset-0 w-full h-full${isPaused ? ' is-paused' : ''}`}
+                aria-hidden="true"
+              >
+                <circle className="hub-ring-track" cx="60" cy="60" r="54" fill="none" strokeWidth="5" />
+                <circle
+                  className="hub-ring-value"
+                  cx="60"
+                  cy="60"
+                  r="54"
+                  fill="none"
+                  strokeWidth="5"
+                  strokeDasharray={RING_CIRCUMFERENCE}
+                  strokeDashoffset={RING_CIRCUMFERENCE * (remaining / Math.max(1, active.timer.plannedMs))}
+                />
+              </svg>
+              <p
+                className="relative font-mono font-bold text-5xl sm:text-6xl tabular-nums text-[var(--hub-ink)]"
+                role="timer"
+                aria-label={`${formatClock(remaining)} remaining`}
+              >
+                {formatClock(remaining)}
+              </p>
+            </div>
             <p className="text-xs text-[var(--hub-muted)]">
               {isPaused ? 'Paused' : `${active.planned_minutes} min session`} · {active.interruptions} interruption
               {active.interruptions === 1 ? '' : 's'}
@@ -486,7 +516,7 @@ export const FocusPage: React.FC = () => {
 
       {/* ---------------- Reflection ---------------- */}
       {phase === 'reflect' && finished && (
-        <section className={`${card} space-y-4`} aria-labelledby="focus-reflect-title">
+        <section className={`${card} space-y-4 hub-rise`} aria-labelledby="focus-reflect-title">
           <div className="flex items-start gap-3">
             <CheckCircle2 className="w-6 h-6 text-[var(--hub-accent)] shrink-0" aria-hidden="true" />
             <div>
@@ -576,7 +606,7 @@ export const FocusPage: React.FC = () => {
 
       {/* ---------------- Break ---------------- */}
       {phase === 'break' && (
-        <section className={`${card} text-center space-y-3`} aria-labelledby="focus-break-title">
+        <section className={`${card} text-center space-y-3 hub-rise`} aria-labelledby="focus-break-title">
           <h2 id="focus-break-title" className="text-base font-bold text-[var(--hub-ink)] flex items-center justify-center gap-2">
             <Coffee className="w-5 h-5 text-[var(--hub-accent)]" aria-hidden="true" />
             Break time

@@ -29,6 +29,12 @@
     --hub-card: var(--hub-surface);
     --hub-card-bg: var(--hub-surface);
     --hub-card-hover: var(--hub-surface-hover);
+    /* Depth & motion */
+    --hub-shadow-hover: 0 6px 18px -6px rgba(18, 38, 43, 0.14), 0 2px 6px -2px rgba(18, 38, 43, 0.08);
+    --hub-glow: rgba(11, 110, 110, 0.10);
+    --hub-glow-2: rgba(184, 104, 15, 0.06);
+    --hub-ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+    --hub-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
     color-scheme: light;
   }
 
@@ -53,6 +59,9 @@
     --hub-card: var(--hub-surface);
     --hub-card-bg: var(--hub-surface);
     --hub-card-hover: var(--hub-surface-hover);
+    --hub-shadow-hover: 0 10px 28px -10px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(79, 195, 184, 0.10);
+    --hub-glow: rgba(79, 195, 184, 0.09);
+    --hub-glow-2: rgba(240, 162, 75, 0.05);
     /* Native controls (selects, scrollbars, date pickers) follow the app theme. */
     color-scheme: dark;
   }
@@ -234,3 +243,153 @@
   padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
 }
 
+
+/* ==========================================================================
+   Visual effects layer — calm, subtle depth and motion.
+   Everything here is decorative: it never carries meaning on its own, and all
+   motion is switched off under prefers-reduced-motion (bottom of this block).
+   ========================================================================== */
+
+/* Ambient light: two very soft glows behind the app, fixed so they don't scroll. */
+body {
+  background-image:
+    radial-gradient(60rem 30rem at 85% -10%, var(--hub-glow), transparent 70%),
+    radial-gradient(40rem 24rem at -10% 110%, var(--hub-glow-2), transparent 70%);
+  background-attachment: fixed;
+}
+
+/* Page enter: the page fades up, then its sections follow in a short cascade. */
+.hub-page-enter > * > * {
+  animation: hub-page-in 360ms var(--hub-ease-out) both;
+}
+.hub-page-enter > * > *:nth-child(2) { animation-delay: 40ms; }
+.hub-page-enter > * > *:nth-child(3) { animation-delay: 80ms; }
+.hub-page-enter > * > *:nth-child(4) { animation-delay: 120ms; }
+.hub-page-enter > * > *:nth-child(5) { animation-delay: 160ms; }
+.hub-page-enter > * > *:nth-child(n + 6) { animation-delay: 200ms; }
+
+/* Was referenced by a page but never defined. */
+.animate-fade-in {
+  animation: hub-page-in 300ms var(--hub-ease-out) both;
+}
+
+/* Cards: borders and shadows ease in on hover, so the surface feels responsive. */
+main .rounded-2xl.border {
+  transition:
+    box-shadow 220ms var(--hub-ease-out),
+    border-color 220ms var(--hub-ease-out),
+    background-color 220ms var(--hub-ease-out);
+}
+@media (hover: hover) {
+  main .rounded-2xl.border:hover {
+    box-shadow: var(--hub-shadow-hover);
+    border-color: color-mix(in srgb, var(--hub-accent) 28%, var(--hub-line));
+  }
+}
+
+/* Press feedback on every enabled button. */
+button:not(:disabled) {
+  transition-property: color, background-color, border-color, box-shadow, transform, opacity;
+  transition-duration: 150ms;
+  transition-timing-function: var(--hub-ease-out);
+}
+button:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+/* Primary (accent) buttons get a soft glow on hover. */
+@media (hover: hover) {
+  button.bg-\[var\(--hub-accent\)\]:not(:disabled):hover {
+    box-shadow: 0 6px 18px -6px color-mix(in srgb, var(--hub-accent) 65%, transparent);
+  }
+}
+
+/* Sidebar & mobile nav icons nudge on hover. */
+@media (hover: hover) {
+  nav button > div > svg:first-child {
+    transition: transform 200ms var(--hub-ease-spring);
+  }
+  nav button:hover > div > svg:first-child {
+    transform: translateX(2px);
+  }
+}
+
+/* Ticking something off: the new check icon pops in. */
+@keyframes hub-check-pop {
+  0% { transform: scale(0.4); opacity: 0; }
+  60% { transform: scale(1.18); opacity: 1; }
+  100% { transform: scale(1); }
+}
+button[aria-label^='Mark not done'] svg,
+button[aria-pressed='true'] > svg.lucide-circle-check,
+button[aria-pressed='true'] > svg.lucide-check-circle-2,
+button[aria-pressed='true'] > svg.lucide-circle-check-big {
+  animation: hub-check-pop 360ms var(--hub-ease-spring) both;
+}
+
+/* Progress bars glide instead of jumping. */
+[role='progressbar'] > div {
+  transition: width 500ms var(--hub-ease-out), background-color 300ms ease;
+}
+
+/* Deep Work: progress ring and a slow "breathing" halo while a session runs. */
+.hub-focus-ring {
+  transform: rotate(-90deg);
+}
+.hub-focus-ring .hub-ring-track {
+  stroke: var(--hub-line);
+}
+.hub-focus-ring .hub-ring-value {
+  stroke: var(--hub-accent);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 600ms linear;
+}
+.hub-focus-ring.is-paused .hub-ring-value {
+  stroke: var(--hub-muted);
+}
+@keyframes hub-breathe {
+  0%, 100% { opacity: 0.35; transform: scale(0.96); }
+  50% { opacity: 0.75; transform: scale(1.02); }
+}
+.hub-breathe {
+  animation: hub-breathe 6s ease-in-out infinite;
+}
+
+/* A gentle entrance for celebration and status banners. */
+@keyframes hub-rise {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.hub-rise {
+  animation: hub-rise 420ms var(--hub-ease-spring) both;
+}
+
+/* Header gains a soft shadow once the page scrolls under it. */
+header.sticky {
+  transition: box-shadow 200ms ease, background-color 200ms ease;
+}
+header.sticky.is-scrolled {
+  box-shadow: 0 8px 24px -16px rgba(0, 0, 0, 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-page-enter > * > *,
+  .animate-fade-in,
+  .hub-breathe,
+  .hub-rise,
+  button[aria-label^='Mark not done'] svg,
+  button[aria-pressed='true'] > svg {
+    animation: none !important;
+  }
+  button:not(:disabled):active {
+    transform: none;
+  }
+  nav button:hover > div > svg:first-child {
+    transform: none;
+  }
+  main .rounded-2xl.border,
+  [role='progressbar'] > div,
+  .hub-focus-ring .hub-ring-value {
+    transition: none;
+  }
+}

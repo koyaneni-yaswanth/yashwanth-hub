@@ -50,6 +50,15 @@ export const Header: React.FC<HeaderProps> = ({
     return SupabaseAuthService.subscribe(setAuthState);
   }, []);
 
+  // Soft shadow under the header once content scrolls beneath it.
+  const [isScrolled, setIsScrolled] = React.useState(false);
+  React.useEffect(() => {
+    const onScroll = () => setIsScrolled(window.scrollY > 4);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
   const unreadNotifs =
     useLiveQuery(() => db.notifications.filter((n) => !n.read).toArray(), []) || [];
 
@@ -98,7 +107,7 @@ export const Header: React.FC<HeaderProps> = ({
   const syncInfo = getSyncDot();
 
   return (
-    <header className="sticky top-0 z-30 bg-[var(--hub-surface)]/95 border-b border-[var(--hub-line)] backdrop-blur-md px-3 sm:px-6 py-2.5 safe-area-header transition-colors">
+    <header className={`sticky top-0 z-30 bg-[var(--hub-surface)]/95 border-b border-[var(--hub-line)] backdrop-blur-md px-3 sm:px-6 py-2.5 safe-area-header transition-colors${isScrolled ? ' is-scrolled' : ''}`}>
       <div className="flex items-center justify-between gap-2 sm:gap-3 max-w-7xl mx-auto">
         {/* Left: Menu + Brand */}
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
