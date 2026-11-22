@@ -48,6 +48,7 @@ import { Badge } from '../components/common/Badge';
 import { Neo1DeviceCard } from '../components/neo/Neo1DeviceCard';
 import { IntegrationVaultService } from '../services/integrationVaultService';
 import { handOffFocusTask } from '../lib/focusHandoff';
+import { MomentumChip } from '../components/momentum/MomentumChip';
 import { TaskService } from '../services/sync/taskService';
 import { TodayProgress } from '../components/home/TodayProgress';
 
@@ -390,6 +391,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <Eye className="w-3.5 h-3.5" aria-hidden="true" />
             <span>Focus Mode</span>
           </button>
+
+          <MomentumChip onOpen={() => onNavigate('momentum')} />
 
           <button
             onClick={() => setIsDailyPlanningOpen(true)}

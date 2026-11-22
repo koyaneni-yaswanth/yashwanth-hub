@@ -588,7 +588,8 @@ export type NavigationTab =
   | 'neo-memory'
   | 'system-health'
   | 'goals'
-  | 'focus';
+  | 'focus'
+  | 'momentum';
 
 // ==========================================
 // REAL-TIME AI OPERATING SYSTEM SCHEMA (SUPABASE & DEXIE)

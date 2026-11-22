@@ -35,6 +35,7 @@ export const TAB_TITLES: Record<NavigationTab, string> = {
   'system-health': 'System Health',
   goals: 'Goals & Habits',
   focus: 'Deep Work',
+  momentum: 'Momentum',
 };
 
 const APP_NAME = 'Yashwanth Hub';

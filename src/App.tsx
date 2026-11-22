@@ -50,6 +50,7 @@ const pageLoaders = {
   LearningCareerPage: () => import('./pages/LearningCareerPage'),
   GoalsHabitsPage: () => import('./pages/GoalsHabitsPage'),
   FocusPage: () => import('./pages/FocusPage'),
+  MomentumPage: () => import('./pages/MomentumPage'),
 };
 
 const DashboardPage = lazy(() => pageLoaders.DashboardPage().then((m) => ({ default: m.DashboardPage })));
@@ -78,6 +79,7 @@ const MyDayPage = lazy(() => pageLoaders.MyDayPage().then((m) => ({ default: m.M
 const LearningCareerPage = lazy(() => pageLoaders.LearningCareerPage().then((m) => ({ default: m.LearningCareerPage })));
 const GoalsHabitsPage = lazy(() => pageLoaders.GoalsHabitsPage().then((m) => ({ default: m.GoalsHabitsPage })));
 const FocusPage = lazy(() => pageLoaders.FocusPage().then((m) => ({ default: m.FocusPage })));
+const MomentumPage = lazy(() => pageLoaders.MomentumPage().then((m) => ({ default: m.MomentumPage })));
 
 function HubMain() {
   const { isDark } = useTheme();
@@ -383,6 +385,8 @@ function HubMain() {
         return <GoalsHabitsPage currentArea={currentArea} areas={areas} />;
       case 'focus':
         return <FocusPage />;
+      case 'momentum':
+        return <MomentumPage onNavigate={(tab) => setCurrentTab(tab)} />;
       case 'tasks':
         return <TasksPage currentArea={currentArea} areas={areas} />;
       case 'calendar':

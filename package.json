@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "node --experimental-strip-types --test tests/neosapien_integration.test.mjs tests/native_capacitor_integration.test.mjs tests/hub_automations_constraints.test.mjs tests/google_oauth_resilience.test.mjs tests/v2_auth_and_rls.test.mjs tests/v2_automation_engine.test.mjs tests/v2_ai_and_nlp.test.mjs tests/v2_security_and_truth.test.mjs tests/real_world_scenarios.test.mjs tests/v3_data_safety_and_habits.test.mjs tests/v4_compass_and_focus.test.mjs",
+    "test": "node --experimental-strip-types --test tests/neosapien_integration.test.mjs tests/native_capacitor_integration.test.mjs tests/hub_automations_constraints.test.mjs tests/google_oauth_resilience.test.mjs tests/v2_auth_and_rls.test.mjs tests/v2_automation_engine.test.mjs tests/v2_ai_and_nlp.test.mjs tests/v2_security_and_truth.test.mjs tests/real_world_scenarios.test.mjs tests/v3_data_safety_and_habits.test.mjs tests/v4_compass_and_focus.test.mjs tests/v5_momentum.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -29,7 +29,8 @@
     "lucide-react": "^1.68.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "tailwind-merge": "^3.7.0"
+    "tailwind-merge": "^3.7.0",
+    "three": "^0.187.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.4",
@@ -37,6 +38,7 @@
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.187.0",
     "@vitejs/plugin-react": "^6.1.2",
     "oxlint": "^1.89.0",
     "tailwindcss": "^4.3.4",

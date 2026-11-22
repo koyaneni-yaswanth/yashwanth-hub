@@ -72,6 +72,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       badge: openTasksCount > 0 ? openTasksCount : undefined,
     },
     { id: 'goals', label: 'Goals & Habits', icon: Target },
+    { id: 'momentum', label: 'Momentum', icon: Sparkles },
     { id: 'calendar', label: 'Calendar', icon: Calendar },
     {
       id: 'projects',
