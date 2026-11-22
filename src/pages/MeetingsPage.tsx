@@ -283,7 +283,7 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({ currentArea, areas }
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {sortedMeetings.length === 0 ? (
           <div className="col-span-full bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-12 text-center text-sm text-[var(--hub-muted)]">
-            <Video className="w-10 h-10 mx-auto text-blue-500 mb-3 opacity-60" />
+            <Video className="w-10 h-10 mx-auto text-blue-700 dark:text-blue-300 mb-3 opacity-60" />
             <h3 className="text-base font-bold text-[var(--hub-ink)]">No meetings in this view</h3>
             <p className="text-xs mt-1">Schedule your next professor sync or investor review.</p>
           </div>
@@ -316,7 +316,7 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({ currentArea, areas }
 
                   <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--hub-muted)] mt-2">
                     <span className="flex items-center gap-1 font-semibold text-[var(--hub-ink)]">
-                      <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                      <Calendar className="w-3.5 h-3.5 text-blue-700 dark:text-blue-300" />
                       {formatShortDate(meeting.date)}
                     </span>
                     <span className="flex items-center gap-1">
@@ -343,7 +343,7 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({ currentArea, areas }
 
                   {meeting.action_items && (
                     <div className="mt-2.5 p-2.5 rounded-lg bg-teal-500/5 border border-teal-500/20 text-xs text-teal-900 dark:text-teal-200">
-                      <div className="flex items-center gap-1 font-bold text-[11px] uppercase tracking-wider mb-1 text-teal-700 dark:text-teal-300">
+                      <div className="flex items-center gap-1 font-bold text-[11px] uppercase tracking-wider mb-1 text-teal-800 dark:text-teal-300">
                         <ListTodo className="w-3 h-3" />
                         <span>Action Items</span>
                       </div>
@@ -363,7 +363,7 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({ currentArea, areas }
                       }
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+                      className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 dark:text-blue-400 hover:underline"
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
                       <span>Join Call / Open</span>
@@ -376,7 +376,7 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({ currentArea, areas }
                     <button
                       onClick={() => handleOpenBrief(meeting)}
                       disabled={isGeneratingBrief}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 hover:bg-teal-500/20 text-xs font-semibold transition-colors cursor-pointer"
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-500/10 text-teal-800 dark:text-teal-400 hover:bg-teal-500/20 text-xs font-semibold transition-colors cursor-pointer"
                       title="AI Meeting Preparation Brief & Past Memories"
                     >
                       <Sparkles className="w-3.5 h-3.5" />
@@ -384,7 +384,7 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({ currentArea, areas }
                     </button>
                     <button
                       onClick={() => handleOpenFollowUp(meeting)}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 text-xs font-semibold transition-colors cursor-pointer"
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-700 dark:text-blue-400 hover:bg-blue-500/20 text-xs font-semibold transition-colors cursor-pointer"
                       title="Draft Follow-Up Email & Schedule Next"
                     >
                       <Mail className="w-3.5 h-3.5" />
@@ -395,7 +395,7 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({ currentArea, areas }
                       onClick={() => handleToggleCompleted(meeting)}
                       className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                         isCompleted
-                          ? 'text-emerald-600 hover:bg-emerald-500/10'
+                          ? 'text-emerald-800 dark:text-emerald-300 hover:bg-emerald-500/10'
                           : 'text-[var(--hub-muted)] hover:text-emerald-600 hover:bg-[var(--hub-bg)]'
                       }`}
                       title={isCompleted ? 'Mark scheduled' : 'Mark completed'}
@@ -595,7 +595,7 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({ currentArea, areas }
         {selectedBrief && (
           <div className="space-y-4">
             <div className="p-3 rounded-lg bg-teal-500/10 border border-teal-500/20 text-xs">
-              <div className="font-bold text-teal-700 dark:text-teal-300 text-sm">{selectedBrief.meetingTitle}</div>
+              <div className="font-bold text-teal-800 dark:text-teal-300 text-sm">{selectedBrief.meetingTitle}</div>
               <div className="text-[var(--hub-muted)] mt-0.5">
                 Scheduled: <strong className="text-[var(--hub-ink)]">{selectedBrief.scheduledTime}</strong> | Attendees:{' '}
                 <strong className="text-[var(--hub-ink)]">{selectedBrief.attendees.join(', ') || 'Team'}</strong>
@@ -605,7 +605,7 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({ currentArea, areas }
             {/* Past Context */}
             <div>
               <div className="text-xs uppercase font-bold text-[var(--hub-muted)] tracking-wider mb-1.5 flex items-center gap-1.5">
-                <Brain className="w-3.5 h-3.5 text-teal-500" />
+                <Brain className="w-3.5 h-3.5 text-teal-800 dark:text-teal-300" />
                 <span>NeoSapien Past Discussion Context ({selectedBrief.pastMemoriesFound} memories found)</span>
               </div>
               <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs text-[var(--hub-ink)] leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto">
@@ -616,8 +616,8 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({ currentArea, areas }
             {/* Unresolved Commitments */}
             {selectedBrief.previousOpenActionItems.length > 0 && (
               <div>
-                <div className="text-xs uppercase font-bold text-amber-500 tracking-wider mb-1.5 flex items-center gap-1.5">
-                  <ListTodo className="w-3.5 h-3.5 text-amber-500" />
+                <div className="text-xs uppercase font-bold text-amber-800 dark:text-amber-300 tracking-wider mb-1.5 flex items-center gap-1.5">
+                  <ListTodo className="w-3.5 h-3.5 text-amber-800 dark:text-amber-300" />
                   <span>Unresolved Previous Commitments</span>
                 </div>
                 <div className="p-2.5 rounded-lg bg-amber-500/5 border border-amber-500/20 text-xs text-amber-900 dark:text-amber-200 space-y-1">
@@ -633,8 +633,8 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({ currentArea, areas }
 
             {/* Suggested Agenda */}
             <div>
-              <div className="text-xs uppercase font-bold text-sky-500 tracking-wider mb-1.5 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-sky-500" />
+              <div className="text-xs uppercase font-bold text-sky-700 dark:text-sky-300 tracking-wider mb-1.5 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-sky-700 dark:text-sky-300" />
                 <span>Suggested Meeting Agenda</span>
               </div>
               <div className="p-2.5 rounded-lg bg-sky-500/5 border border-sky-500/20 text-xs text-sky-900 dark:text-sky-200 space-y-1">
@@ -696,7 +696,7 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({ currentArea, areas }
           {suggestedSlotText && (
             <div className="p-3 rounded-lg bg-teal-500/10 border border-teal-500/20 text-xs flex items-center justify-between">
               <div>
-                <div className="font-bold text-teal-700 dark:text-teal-300">Suggested Next Meeting Time:</div>
+                <div className="font-bold text-teal-800 dark:text-teal-300">Suggested Next Meeting Time:</div>
                 <div className="text-[var(--hub-ink)] font-mono font-semibold mt-0.5">{suggestedSlotText}</div>
                 <div className="text-[10px] text-[var(--hub-muted)]">Verified conflict-free against Google Calendar</div>
               </div>

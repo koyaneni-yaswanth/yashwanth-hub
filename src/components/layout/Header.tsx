@@ -62,28 +62,28 @@ export const Header: React.FC<HeaderProps> = ({
   const getSyncDot = () => {
     if (status === 'syncing') {
       return {
-        icon: <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-500" />,
+        icon: <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-800 dark:text-amber-300" />,
         title: 'Syncing workspace...',
         label: 'Syncing',
       };
     }
     if (status === 'offline') {
       return {
-        icon: <WifiOff className="w-3.5 h-3.5 text-red-500" />,
+        icon: <WifiOff className="w-3.5 h-3.5 text-red-700 dark:text-red-300" />,
         title: queueCount > 0 ? `Offline — ${queueCount} change(s) saved locally, will sync when online` : 'Offline — changes saved locally',
         label: queueCount > 0 ? `Offline · ${queueCount}` : 'Offline',
       };
     }
     if (status === 'error') {
       return {
-        icon: <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />,
+        icon: <AlertTriangle className="w-3.5 h-3.5 text-amber-800 dark:text-amber-300" />,
         title: statusMessage,
         label: failedCount > 0 ? `Sync issue · ${failedCount}` : 'Sync issue',
       };
     }
     if (status === 'synced') {
       return {
-        icon: <Cloud className="w-3.5 h-3.5 text-emerald-500" />,
+        icon: <Cloud className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300" />,
         title: statusMessage || 'Cloud synced',
         label: queueCount > 0 ? `${queueCount} pending` : 'Synced',
       };
@@ -199,9 +199,9 @@ export const Header: React.FC<HeaderProps> = ({
           >
             {authState.configured && status !== 'offline' && status !== 'error' ? (
               authState.user ? (
-                <UserCheck className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+                <UserCheck className="w-3.5 h-3.5 text-teal-700 dark:text-teal-400" />
               ) : (
-                <LogIn className="w-3.5 h-3.5 text-amber-500" />
+                <LogIn className="w-3.5 h-3.5 text-amber-800 dark:text-amber-300" />
               )
             ) : (
               syncInfo.icon
@@ -236,7 +236,7 @@ export const Header: React.FC<HeaderProps> = ({
             title={`Switch to ${isDark ? 'light' : 'dark'} mode`}
           >
             {isDark ? (
-              <Sun className="w-4 h-4 text-amber-400" />
+              <Sun className="w-4 h-4 text-amber-800 dark:text-amber-300" />
             ) : (
               <Moon className="w-4 h-4 text-slate-600" />
             )}
@@ -250,7 +250,7 @@ export const Header: React.FC<HeaderProps> = ({
             className={`mt-2 flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-medium ${
               status === 'offline'
                 ? 'bg-[var(--hub-bg)] text-[var(--hub-muted)] border border-[var(--hub-line)]'
-                : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30'
+                : 'bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-500/30'
             }`}
           >
             {status === 'offline' ? <WifiOff className="w-3.5 h-3.5 shrink-0" /> : <AlertTriangle className="w-3.5 h-3.5 shrink-0" />}

@@ -212,7 +212,7 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ currentArea, areas }
             <h2 className="text-2xl font-bold font-heading text-[var(--hub-ink)] tracking-tight">
               Expenses & Financials
             </h2>
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>Zero Auto-Logging Enforced</span>
             </span>
@@ -237,19 +237,19 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ currentArea, areas }
           label="Total Spend (Filtered)"
           value={totalAmount === 0 ? '₹0' : formatINR(totalAmount)}
           subtext={`Cycle: ${selectedMonth} • Verified`}
-          icon={<IndianRupee className="w-5 h-5 text-amber-600" />}
+          icon={<IndianRupee className="w-5 h-5 text-amber-800 dark:text-amber-300" />}
         />
         <StatCard
           label="Transactions"
           value={filteredExpenses.length}
           subtext="Logged entries in this cycle"
-          icon={<PieChart className="w-5 h-5 text-teal-600" />}
+          icon={<PieChart className="w-5 h-5 text-teal-700 dark:text-teal-300" />}
         />
         <StatCard
           label="Average Ticket"
           value={filteredExpenses.length > 0 ? formatINR(Math.round(totalAmount / filteredExpenses.length)) : '—'}
           subtext="Per expense average"
-          icon={<TrendingDown className="w-5 h-5 text-blue-600" />}
+          icon={<TrendingDown className="w-5 h-5 text-blue-700 dark:text-blue-300" />}
         />
       </div>
 
@@ -348,7 +348,7 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ currentArea, areas }
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl divide-y divide-[var(--hub-line)] overflow-hidden shadow-xs">
         {sortedExpenses.length === 0 ? (
           <div className="p-12 text-center text-sm text-[var(--hub-muted)]">
-            <IndianRupee className="w-10 h-10 mx-auto text-amber-500 mb-3 opacity-60" />
+            <IndianRupee className="w-10 h-10 mx-auto text-amber-800 dark:text-amber-300 mb-3 opacity-60" />
             <h3 className="text-base font-bold text-[var(--hub-ink)]">No expenses found</h3>
             <p className="text-xs mt-1 text-[var(--hub-muted)]">
               Expenses: manually entered only. Zero auto-logged entries.
@@ -384,12 +384,12 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ currentArea, areas }
                     <span>{formatShortDate(expense.date)}</span>
                   </span>
                   {expense.source && (
-                    <span className="text-[10px] uppercase font-bold text-teal-600 dark:text-teal-400">
+                    <span className="text-[10px] uppercase font-bold text-teal-700 dark:text-teal-400">
                       [{expense.source}]
                     </span>
                   )}
                   {expense.receipt_doc_id && (
-                    <span className="flex items-center gap-0.5 text-blue-600 dark:text-blue-400">
+                    <span className="flex items-center gap-0.5 text-blue-700 dark:text-blue-400">
                       <FileText className="w-3 h-3" />
                       <span>{expense.receipt_doc_id}</span>
                     </span>
@@ -425,7 +425,7 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ currentArea, areas }
           className="w-full flex items-center justify-between p-4 text-left hover:bg-[var(--hub-bg)]/50 transition-colors cursor-pointer"
         >
           <div className="flex items-center gap-2">
-            <ShieldAlert className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            <ShieldAlert className="w-4 h-4 text-amber-800 dark:text-amber-400" />
             <h3 className="text-sm font-bold font-heading text-[var(--hub-ink)]">
               Quarantine & Data Audit Log ({quarantinedExpenses.length} Quarantined, {auditLogs.length} Logged)
             </h3>
@@ -450,10 +450,10 @@ export const ExpensesPage: React.FC<ExpensesPageProps> = ({ currentArea, areas }
                     >
                       <div className="flex items-center justify-between font-semibold">
                         <span>Original ID: {q.original_id}</span>
-                        <span className="text-red-600 dark:text-red-400 font-bold">QUARANTINED</span>
+                        <span className="text-red-700 dark:text-red-400 font-bold">QUARANTINED</span>
                       </div>
                       <div className="text-[var(--hub-muted)]">
-                        Reason: <span className="text-red-600 dark:text-red-400 font-medium">{q.reason}</span>
+                        Reason: <span className="text-red-700 dark:text-red-400 font-medium">{q.reason}</span>
                       </div>
                       <div className="text-[var(--hub-muted)]">
                         Source: {q.source} • Created by: {q.created_by} • At: {new Date(q.quarantined_at).toLocaleString()}

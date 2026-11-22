@@ -89,7 +89,7 @@ export const HealthRoutinePage: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3 bg-[var(--hub-bg)] p-3 rounded-xl border border-[var(--hub-line)]">
-            <BatteryCharging className="w-6 h-6 text-emerald-500" />
+            <BatteryCharging className="w-6 h-6 text-emerald-700 dark:text-emerald-300" />
             <div>
               <span className="text-[10px] text-[var(--hub-muted)] uppercase tracking-wider block font-bold">
                 Self-Rated Energy
@@ -121,25 +121,25 @@ export const HealthRoutinePage: React.FC = () => {
           label="Logged Sleep"
           value={`${sleepHours} hrs`}
           subtext="Daily self-logged check-in"
-          icon={<Moon className="w-5 h-5 text-indigo-500" />}
+          icon={<Moon className="w-5 h-5 text-indigo-700 dark:text-indigo-300" />}
         />
         <StatCard
           label="Deep Work"
           value={`${deepWorkHours} hrs`}
           subtext="Target: 4.0-5.0 hrs / day"
-          icon={<Flame className="w-5 h-5 text-amber-500" />}
+          icon={<Flame className="w-5 h-5 text-amber-800 dark:text-amber-300" />}
         />
         <StatCard
           label="Routine Completion"
           value={`${routinePercentage}%`}
           subtext={`${completedCount} of ${routines.length} completed`}
-          icon={<CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+          icon={<CheckCircle2 className="w-5 h-5 text-emerald-700 dark:text-emerald-300" />}
         />
         <StatCard
           label="Check-In Date"
           value={today}
           subtext="Saved automatically per date"
-          icon={<Sun className="w-5 h-5 text-yellow-500" />}
+          icon={<Sun className="w-5 h-5 text-yellow-800 dark:text-yellow-300" />}
         />
       </div>
 
@@ -183,7 +183,7 @@ export const HealthRoutinePage: React.FC = () => {
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
-            <Clock className="w-4 h-4 text-teal-600" />
+            <Clock className="w-4 h-4 text-teal-700 dark:text-teal-300" />
             <span>Today's Founder Operating Schedule</span>
           </h3>
           <span className="text-xs font-semibold text-[var(--hub-muted)]">{today}</span>
@@ -206,7 +206,7 @@ export const HealthRoutinePage: React.FC = () => {
                   checked={item.done}
                   onChange={() => toggleRoutine(item.id)}
                   aria-label={item.title}
-                  className="w-4 h-4 rounded text-teal-600 cursor-pointer flex-none"
+                  className="w-4 h-4 rounded text-teal-700 dark:text-teal-300 cursor-pointer flex-none"
                   onClick={(e) => e.stopPropagation()}
                 />
                 <div>

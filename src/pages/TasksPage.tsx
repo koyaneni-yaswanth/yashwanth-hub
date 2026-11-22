@@ -225,7 +225,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
         key={task.id}
         className={`flex items-start gap-3 p-4 rounded-xl border transition-all duration-150 ${
           task.done
-            ? 'bg-[var(--hub-surface-subtle)] border-[var(--hub-line)] opacity-70'
+            ? 'bg-[var(--hub-surface-subtle)] border-[var(--hub-line)]'
             : overdue
             ? 'bg-red-500/5 border-red-500/20 hover:border-red-500/40'
             : 'bg-[var(--hub-surface)] border-[var(--hub-line)] hover:border-[var(--hub-accent)] shadow-xs'
@@ -266,7 +266,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
               <span
                 className={`text-xs flex items-center gap-1 ${
                   overdue
-                    ? 'text-red-600 dark:text-red-400 font-bold'
+                    ? 'text-red-700 dark:text-red-400 font-bold'
                     : 'text-[var(--hub-muted)]'
                 }`}
               >
@@ -292,7 +292,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
         <div className="flex items-center gap-1 flex-none">
           <button
             onClick={() => handleToggleStar(task)}
-            className="p-1.5 rounded-lg text-amber-500 hover:bg-[var(--hub-bg)] cursor-pointer transition-colors"
+            className="p-1.5 rounded-lg text-amber-800 dark:text-amber-300 hover:bg-[var(--hub-bg)] cursor-pointer transition-colors"
             title={task.starred ? 'Starred' : 'Not starred'}
           >
             <Star className={`w-4 h-4 ${task.starred ? 'fill-amber-500' : ''}`} />
@@ -435,7 +435,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
       <div className="space-y-4">
         {sortedTasks.length === 0 ? (
           <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-12 text-center">
-            <CheckCircle className="w-10 h-10 mx-auto text-teal-600 mb-3 opacity-60" />
+            <CheckCircle className="w-10 h-10 mx-auto text-teal-700 dark:text-teal-300 mb-3 opacity-60" />
             <h3 className="text-base font-bold text-[var(--hub-ink)]">No tasks match your criteria</h3>
             <p className="text-xs text-[var(--hub-muted)] mt-1">
               {searchQuery ? 'Try clearing your search query' : 'Click "New Task" to create your first action item.'}

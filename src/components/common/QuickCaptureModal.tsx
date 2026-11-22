@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db';
-import type { Task, EventItem, Note, Expense, Area } from '../../types';
+import type { EventItem, Note, Expense, Area } from '../../types';
 import { generateId, getTodayISO } from '../../lib/utils';
 import { SyncQueueService } from '../../services/sync/syncQueueService';
+import { TaskService } from '../../services/sync/taskService';
 import {
   parseQuickCaptureInput,
   type CaptureType,
@@ -162,8 +163,8 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
 
     try {
       if (activeType === 'task') {
-        const newTask: Task = {
-          id: generateId(),
+        // Same path as the Tasks page and Home: local write, then the cloud sync queue.
+        await TaskService.create({
           text: finalTitle,
           area: finalArea,
           priority: parsed.priority,
@@ -171,11 +172,7 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
           project_id: finalProjectId,
           starred: parsed.priority === 'urgent' || parsed.priority === 'high',
           done: false,
-          created_at: nowISO,
-          updated_at: nowISO,
-        };
-        await db.tasks.add(newTask);
-        SyncQueueService.enqueueChange('tasks', newTask.id, 'INSERT', newTask).catch(() => {});
+        });
       } else if (activeType === 'event') {
         const newEvent: EventItem = {
           id: generateId(),
@@ -292,7 +289,7 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
           </div>
 
           {voiceError && (
-            <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-700 dark:text-amber-300 flex items-center gap-2">
+            <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-800 dark:text-amber-300 flex items-center gap-2">
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
               <span>{voiceError}</span>
             </div>
@@ -322,7 +319,7 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
             <div className="p-3.5 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] space-y-2.5 text-xs">
               <div className="flex items-center justify-between text-[11px] font-bold text-[var(--hub-muted)]">
                 <span>CONFIRM BEFORE SAVING</span>
-                <span className="capitalize text-teal-500 font-mono">
+                <span className="capitalize text-teal-700 dark:text-teal-300 font-mono">
                   Detected Intent: {parsed.type}
                 </span>
               </div>
@@ -403,7 +400,7 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
               </div>
 
               {parsed.amount !== undefined && (
-                <div className="flex items-center gap-1 text-emerald-500 font-mono font-bold">
+                <div className="flex items-center gap-1 text-emerald-700 dark:text-emerald-300 font-mono font-bold">
                   <IndianRupee className="w-3 h-3" />
                   <span>Detected Amount: ₹{parsed.amount}</span>
                 </div>

@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* `dark:` utilities follow the app's theme switch (ThemeContext toggles `.dark` on <html>),
+   not the OS setting. Without this, OS-dark + app-light renders dark-mode colours on light
+   surfaces (and vice versa). */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   :root {
     --hub-bg: #eaf1f0;

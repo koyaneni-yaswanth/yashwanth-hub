@@ -250,7 +250,7 @@ export const StartupCommandPage: React.FC = () => {
               <span className="text-xs text-[var(--hub-muted)] uppercase tracking-wider block font-bold">
                 Target Gate Date
               </span>
-              <span className="text-2xl font-bold font-heading text-red-600 dark:text-red-400">
+              <span className="text-2xl font-bold font-heading text-red-700 dark:text-red-400">
                 15 Nov 2026
               </span>
               <span className="text-xs font-semibold text-[var(--hub-ink)] block mt-0.5">
@@ -262,7 +262,7 @@ export const StartupCommandPage: React.FC = () => {
               <span className="text-xs text-[var(--hub-muted)] uppercase tracking-wider block font-bold">
                 V3F Audit Score
               </span>
-              <span className="text-2xl font-bold font-heading text-teal-600 dark:text-teal-400">
+              <span className="text-2xl font-bold font-heading text-teal-700 dark:text-teal-400">
                 {scorePercentage}%
               </span>
               <span className="text-xs text-[var(--hub-muted)] block mt-0.5">
@@ -279,25 +279,25 @@ export const StartupCommandPage: React.FC = () => {
           label="Verified Current TRL"
           value="TRL 4 Only"
           subtext="Target TRL 5 in 90 days"
-          icon={<Wind className="w-5 h-5 text-teal-600" />}
+          icon={<Wind className="w-5 h-5 text-teal-700 dark:text-teal-300" />}
         />
         <StatCard
           label="P-v Telemetry Status"
           value="Not Captured"
           subtext="Need >= 1 Hz closed-loop CSV"
-          icon={<Layers className="w-5 h-5 text-blue-600" />}
+          icon={<Layers className="w-5 h-5 text-blue-700 dark:text-blue-300" />}
         />
         <StatCard
           label="Est. Prototype BOM"
           value="Estimate Only"
           subtext="Supplier quotes pending"
-          icon={<IndianRupee className="w-5 h-5 text-amber-600" />}
+          icon={<IndianRupee className="w-5 h-5 text-amber-800 dark:text-amber-300" />}
         />
         <StatCard
           label="V3F Items Verified (Score 3)"
           value={`${assessmentItems.filter((i) => i.score === 3).length} / ${assessmentItems.length}`}
           subtext="Persisted across sessions"
-          icon={<CheckCircle2 className="w-5 h-5 text-emerald-600" />}
+          icon={<CheckCircle2 className="w-5 h-5 text-emerald-700 dark:text-emerald-300" />}
         />
       </div>
 
@@ -434,7 +434,7 @@ export const StartupCommandPage: React.FC = () => {
                           <p className="text-[var(--hub-muted)] leading-relaxed">{item.evidence}</p>
                         </div>
                         <div className="p-3 rounded-lg bg-[var(--hub-surface)] border border-[var(--hub-line)]">
-                          <span className="font-bold text-red-600 dark:text-red-400 block mb-1">
+                          <span className="font-bold text-red-700 dark:text-red-400 block mb-1">
                             Identified Gap:
                           </span>
                           <p className="text-[var(--hub-muted)] leading-relaxed">{item.gap}</p>
@@ -496,7 +496,7 @@ export const StartupCommandPage: React.FC = () => {
                     type="checkbox"
                     checked={step.done}
                     readOnly
-                    className="mt-0.5 w-4 h-4 rounded text-teal-600 cursor-pointer"
+                    className="mt-0.5 w-4 h-4 rounded text-teal-700 dark:text-teal-300 cursor-pointer"
                   />
                   <div className="flex-1 min-w-0">
                     <span className="font-bold text-xs mr-2">{step.day}:</span>
@@ -541,16 +541,16 @@ export const StartupCommandPage: React.FC = () => {
                     <tr key={idx} className="hover:bg-[var(--hub-bg)]/50 transition-colors">
                       <td className="py-3 px-3 font-semibold text-[var(--hub-ink)]">{row.item}</td>
                       <td className="py-3 px-3 font-mono text-[var(--hub-ink)]">₹{row.prototype.toLocaleString()}</td>
-                      <td className="py-3 px-3 font-mono text-teal-600 dark:text-teal-400">₹{row.vol50.toLocaleString()}</td>
-                      <td className="py-3 px-3 font-mono font-bold text-emerald-600 dark:text-emerald-400">₹{row.vol500.toLocaleString()}</td>
+                      <td className="py-3 px-3 font-mono text-teal-700 dark:text-teal-400">₹{row.vol50.toLocaleString()}</td>
+                      <td className="py-3 px-3 font-mono font-bold text-emerald-700 dark:text-emerald-400">₹{row.vol500.toLocaleString()}</td>
                       <td className="py-3 px-3 text-[var(--hub-muted)]">{row.source}</td>
                     </tr>
                   ))}
                   <tr className="bg-[var(--hub-bg)] font-bold border-t-2 border-[var(--hub-line)] text-sm">
                     <td className="py-3 px-3 text-[var(--hub-ink)]">Total Unit CapEx</td>
                     <td className="py-3 px-3 font-mono text-[var(--hub-ink)]">₹1,20,500</td>
-                    <td className="py-3 px-3 font-mono text-teal-600">₹64,200 (-47%)</td>
-                    <td className="py-3 px-3 font-mono text-emerald-600">₹38,400 (-68%)</td>
+                    <td className="py-3 px-3 font-mono text-teal-700 dark:text-teal-300">₹64,200 (-47%)</td>
+                    <td className="py-3 px-3 font-mono text-emerald-700 dark:text-emerald-300">₹38,400 (-68%)</td>
                     <td className="py-3 px-3 text-xs text-[var(--hub-muted)]">Scale Optimization</td>
                   </tr>
                 </tbody>

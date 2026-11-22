@@ -192,7 +192,7 @@ export const RoboticsLabPage: React.FC = () => {
       </div>
 
       {/* Honest Telemetry Boundary Notice */}
-      <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2.5">
+      <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2.5">
         <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
         <div>
           <span className="font-bold">Measured vs Baseline Spec Notice: </span>
@@ -207,25 +207,25 @@ export const RoboticsLabPage: React.FC = () => {
           label="AgileX PiPER Records"
           value={records.filter((r) => r.project === 'AgileX PiPER').length}
           subtext="Persisted entries"
-          icon={<Bot className="w-5 h-5 text-indigo-600" />}
+          icon={<Bot className="w-5 h-5 text-indigo-700 dark:text-indigo-300" />}
         />
         <StatCard
           label="3-Drone Swarm Records"
           value={records.filter((r) => r.project === '3-Drone Swarm').length}
           subtext="Persisted entries"
-          icon={<Radio className="w-5 h-5 text-teal-600" />}
+          icon={<Radio className="w-5 h-5 text-teal-700 dark:text-teal-300" />}
         />
         <StatCard
           label="AWR2944 mmWave Records"
           value={records.filter((r) => r.project === 'AWR2944 mmWave').length}
           subtext="Persisted entries"
-          icon={<Activity className="w-5 h-5 text-purple-600" />}
+          icon={<Activity className="w-5 h-5 text-purple-700 dark:text-purple-300" />}
         />
         <StatCard
           label="Verified / Completed"
           value={records.filter((r) => r.status === 'completed' || r.status === 'testing').length}
           subtext={`Out of ${records.length} total logs`}
-          icon={<CheckCircle2 className="w-5 h-5 text-emerald-600" />}
+          icon={<CheckCircle2 className="w-5 h-5 text-emerald-700 dark:text-emerald-300" />}
         />
       </div>
 
@@ -449,7 +449,7 @@ export const RoboticsLabPage: React.FC = () => {
               checked={eStopVerified}
               onChange={(e) => setEStopVerified(e.target.checked)}
             />
-            <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
+            <ShieldCheck className="w-4 h-4 text-emerald-700 dark:text-emerald-300 shrink-0" />
             <span className="text-[var(--hub-ink)] font-medium">
               Hardware Safety Gate Confirmed (E-stop / prop guard / safe envelope checked before physical power-on)
             </span>

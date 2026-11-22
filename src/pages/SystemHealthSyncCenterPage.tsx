@@ -116,7 +116,7 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
       <div className="bg-[var(--hub-card-bg)] border border-[var(--hub-border)] rounded-2xl p-6 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-xl bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400 shrink-0">
+            <div className="w-12 h-12 rounded-xl bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-700 dark:text-teal-300 shrink-0">
               <Activity className="w-6 h-6" />
             </div>
             <div>
@@ -165,7 +165,7 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
         <div className="bg-[var(--hub-card-bg)] border border-[var(--hub-border)] rounded-2xl p-5 space-y-3">
           <div className="flex items-center justify-between">
             <span className="font-bold text-sm flex items-center gap-2 text-[var(--hub-ink)]">
-              <Cloud className="w-4 h-4 text-blue-400" />
+              <Cloud className="w-4 h-4 text-blue-700 dark:text-blue-300" />
               Google Workspace
             </span>
             <Badge variant={isGoogleConnected ? 'emerald' : 'amber'}>
@@ -194,7 +194,7 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
         <div className="bg-[var(--hub-card-bg)] border border-[var(--hub-border)] rounded-2xl p-5 space-y-3">
           <div className="flex items-center justify-between">
             <span className="font-bold text-sm flex items-center gap-2 text-[var(--hub-ink)]">
-              <Brain className="w-4 h-4 text-emerald-400" />
+              <Brain className="w-4 h-4 text-emerald-700 dark:text-emerald-300" />
               NeoSapien Ecosystem
             </span>
             <Badge variant="emerald">Operational</Badge>
@@ -209,7 +209,7 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
           {onNavigateToNeoMemory && (
             <button
               onClick={onNavigateToNeoMemory}
-              className="text-xs font-semibold text-emerald-400 hover:underline flex items-center gap-1 pt-1"
+              className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:underline flex items-center gap-1 pt-1"
             >
               <span>Open Memory Center</span>
               <ArrowRight className="w-3 h-3" />
@@ -221,7 +221,7 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
         <div className="bg-[var(--hub-card-bg)] border border-[var(--hub-border)] rounded-2xl p-5 space-y-3">
           <div className="flex items-center justify-between">
             <span className="font-bold text-sm flex items-center gap-2 text-[var(--hub-ink)]">
-              <Database className="w-4 h-4 text-purple-400" />
+              <Database className="w-4 h-4 text-purple-700 dark:text-purple-300" />
               Dexie Database
             </span>
             <Badge variant="emerald">Healthy (v4)</Badge>
@@ -242,7 +242,7 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
         <div className="bg-[var(--hub-card-bg)] border border-[var(--hub-border)] rounded-2xl p-5 space-y-3">
           <div className="flex items-center justify-between">
             <span className="font-bold text-sm flex items-center gap-2 text-[var(--hub-ink)]">
-              <Sparkles className="w-4 h-4 text-amber-400" />
+              <Sparkles className="w-4 h-4 text-amber-800 dark:text-amber-300" />
               AI Gateway
             </span>
             <Badge variant="emerald">Active</Badge>
@@ -263,7 +263,7 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
       {/* Conflict Resolution Workspace (if any conflicts exist) */}
       {conflicts.length > 0 && (
         <div className="bg-[var(--hub-card-bg)] border border-amber-500/30 rounded-2xl p-6 space-y-4">
-          <h2 className="text-base font-bold flex items-center gap-2 text-amber-400">
+          <h2 className="text-base font-bold flex items-center gap-2 text-amber-800 dark:text-amber-300">
             <Split className="w-5 h-5" />
             <span>Unresolved Data Conflicts ({conflicts.length})</span>
           </h2>

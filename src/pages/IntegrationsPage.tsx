@@ -488,7 +488,7 @@ export const IntegrationsPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold font-heading text-[var(--hub-ink)] tracking-tight flex items-center gap-2">
-            <Layers className="w-6 h-6 text-teal-600" />
+            <Layers className="w-6 h-6 text-teal-700 dark:text-teal-300" />
             <span>Connection & Synchronization Center</span>
           </h2>
           <p className="text-sm text-[var(--hub-muted)] mt-0.5">
@@ -516,7 +516,7 @@ export const IntegrationsPage: React.FC = () => {
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
         <div className="flex items-center justify-between pb-3 border-b border-[var(--hub-line)]">
           <div className="flex items-center gap-3">
-            <ShieldCheck className="w-5 h-5 text-emerald-500" />
+            <ShieldCheck className="w-5 h-5 text-emerald-700 dark:text-emerald-300" />
             <div>
               <h3 className="font-heading font-bold text-base text-[var(--hub-ink)]">
                 Yashwanth Hub Account Session (Supabase RLS Isolation)
@@ -559,7 +559,7 @@ export const IntegrationsPage: React.FC = () => {
             <button
               onClick={handleSupabaseSignOut}
               disabled={isAuthBusy}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-500/30 text-red-600 hover:bg-red-500/10 text-xs font-semibold cursor-pointer disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-500/30 text-red-700 dark:text-red-300 hover:bg-red-500/10 text-xs font-semibold cursor-pointer disabled:opacity-50"
             >
               <LogOut className="w-3.5 h-3.5" />
               <span>Sign Out</span>
@@ -627,7 +627,7 @@ export const IntegrationsPage: React.FC = () => {
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
         <div className="flex items-center justify-between pb-3 border-b border-[var(--hub-line)]">
           <div className="flex items-center gap-3">
-            <Cloud className="w-5 h-5 text-blue-500" />
+            <Cloud className="w-5 h-5 text-blue-700 dark:text-blue-300" />
             <div>
               <h3 className="font-heading font-bold text-base text-[var(--hub-ink)]">
                 Google Workspace OAuth 2.0 (PKCE + Refresh Vault)
@@ -668,7 +668,7 @@ export const IntegrationsPage: React.FC = () => {
               </button>
               <button
                 onClick={handleDisconnectGoogle}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-500/30 text-red-600 hover:bg-red-500/10 text-xs font-semibold cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-500/30 text-red-700 dark:text-red-300 hover:bg-red-500/10 text-xs font-semibold cursor-pointer"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 <span>Revoke & Disconnect</span>
@@ -678,7 +678,7 @@ export const IntegrationsPage: React.FC = () => {
         ) : (
           <div className="space-y-4">
             {oauthErrorMessage && (
-              <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-600 dark:text-red-400 space-y-1">
+              <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-700 dark:text-red-400 space-y-1">
                 <div className="flex items-center gap-2 font-bold">
                   <AlertTriangle className="w-4 h-4 shrink-0" />
                   <span>Google OAuth Diagnostics Alert</span>
@@ -722,7 +722,7 @@ export const IntegrationsPage: React.FC = () => {
                 </button>
               </div>
               {clientIdSavedNotice && (
-                <div className="text-[11px] text-emerald-500 font-medium flex items-center gap-1 mt-1">
+                <div className="text-[11px] text-emerald-700 dark:text-emerald-300 font-medium flex items-center gap-1 mt-1">
                   <Check className="w-3.5 h-3.5" />
                   <span>Client ID sanitized and saved successfully.</span>
                 </div>
@@ -732,14 +732,14 @@ export const IntegrationsPage: React.FC = () => {
             {showSetupGuide && (
               <div className="p-4 rounded-xl bg-[var(--hub-bg)] border border-teal-500/30 text-xs space-y-4">
                 <div className="font-bold text-sm text-[var(--hub-ink)] flex items-center gap-2">
-                  <Cloud className="w-4 h-4 text-teal-500" />
+                  <Cloud className="w-4 h-4 text-teal-700 dark:text-teal-300" />
                   <span>Exact OAuth Values That Must Match (Google Cloud & Supabase)</span>
                 </div>
 
                 <div className="space-y-3 text-[var(--hub-muted)] leading-relaxed">
                   <div>
-                    1. Active <code className="text-teal-400">redirect_uri</code> sent by this browser right now:{' '}
-                    <code className="text-teal-400 font-mono">{GoogleAuthService.getRedirectUri()}</code>
+                    1. Active <code className="text-teal-700 dark:text-teal-300">redirect_uri</code> sent by this browser right now:{' '}
+                    <code className="text-teal-700 dark:text-teal-300 font-mono">{GoogleAuthService.getRedirectUri()}</code>
                   </div>
 
                   <div className="space-y-1.5 pt-1">
@@ -756,7 +756,7 @@ export const IntegrationsPage: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => handleCopyText(uri, `orig-${uri}`)}
-                            className="ml-2 px-2 py-0.5 rounded bg-teal-500/20 text-teal-400 hover:bg-teal-500/30 text-[10px] flex items-center gap-1 font-sans flex-none"
+                            className="ml-2 px-2 py-0.5 rounded bg-teal-500/20 text-teal-700 dark:text-teal-300 hover:bg-teal-500/30 text-[10px] flex items-center gap-1 font-sans flex-none"
                           >
                             {copiedKey === `orig-${uri}` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                             <span>{copiedKey === `orig-${uri}` ? 'Copied' : 'Copy'}</span>
@@ -786,7 +786,7 @@ export const IntegrationsPage: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => handleCopyText(uri, `red-${uri}`)}
-                            className="ml-2 px-2 py-0.5 rounded bg-teal-500/20 text-teal-400 hover:bg-teal-500/30 text-[10px] flex items-center gap-1 font-sans flex-none"
+                            className="ml-2 px-2 py-0.5 rounded bg-teal-500/20 text-teal-700 dark:text-teal-300 hover:bg-teal-500/30 text-[10px] flex items-center gap-1 font-sans flex-none"
                           >
                             {copiedKey === `red-${uri}` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                             <span>{copiedKey === `red-${uri}` ? 'Copied' : 'Copy'}</span>
@@ -841,7 +841,7 @@ export const IntegrationsPage: React.FC = () => {
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-heading font-bold text-xs text-[var(--hub-ink)] flex items-center gap-1.5">
-                      <Icon className="w-4 h-4 text-teal-600" />
+                      <Icon className="w-4 h-4 text-teal-700 dark:text-teal-300" />
                       <span>{svc.name}</span>
                     </span>
                     <Badge variant={isSvcConnected ? 'emerald' : 'gray'}>
@@ -852,7 +852,7 @@ export const IntegrationsPage: React.FC = () => {
                     {svc.description}
                   </p>
                   {isTasks && vaultStatus.google.accountEmail && (
-                    <div className="mt-1 text-[10px] text-teal-400 font-mono">
+                    <div className="mt-1 text-[10px] text-teal-700 dark:text-teal-300 font-mono">
                       Account: {vaultStatus.google.accountEmail}
                     </div>
                   )}
@@ -860,7 +860,7 @@ export const IntegrationsPage: React.FC = () => {
                     <div className="mt-2 p-2 rounded-lg bg-black/20 text-[10px] space-y-1">
                       {googleTestResult.success ? (
                         <>
-                          <div className="text-emerald-400 font-semibold flex items-center gap-1">
+                          <div className="text-emerald-700 dark:text-emerald-300 font-semibold flex items-center gap-1">
                             <Check className="w-3 h-3" />
                             <span>Live Ping OK (Latest Google Tasks):</span>
                           </div>
@@ -869,7 +869,7 @@ export const IntegrationsPage: React.FC = () => {
                           ))}
                         </>
                       ) : (
-                        <div className="text-red-400 font-medium">{googleTestResult.error || 'Test connection failed'}</div>
+                        <div className="text-red-700 dark:text-red-300 font-medium">{googleTestResult.error || 'Test connection failed'}</div>
                       )}
                     </div>
                   )}
@@ -880,7 +880,7 @@ export const IntegrationsPage: React.FC = () => {
                     <button
                       onClick={handleTestGoogleTasks}
                       disabled={isTestingGoogle}
-                      className="px-2.5 py-1 rounded bg-teal-500/15 text-teal-400 hover:bg-teal-500/25 text-[11px] font-semibold cursor-pointer disabled:opacity-50"
+                      className="px-2.5 py-1 rounded bg-teal-500/15 text-teal-700 dark:text-teal-300 hover:bg-teal-500/25 text-[11px] font-semibold cursor-pointer disabled:opacity-50"
                     >
                       {isTestingGoogle ? 'Pinging...' : 'Test Connection'}
                     </button>
@@ -902,7 +902,7 @@ export const IntegrationsPage: React.FC = () => {
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
-            <RefreshCw className="w-4 h-4 text-emerald-600" />
+            <RefreshCw className="w-4 h-4 text-emerald-700 dark:text-emerald-300" />
             <span>Central Synchronization Engine</span>
           </h3>
           <div className="flex items-center gap-2">
@@ -966,7 +966,7 @@ export const IntegrationsPage: React.FC = () => {
               {historyLogs.slice(0, 5).map((log) => (
                 <div key={log.id} className="p-2.5 flex items-center justify-between text-xs bg-[var(--hub-bg)]">
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300" />
                     <span className="font-semibold text-[var(--hub-ink)]">{log.service}</span>
                     <span className="text-[var(--hub-muted)]">— {log.action}</span>
                   </div>
@@ -989,7 +989,7 @@ export const IntegrationsPage: React.FC = () => {
         <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
-              <Smartphone className="w-4 h-4 text-purple-600" />
+              <Smartphone className="w-4 h-4 text-purple-700 dark:text-purple-300" />
               <span>Authenticated Device Fleet</span>
             </h3>
             {deviceFleet.filter((d) => !d.isCurrent && d.status !== 'revoked').length > 0 && (
@@ -1027,13 +1027,13 @@ export const IntegrationsPage: React.FC = () => {
                   >
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       {dev.deviceType === 'tablet' ? (
-                        <Tablet className="w-4 h-4 text-purple-600 flex-none" />
+                        <Tablet className="w-4 h-4 text-purple-700 dark:text-purple-300 flex-none" />
                       ) : dev.deviceType === 'mobile' ? (
-                        <Smartphone className="w-4 h-4 text-emerald-600 flex-none" />
+                        <Smartphone className="w-4 h-4 text-emerald-700 dark:text-emerald-300 flex-none" />
                       ) : dev.deviceType === 'laptop' ? (
-                        <Laptop className="w-4 h-4 text-teal-600 flex-none" />
+                        <Laptop className="w-4 h-4 text-teal-700 dark:text-teal-300 flex-none" />
                       ) : (
-                        <Monitor className="w-4 h-4 text-blue-600 flex-none" />
+                        <Monitor className="w-4 h-4 text-blue-700 dark:text-blue-300 flex-none" />
                       )}
                       <div className="min-w-0 truncate flex-1">
                         <div className="flex items-center gap-1.5 flex-wrap">
@@ -1053,7 +1053,7 @@ export const IntegrationsPage: React.FC = () => {
                                 className="px-1.5 py-0.5 rounded border border-[var(--hub-accent)] text-xs bg-[var(--hub-surface)] text-[var(--hub-ink)]"
                                 autoFocus
                               />
-                              <button type="submit" className="text-xs text-teal-600 font-semibold hover:underline">Save</button>
+                              <button type="submit" className="text-xs text-teal-700 dark:text-teal-300 font-semibold hover:underline">Save</button>
                               <button type="button" onClick={() => setRenamingDeviceId(null)} className="text-xs text-[var(--hub-muted)] hover:underline">Cancel</button>
                             </form>
                           ) : (
@@ -1094,7 +1094,7 @@ export const IntegrationsPage: React.FC = () => {
                       {dev.isCurrent ? (
                         <button
                           onClick={() => DeviceFleetService.signOutCurrentDevice()}
-                          className="text-[10px] text-red-600 dark:text-red-400 hover:underline cursor-pointer font-medium"
+                          className="text-[10px] text-red-700 dark:text-red-400 hover:underline cursor-pointer font-medium"
                           title="Sign out current device"
                         >
                           Sign Out
@@ -1102,7 +1102,7 @@ export const IntegrationsPage: React.FC = () => {
                       ) : !isRevoked ? (
                         <button
                           onClick={() => DeviceFleetService.revokeDeviceSession(dev.id)}
-                          className="text-[10px] text-red-600 dark:text-red-400 hover:underline cursor-pointer font-medium"
+                          className="text-[10px] text-red-700 dark:text-red-400 hover:underline cursor-pointer font-medium"
                           title="Revoke device session"
                         >
                           Revoke
@@ -1128,7 +1128,7 @@ export const IntegrationsPage: React.FC = () => {
         <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
-              <Brain className="w-4 h-4 text-purple-600" />
+              <Brain className="w-4 h-4 text-purple-700 dark:text-purple-300" />
               <span>NeoSapien Account & Cloud</span>
             </h3>
             <Badge variant={vaultStatus.neoSapien.connected || NeoSapienMCPService.getStoredToken() ? 'emerald' : 'gray'}>
@@ -1136,7 +1136,7 @@ export const IntegrationsPage: React.FC = () => {
             </Badge>
           </div>
           <p className="text-xs text-[var(--hub-muted)]">
-            Synchronize ambient audio memories, meeting summaries, and commitments via official NeoSapien MCP (<code className="text-purple-500 font-mono">https://api.neosapien.xyz/mcp</code>)
+            Synchronize ambient audio memories, meeting summaries, and commitments via official NeoSapien MCP (<code className="text-purple-700 dark:text-purple-300 font-mono">https://api.neosapien.xyz/mcp</code>)
           </p>
 
           {/* Status Details */}
@@ -1147,7 +1147,7 @@ export const IntegrationsPage: React.FC = () => {
             </div>
             <div className="flex justify-between">
               <span className="text-[var(--hub-muted)]">Database Status:</span>
-              <span className="font-semibold text-purple-600 dark:text-purple-400">
+              <span className="font-semibold text-purple-700 dark:text-purple-400">
                 {vaultStatus.neoSapien.connected ? 'Active / Synchronized (Vaulted in Supabase)' : 'Pending Configuration'}
               </span>
             </div>
@@ -1165,7 +1165,7 @@ export const IntegrationsPage: React.FC = () => {
             </div>
             <div className="flex justify-between">
               <span className="text-[var(--hub-muted)]">Total Imported Memories:</span>
-              <span className="font-semibold text-purple-600 dark:text-purple-400">
+              <span className="font-semibold text-purple-700 dark:text-purple-400">
                 {totalMemoriesCount} memories
               </span>
             </div>
@@ -1181,7 +1181,7 @@ export const IntegrationsPage: React.FC = () => {
             <div className="p-3 rounded-lg bg-black/20 text-xs space-y-1.5 border border-purple-500/20">
               {neoSapienTestResult.success ? (
                 <>
-                  <div className="text-emerald-400 font-semibold flex items-center gap-1.5">
+                  <div className="text-emerald-700 dark:text-emerald-300 font-semibold flex items-center gap-1.5">
                     <Check className="w-4 h-4" />
                     <span>MCP Handshake (tools/list) Verified (Latency: {neoSapienTestResult.data?.latencyMs || 42}ms)</span>
                   </div>
@@ -1190,13 +1190,13 @@ export const IntegrationsPage: React.FC = () => {
                   </div>
                 </>
               ) : (
-                <div className="text-red-400 font-medium">{neoSapienTestResult.error || 'MCP Handshake failed'}</div>
+                <div className="text-red-700 dark:text-red-300 font-medium">{neoSapienTestResult.error || 'MCP Handshake failed'}</div>
               )}
             </div>
           )}
 
           {neoConfig.mcpConfig?.lastError && (
-            <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-600 dark:text-red-400">
+            <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-700 dark:text-red-400">
               {neoConfig.mcpConfig.lastError}
             </div>
           )}
@@ -1234,7 +1234,7 @@ export const IntegrationsPage: React.FC = () => {
                   }}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] hover:border-purple-500 cursor-pointer"
                 >
-                  <Key className="w-3.5 h-3.5 text-purple-500" />
+                  <Key className="w-3.5 h-3.5 text-purple-700 dark:text-purple-300" />
                   <span>API Key / Token</span>
                 </button>
               </>
@@ -1254,7 +1254,7 @@ export const IntegrationsPage: React.FC = () => {
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] hover:border-purple-500 cursor-pointer disabled:opacity-50"
                   title="Inspect tools/list from official MCP endpoint"
                 >
-                  <Wrench className={`w-3 h-3 text-purple-600 ${isLoadingTools ? 'animate-spin' : ''}`} />
+                  <Wrench className={`w-3 h-3 text-purple-700 dark:text-purple-300 ${isLoadingTools ? 'animate-spin' : ''}`} />
                   <span>{isLoadingTools ? 'Discovering...' : 'Discover MCP Tools'}</span>
                 </button>
                 <button
@@ -1265,7 +1265,7 @@ export const IntegrationsPage: React.FC = () => {
                 </button>
                 <button
                   onClick={handleDisconnectMcp}
-                  className="px-2.5 py-1.5 rounded-lg text-xs text-red-600 hover:underline cursor-pointer"
+                  className="px-2.5 py-1.5 rounded-lg text-xs text-red-700 dark:text-red-300 hover:underline cursor-pointer"
                 >
                   Disconnect
                 </button>
@@ -1284,7 +1284,7 @@ export const IntegrationsPage: React.FC = () => {
         <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-3 lg:col-span-2">
           <div className="flex items-center justify-between">
             <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
-              <Radio className="w-4 h-4 text-blue-500" />
+              <Radio className="w-4 h-4 text-blue-700 dark:text-blue-300" />
               <span>Neo 1 Physical Device</span>
             </h3>
             <Badge variant={neoConfig.status === 'connected' ? 'emerald' : 'gray'}>
@@ -1302,7 +1302,7 @@ export const IntegrationsPage: React.FC = () => {
           {neoConfig.status === 'connected' && neoConfig.batteryLevel !== undefined && (
             <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] flex items-center justify-between text-xs">
               <div className="flex items-center gap-2">
-                <Battery className="w-4 h-4 text-emerald-600" />
+                <Battery className="w-4 h-4 text-emerald-700 dark:text-emerald-300" />
                 <span className="font-medium text-[var(--hub-ink)]">Battery Level: {neoConfig.batteryLevel}%</span>
               </div>
               <span className="text-[10px] text-[var(--hub-muted)]">Web Bluetooth GATT Link Active</span>
@@ -1315,7 +1315,7 @@ export const IntegrationsPage: React.FC = () => {
               disabled={isScanningBLE}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer"
             >
-              <Bluetooth className="w-4 h-4 text-blue-500" />
+              <Bluetooth className="w-4 h-4 text-blue-700 dark:text-blue-300" />
               <span>{isScanningBLE ? 'Scanning for Neo 1...' : 'Scan & Pair Device (Web BLE)'}</span>
             </button>
           </div>
@@ -1328,7 +1328,7 @@ export const IntegrationsPage: React.FC = () => {
           <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 max-w-lg w-full shadow-xl space-y-4">
             <div className="flex items-center justify-between border-b border-[var(--hub-line)] pb-3">
               <h4 className="font-bold text-sm text-[var(--hub-ink)] flex items-center gap-2">
-                <Brain className="w-4 h-4 text-purple-600" />
+                <Brain className="w-4 h-4 text-purple-700 dark:text-purple-300" />
                 <span>NeoSapien MCP Server & Authentication</span>
               </h4>
               <button
@@ -1346,7 +1346,7 @@ export const IntegrationsPage: React.FC = () => {
                 onClick={() => setAuthModalTab('oauth')}
                 className={`pb-2 border-b-2 cursor-pointer ${
                   authModalTab === 'oauth'
-                    ? 'border-purple-600 text-purple-600 dark:text-purple-400'
+                    ? 'border-purple-600 text-purple-700 dark:text-purple-400'
                     : 'border-transparent text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
                 }`}
               >
@@ -1357,7 +1357,7 @@ export const IntegrationsPage: React.FC = () => {
                 onClick={() => setAuthModalTab('apikey')}
                 className={`pb-2 border-b-2 cursor-pointer ${
                   authModalTab === 'apikey'
-                    ? 'border-purple-600 text-purple-600 dark:text-purple-400'
+                    ? 'border-purple-600 text-purple-700 dark:text-purple-400'
                     : 'border-transparent text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
                 }`}
               >
@@ -1368,7 +1368,7 @@ export const IntegrationsPage: React.FC = () => {
                 onClick={() => setAuthModalTab('token')}
                 className={`pb-2 border-b-2 cursor-pointer ${
                   authModalTab === 'token'
-                    ? 'border-purple-600 text-purple-600 dark:text-purple-400'
+                    ? 'border-purple-600 text-purple-700 dark:text-purple-400'
                     : 'border-transparent text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
                 }`}
               >
@@ -1380,7 +1380,7 @@ export const IntegrationsPage: React.FC = () => {
             {authModalTab === 'oauth' && (
               <div className="space-y-3 text-xs">
                 <p className="text-[var(--hub-muted)] leading-relaxed">
-                  Authenticates with the official NeoSapien server (<code className="text-purple-500 font-mono">https://api.neosapien.xyz/mcp</code>) using Dynamic Client Registration and OAuth 2.0 PKCE with Google, Apple, or Email sign-in.
+                  Authenticates with the official NeoSapien server (<code className="text-purple-700 dark:text-purple-300 font-mono">https://api.neosapien.xyz/mcp</code>) using Dynamic Client Registration and OAuth 2.0 PKCE with Google, Apple, or Email sign-in.
                 </p>
                 <div className="p-3 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] space-y-1 font-mono text-[11px] text-[var(--hub-muted)]">
                   <div>Authorization: <span className="text-[var(--hub-ink)]">https://api.neosapien.xyz/mcp/authorize</span></div>
@@ -1405,7 +1405,7 @@ export const IntegrationsPage: React.FC = () => {
             {authModalTab === 'apikey' && (
               <form onSubmit={handleConnectApiKey} className="space-y-3 text-xs">
                 <p className="text-[var(--hub-muted)] leading-relaxed">
-                  Enter your NeoCore API key to exchange for an authorized session Bearer token via <code className="text-purple-500 font-mono">POST /auth/access-token</code>.
+                  Enter your NeoCore API key to exchange for an authorized session Bearer token via <code className="text-purple-700 dark:text-purple-300 font-mono">POST /auth/access-token</code>.
                 </p>
                 <div>
                   <label className="block text-[var(--hub-muted)] mb-1 font-medium">NeoCore API Key (x-api-key)</label>
@@ -1482,13 +1482,13 @@ export const IntegrationsPage: React.FC = () => {
           <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 max-w-2xl w-full max-h-[80vh] flex flex-col shadow-xl space-y-4">
             <div className="flex items-center justify-between border-b border-[var(--hub-line)] pb-3">
               <div className="flex items-center gap-2">
-                <Wrench className="w-5 h-5 text-purple-600" />
+                <Wrench className="w-5 h-5 text-purple-700 dark:text-purple-300" />
                 <div>
                   <h4 className="font-bold text-sm text-[var(--hub-ink)]">
                     Discovered NeoSapien MCP Tools
                   </h4>
                   <span className="text-[11px] text-[var(--hub-muted)]">
-                    Live reflection from <code className="font-mono text-purple-500">https://api.neosapien.xyz/mcp (tools/list)</code>
+                    Live reflection from <code className="font-mono text-purple-700 dark:text-purple-300">https://api.neosapien.xyz/mcp (tools/list)</code>
                   </span>
                 </div>
               </div>
@@ -1507,7 +1507,7 @@ export const IntegrationsPage: React.FC = () => {
                     className="p-3.5 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)] space-y-2 text-xs"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-mono font-bold text-purple-600 dark:text-purple-400 text-xs">
+                      <span className="font-mono font-bold text-purple-700 dark:text-purple-400 text-xs">
                         {t.name}
                       </span>
                     </div>
@@ -1547,7 +1547,7 @@ export const IntegrationsPage: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
           <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 max-w-sm w-full shadow-xl space-y-3">
             <h4 className="font-bold text-sm text-[var(--hub-ink)] flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-500" />
+              <AlertTriangle className="w-4 h-4 text-amber-800 dark:text-amber-300" />
               <span>Revoke All Other Sessions?</span>
             </h4>
             <p className="text-xs text-[var(--hub-muted)]">

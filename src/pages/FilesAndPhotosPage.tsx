@@ -155,10 +155,10 @@ export const FilesAndPhotosPage: React.FC<FilesAndPhotosPageProps> = ({ currentA
   };
 
   const getMimeIcon = (mime: string) => {
-    if (mime.includes('spreadsheet') || mime.includes('sheet')) return <FileSpreadsheet className="w-5 h-5 text-emerald-600" />;
-    if (mime.includes('presentation') || mime.includes('slide')) return <FileCode className="w-5 h-5 text-amber-600" />;
-    if (mime.includes('image')) return <ImageIcon className="w-5 h-5 text-purple-600" />;
-    return <FileText className="w-5 h-5 text-blue-600" />;
+    if (mime.includes('spreadsheet') || mime.includes('sheet')) return <FileSpreadsheet className="w-5 h-5 text-emerald-700 dark:text-emerald-300" />;
+    if (mime.includes('presentation') || mime.includes('slide')) return <FileCode className="w-5 h-5 text-amber-800 dark:text-amber-300" />;
+    if (mime.includes('image')) return <ImageIcon className="w-5 h-5 text-purple-700 dark:text-purple-300" />;
+    return <FileText className="w-5 h-5 text-blue-700 dark:text-blue-300" />;
   };
 
   return (
@@ -167,7 +167,7 @@ export const FilesAndPhotosPage: React.FC<FilesAndPhotosPageProps> = ({ currentA
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold font-heading text-[var(--hub-ink)] tracking-tight flex items-center gap-2">
-            <FolderArchive className="w-6 h-6 text-teal-600" />
+            <FolderArchive className="w-6 h-6 text-teal-700 dark:text-teal-300" />
             <span>Files, Drive & Photos</span>
           </h2>
           <p className="text-sm text-[var(--hub-muted)] mt-0.5">
@@ -253,7 +253,7 @@ export const FilesAndPhotosPage: React.FC<FilesAndPhotosPageProps> = ({ currentA
         <div className="space-y-4">
           {!isConnected ? (
             <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-6 text-center space-y-3">
-              <Cloud className="w-10 h-10 text-amber-600 mx-auto" />
+              <Cloud className="w-10 h-10 text-amber-800 dark:text-amber-300 mx-auto" />
               <h3 className="font-heading font-bold text-base text-[var(--hub-ink)]">
                 Connect Google Drive
               </h3>
@@ -341,7 +341,7 @@ export const FilesAndPhotosPage: React.FC<FilesAndPhotosPageProps> = ({ currentA
           <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
             <div>
               <h3 className="font-heading font-bold text-sm text-[var(--hub-ink)] flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-amber-500" />
+                <Sparkles className="w-4 h-4 text-amber-800 dark:text-amber-300" />
                 <span>Google Photos Picker (Official Supported API)</span>
               </h3>
               <p className="text-xs text-[var(--hub-muted)] mt-0.5">

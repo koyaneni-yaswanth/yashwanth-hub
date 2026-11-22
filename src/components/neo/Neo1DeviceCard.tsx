@@ -117,7 +117,7 @@ export const Neo1DeviceCard: React.FC = () => {
           {isPhysicalConnected ? (
             <button
               onClick={handleDisconnect}
-              className="p-2 rounded-lg border border-[var(--hub-line)] text-red-500 hover:bg-red-500/10 text-xs font-semibold flex items-center gap-1 transition-colors"
+              className="p-2 rounded-lg border border-[var(--hub-line)] text-red-700 dark:text-red-300 hover:bg-red-500/10 text-xs font-semibold flex items-center gap-1 transition-colors"
               title="Disconnect physical Bluetooth"
             >
               <Power className="w-3.5 h-3.5" />
@@ -146,7 +146,7 @@ export const Neo1DeviceCard: React.FC = () => {
       </div>
 
       {pairingError && (
-        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-600 dark:text-red-400 flex items-center gap-2">
+        <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-700 dark:text-red-400 flex items-center gap-2">
           <AlertTriangle className="w-4 h-4 flex-none" />
           <span>{pairingError}</span>
         </div>
@@ -157,7 +157,7 @@ export const Neo1DeviceCard: React.FC = () => {
         {/* Pillar 1: Physical Device */}
         <div className="p-3 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)]">
           <div className="text-[10px] uppercase font-bold text-[var(--hub-muted)] tracking-wider flex items-center gap-1">
-            <Bluetooth className="w-3 h-3 text-teal-500" /> Physical Device
+            <Bluetooth className="w-3 h-3 text-teal-700 dark:text-teal-300" /> Physical Device
           </div>
           <div className="mt-1 flex items-center gap-1.5">
             <span
@@ -185,7 +185,7 @@ export const Neo1DeviceCard: React.FC = () => {
         {/* Pillar 2: NeoSapien Account */}
         <div className="p-3 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)]">
           <div className="text-[10px] uppercase font-bold text-[var(--hub-muted)] tracking-wider flex items-center gap-1">
-            <Cloud className="w-3 h-3 text-sky-500" /> Account Auth
+            <Cloud className="w-3 h-3 text-sky-700 dark:text-sky-300" /> Account Auth
           </div>
           <div className="mt-1 flex items-center gap-1.5">
             <span
@@ -203,7 +203,7 @@ export const Neo1DeviceCard: React.FC = () => {
         {/* Pillar 3: Memory Synchronization */}
         <div className="p-3 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)]">
           <div className="text-[10px] uppercase font-bold text-[var(--hub-muted)] tracking-wider flex items-center gap-1">
-            <CheckCircle2 className="w-3 h-3 text-teal-500" /> Memories Synced
+            <CheckCircle2 className="w-3 h-3 text-teal-700 dark:text-teal-300" /> Memories Synced
           </div>
           <div className="mt-1 text-xs font-bold text-[var(--hub-ink)]">
             {memoryCount} Memories
@@ -216,7 +216,7 @@ export const Neo1DeviceCard: React.FC = () => {
         {/* Pillar 4: Battery & Hardware */}
         <div className="p-3 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)]">
           <div className="text-[10px] uppercase font-bold text-[var(--hub-muted)] tracking-wider flex items-center gap-1">
-            <Battery className="w-3 h-3 text-amber-500" /> Device Telemetry
+            <Battery className="w-3 h-3 text-amber-800 dark:text-amber-300" /> Device Telemetry
           </div>
           <div className="mt-1 flex items-center gap-1.5 text-xs font-bold text-[var(--hub-ink)]">
             {batteryPct !== undefined ? `${batteryPct}%` : 'N/A'}
@@ -246,7 +246,7 @@ export const Neo1DeviceCard: React.FC = () => {
             </strong>
           </span>
         </div>
-        <span className="font-mono text-[10px] text-teal-600 dark:text-teal-400">
+        <span className="font-mono text-[10px] text-teal-700 dark:text-teal-400">
           Supabase Realtime Active
         </span>
       </div>

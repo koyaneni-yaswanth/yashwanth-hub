@@ -106,25 +106,25 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
           label="Task Completion"
           value={`${taskCompletionRate}%`}
           subtext={`${completedTasks} of ${totalTasks} completed`}
-          icon={<CheckCircle2 className="w-5 h-5 text-teal-600" />}
+          icon={<CheckCircle2 className="w-5 h-5 text-teal-700 dark:text-teal-300" />}
         />
         <StatCard
           label="Month Burn Rate"
           value={currentMonthSpend === 0 ? '₹0' : formatINR(currentMonthSpend)}
           subtext={currentMonthSpend === 0 ? 'No expenses logged • Manually entered only' : `Cycle: ${currentMonth}`}
-          icon={<IndianRupee className="w-5 h-5 text-amber-600" />}
+          icon={<IndianRupee className="w-5 h-5 text-amber-800 dark:text-amber-300" />}
         />
         <StatCard
           label="Overdue Backlog"
           value={overdueTasks}
           subtext={overdueTasks === 0 ? 'Zero overdue items' : 'Requires immediate attention'}
-          icon={<AlertCircle className={`w-5 h-5 ${overdueTasks > 0 ? 'text-red-500' : 'text-teal-600'}`} />}
+          icon={<AlertCircle className={`w-5 h-5 ${overdueTasks > 0 ? 'text-red-700 dark:text-red-300' : 'text-teal-700 dark:text-teal-300'}`} />}
         />
         <StatCard
           label="Wind TRL Progress"
           value={`${planRate}%`}
           subtext={`${planCompleted} of ${planTasks.length} milestones`}
-          icon={<Wind className="w-5 h-5 text-teal-600" />}
+          icon={<Wind className="w-5 h-5 text-teal-700 dark:text-teal-300" />}
           onClick={() => onNavigate('wind-plan')}
         />
       </div>
@@ -135,7 +135,7 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
         <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
-              <Layers className="w-4 h-4 text-teal-600" />
+              <Layers className="w-4 h-4 text-teal-700 dark:text-teal-300" />
               <span>Workspace Distribution</span>
             </h3>
             <span className="text-xs text-[var(--hub-muted)] font-medium">
@@ -184,7 +184,7 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
         <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-blue-600" />
+              <TrendingUp className="w-4 h-4 text-blue-700 dark:text-blue-300" />
               <span>Open Task Priority Matrix</span>
             </h3>
             <span className="text-xs text-[var(--hub-muted)] font-medium">
@@ -194,37 +194,37 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-center">
-              <span className="text-xs font-bold text-red-600 uppercase tracking-wider block">
+              <span className="text-xs font-bold text-red-700 dark:text-red-300 uppercase tracking-wider block">
                 Urgent
               </span>
               <span className="text-3xl font-bold font-heading text-red-700 dark:text-red-300 mt-1 block">
                 {priorityCounts.urgent}
               </span>
-              <span className="text-[11px] text-red-800/70 dark:text-red-300/70 mt-1 block">
+              <span className="text-[11px] text-red-800 dark:text-red-200 mt-1 block">
                 Critical blockers
               </span>
             </div>
 
             <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-center">
-              <span className="text-xs font-bold text-amber-600 uppercase tracking-wider block">
+              <span className="text-xs font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wider block">
                 High Priority
               </span>
-              <span className="text-3xl font-bold font-heading text-amber-700 dark:text-amber-300 mt-1 block">
+              <span className="text-3xl font-bold font-heading text-amber-800 dark:text-amber-300 mt-1 block">
                 {priorityCounts.high}
               </span>
-              <span className="text-[11px] text-amber-800/70 dark:text-amber-300/70 mt-1 block">
+              <span className="text-[11px] text-amber-800 dark:text-amber-200 mt-1 block">
                 Key deliverables
               </span>
             </div>
 
             <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-center">
-              <span className="text-xs font-bold text-blue-600 uppercase tracking-wider block">
+              <span className="text-xs font-bold text-blue-700 dark:text-blue-300 uppercase tracking-wider block">
                 Medium Priority
               </span>
               <span className="text-3xl font-bold font-heading text-blue-700 dark:text-blue-300 mt-1 block">
                 {priorityCounts.medium}
               </span>
-              <span className="text-[11px] text-blue-800/70 dark:text-blue-300/70 mt-1 block">
+              <span className="text-[11px] text-blue-800 dark:text-blue-200 mt-1 block">
                 Standard tasks
               </span>
             </div>
@@ -252,7 +252,7 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
-            <PieChart className="w-4 h-4 text-emerald-600" />
+            <PieChart className="w-4 h-4 text-emerald-700 dark:text-emerald-300" />
             <span>Cumulative Expenditure Breakdown</span>
           </h3>
           <span className="text-xs font-bold text-[var(--hub-ink)]">

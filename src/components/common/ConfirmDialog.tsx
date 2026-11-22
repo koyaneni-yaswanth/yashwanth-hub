@@ -27,7 +27,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     <Modal isOpen={isOpen} onClose={onClose} title={title} maxWidth="max-w-md">
       <div className="flex gap-4 items-start">
         {danger && (
-          <div className="p-2.5 rounded-full bg-red-500/10 text-red-600 flex-none">
+          <div className="p-2.5 rounded-full bg-red-500/10 text-red-700 dark:text-red-300 flex-none">
             <AlertTriangle className="w-6 h-6" />
           </div>
         )}

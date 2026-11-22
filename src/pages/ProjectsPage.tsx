@@ -560,7 +560,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
 
         {/* Truthfulness / Grounding Baseline Banner */}
         {proj.verification_note && (
-          <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2.5">
+          <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2.5">
             <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
             <div>
               <span className="font-bold">Verification Baseline: </span>
@@ -655,7 +655,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
 
             <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 space-y-4">
               <h3 className="font-heading font-bold text-sm text-[var(--hub-ink)] flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-700 dark:text-emerald-300" />
                 <span>Milestones ({proj.milestones.filter((m) => m.done).length}/{proj.milestones.length})</span>
               </h3>
               <div className="space-y-2">
@@ -1038,7 +1038,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold font-heading text-[var(--hub-ink)] tracking-tight flex items-center gap-2">
-            <FolderKanban className="w-6 h-6 text-teal-600 dark:text-teal-400" />
+            <FolderKanban className="w-6 h-6 text-teal-700 dark:text-teal-400" />
             <span>Projects & Intelligence Workspaces</span>
           </h2>
           <p className="text-sm text-[var(--hub-muted)] mt-0.5">
@@ -1171,7 +1171,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
                       <div className="flex items-center justify-between text-[11px] text-[var(--hub-muted)]">
                         <span>{p.progress}% • {p.milestones.length} milestones</span>
                         {openBlockerCount > 0 && (
-                          <span className="text-red-500 font-semibold">{openBlockerCount} blocker(s)</span>
+                          <span className="text-red-700 dark:text-red-400 font-semibold">{openBlockerCount} blocker(s)</span>
                         )}
                       </div>
 

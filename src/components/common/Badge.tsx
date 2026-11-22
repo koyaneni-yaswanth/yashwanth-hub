@@ -14,13 +14,13 @@ export const Badge: React.FC<BadgeProps> = ({
   dot = false,
 }) => {
   const variantStyles = {
-    teal: 'bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/20',
-    amber: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20',
-    red: 'bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/20',
-    blue: 'bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20',
-    purple: 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20',
-    emerald: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20',
-    gray: 'bg-gray-500/10 text-gray-700 dark:text-gray-300 border-gray-500/20',
+    teal: 'bg-teal-500/10 text-teal-800 dark:text-teal-300 border-teal-500/20',
+    amber: 'bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-500/20',
+    red: 'bg-red-500/10 text-red-800 dark:text-red-300 border-red-500/20',
+    blue: 'bg-blue-500/10 text-blue-800 dark:text-blue-300 border-blue-500/20',
+    purple: 'bg-purple-500/10 text-purple-800 dark:text-purple-300 border-purple-500/20',
+    emerald: 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border-emerald-500/20',
+    gray: 'bg-gray-500/10 text-gray-800 dark:text-gray-300 border-gray-500/20',
   };
 
   return (

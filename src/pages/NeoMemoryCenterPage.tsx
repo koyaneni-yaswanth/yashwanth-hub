@@ -269,7 +269,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
       <div className="bg-[var(--hub-card-bg)] border border-[var(--hub-border)] rounded-2xl p-6 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-emerald-500/20 to-teal-500/30 flex items-center justify-center text-emerald-400 border border-emerald-500/30 shrink-0">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-emerald-500/20 to-teal-500/30 flex items-center justify-center text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 shrink-0">
               <Brain className="w-6 h-6" />
             </div>
             <div>
@@ -295,14 +295,14 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
               onClick={() => setIsImportModalOpen(true)}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[var(--hub-border)] bg-[var(--hub-card-bg)] hover:bg-[var(--hub-border)] text-sm font-medium transition-colors"
             >
-              <Upload className="w-4 h-4 text-emerald-400" />
+              <Upload className="w-4 h-4 text-emerald-700 dark:text-emerald-300" />
               Import Memories
             </button>
             <button
               onClick={() => setIsPrivacyModalOpen(true)}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[var(--hub-border)] bg-[var(--hub-card-bg)] hover:bg-[var(--hub-border)] text-sm font-medium transition-colors"
             >
-              <Shield className="w-4 h-4 text-blue-400" />
+              <Shield className="w-4 h-4 text-blue-700 dark:text-blue-300" />
               Privacy & AI Controls
             </button>
             <button
@@ -320,22 +320,22 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-6 border-t border-[var(--hub-border)]">
           <div className="p-3 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-border)]">
             <div className="text-xs text-[var(--hub-muted)] uppercase tracking-wider">Total Memories</div>
-            <div className="text-xl font-bold mt-1 text-emerald-400">{allMemories.length}</div>
+            <div className="text-xl font-bold mt-1 text-emerald-700 dark:text-emerald-300">{allMemories.length}</div>
             <div className="text-[11px] text-[var(--hub-muted)] mt-0.5">Stored offline in IndexedDB</div>
           </div>
           <div className="p-3 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-border)]">
             <div className="text-xs text-[var(--hub-muted)] uppercase tracking-wider">Open Commitments</div>
-            <div className="text-xl font-bold mt-1 text-amber-400">{reconciliationData.newCommitments.length}</div>
+            <div className="text-xl font-bold mt-1 text-amber-800 dark:text-amber-300">{reconciliationData.newCommitments.length}</div>
             <div className="text-[11px] text-[var(--hub-muted)] mt-0.5">Awaiting your approval</div>
           </div>
           <div className="p-3 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-border)]">
             <div className="text-xs text-[var(--hub-muted)] uppercase tracking-wider">Approved Tasks</div>
-            <div className="text-xl font-bold mt-1 text-blue-400">{reconciliationData.approvedItems.length}</div>
+            <div className="text-xl font-bold mt-1 text-blue-700 dark:text-blue-300">{reconciliationData.approvedItems.length}</div>
             <div className="text-[11px] text-[var(--hub-muted)] mt-0.5">Synced to Yashwanth Hub</div>
           </div>
           <div className="p-3 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-border)]">
             <div className="text-xs text-[var(--hub-muted)] uppercase tracking-wider">Query Latency</div>
-            <div className="text-xl font-bold mt-1 text-purple-400">{searchLatency} ms</div>
+            <div className="text-xl font-bold mt-1 text-purple-700 dark:text-purple-300">{searchLatency} ms</div>
             <div className="text-[11px] text-[var(--hub-muted)] mt-0.5">Local compound indexing</div>
           </div>
         </div>
@@ -347,7 +347,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
           onClick={() => setActiveTab('timeline')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
             activeTab === 'timeline'
-              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
               : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
           }`}
         >
@@ -358,7 +358,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
           onClick={() => setActiveTab('reconciliation')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
             activeTab === 'reconciliation'
-              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
               : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
           }`}
         >
@@ -374,7 +374,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
           onClick={() => setActiveTab('calendar')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
             activeTab === 'calendar'
-              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
               : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
           }`}
         >
@@ -385,7 +385,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
           onClick={() => setActiveTab('sync_mcp')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
             activeTab === 'sync_mcp'
-              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
               : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
           }`}
         >
@@ -465,7 +465,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
               </p>
               <button
                 onClick={handleLoadSampleMeeting}
-                className="mt-4 px-4 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-medium hover:bg-emerald-500/25 transition-colors"
+                className="mt-4 px-4 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-xs font-medium hover:bg-emerald-500/25 transition-colors"
               >
                 Load Sample AMR Robotics Desktop Meeting
               </button>
@@ -485,12 +485,12 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                       <div className="flex items-center gap-2 flex-wrap">
                         {isWearable ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
                             <Mic className="w-3 h-3" />
                             Neo 1 Wearable
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30">
                             <Laptop className="w-3 h-3" />
                             NeoSapien Desktop
                           </span>
@@ -507,7 +507,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
                         )}
 
                         {mem.associatedGoogleEventId && (
-                          <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400">
+                          <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700 dark:text-emerald-300">
                             <Calendar className="w-3 h-3" />
                             Google Calendar Linked
                           </span>
@@ -537,13 +537,13 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
                           key={i}
                           className="text-xs text-[var(--hub-muted)] flex items-center gap-1 bg-[var(--hub-bg)] px-2.5 py-1 rounded-md border border-[var(--hub-border)]"
                         >
-                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                          <CheckCircle2 className="w-3 h-3 text-emerald-700 dark:text-emerald-300" />
                           <strong>Decision:</strong> {dec.text}
                         </span>
                       ))}
 
                       {hasPendingActions && (
-                        <span className="text-xs text-amber-400 flex items-center gap-1 bg-amber-500/10 px-2.5 py-1 rounded-md border border-amber-500/20">
+                        <span className="text-xs text-amber-800 dark:text-amber-300 flex items-center gap-1 bg-amber-500/10 px-2.5 py-1 rounded-md border border-amber-500/20">
                           <AlertTriangle className="w-3 h-3" />
                           Action Items Awaiting Approval
                         </span>
@@ -569,7 +569,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
           <div className="bg-[var(--hub-card-bg)] border border-[var(--hub-border)] rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h2 className="text-base font-bold flex items-center gap-2">
-                <CheckSquare className="w-5 h-5 text-emerald-400" />
+                <CheckSquare className="w-5 h-5 text-emerald-700 dark:text-emerald-300" />
                 Commitment Reconciliation Engine ("I Approve" Standard)
               </h2>
               <p className="text-sm text-[var(--hub-muted)] mt-1">
@@ -589,7 +589,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
 
           {/* New Commitments Awaiting Approval */}
           <div className="space-y-3">
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-amber-400 flex items-center gap-2">
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-amber-800 dark:text-amber-300 flex items-center gap-2">
               <AlertTriangle className="w-4 h-4" />
               New Commitments Awaiting Approval ({reconciliationData.newCommitments.length})
             </h3>
@@ -632,7 +632,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
                     {GoogleAuthService.isConnected() && (
                       <button
                         onClick={() => handleApproveActionItem(memory.id, item.id, true)}
-                        className="px-3.5 py-1.5 rounded-xl bg-blue-500/20 border border-blue-500/40 hover:bg-blue-500/30 text-blue-400 font-semibold text-xs transition-colors"
+                        className="px-3.5 py-1.5 rounded-xl bg-blue-500/20 border border-blue-500/40 hover:bg-blue-500/30 text-blue-700 dark:text-blue-300 font-semibold text-xs transition-colors"
                       >
                         Approve & Push to Google
                       </button>
@@ -652,7 +652,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
           {/* Overdue Items */}
           {reconciliationData.overdueItems.length > 0 && (
             <div className="space-y-3 pt-4 border-t border-[var(--hub-border)]">
-              <h3 className="text-sm font-semibold uppercase tracking-wider text-red-400 flex items-center gap-2">
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-red-700 dark:text-red-300 flex items-center gap-2">
                 <Clock className="w-4 h-4" />
                 Overdue Spoken Reminders ({reconciliationData.overdueItems.length})
               </h3>
@@ -662,14 +662,14 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
                   className="bg-[var(--hub-card-bg)] border border-red-500/30 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4"
                 >
                   <div>
-                    <div className="text-sm font-semibold text-red-400">{item.text}</div>
+                    <div className="text-sm font-semibold text-red-700 dark:text-red-300">{item.text}</div>
                     <div className="text-xs text-[var(--hub-muted)] mt-1">
                       Deadline was {item.detectedDeadline} (from: "{memory.title}")
                     </div>
                   </div>
                   <button
                     onClick={() => handleApproveActionItem(memory.id, item.id, false)}
-                    className="px-3.5 py-1.5 rounded-xl bg-red-500/20 border border-red-500/40 text-red-400 text-xs font-semibold hover:bg-red-500/30 transition-colors"
+                    className="px-3.5 py-1.5 rounded-xl bg-red-500/20 border border-red-500/40 text-red-700 dark:text-red-300 text-xs font-semibold hover:bg-red-500/30 transition-colors"
                   >
                     Reschedule & Add Task
                   </button>
@@ -686,7 +686,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
           <div className="bg-[var(--hub-card-bg)] border border-[var(--hub-border)] rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h2 className="text-base font-bold flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-emerald-400" />
+                <Calendar className="w-5 h-5 text-emerald-700 dark:text-emerald-300" />
                 Pre-Meeting Intelligence & Google Calendar Sync
               </h2>
               <p className="text-sm text-[var(--hub-muted)] mt-1">
@@ -740,7 +740,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
                           `Prepare a pre-meeting intelligence brief for event "${ev.title}" on ${ev.date}. Summarize what we previously discussed and what action items remain open.`
                         )
                       }
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/15 border border-purple-500/30 text-purple-400 hover:bg-purple-500/25 text-xs font-semibold transition-colors"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/15 border border-purple-500/30 text-purple-700 dark:text-purple-300 hover:bg-purple-500/25 text-xs font-semibold transition-colors"
                     >
                       <Sparkles className="w-3.5 h-3.5" />
                       Generate AI Meeting Brief
@@ -749,7 +749,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
 
                   {matchingMemories.length > 0 ? (
                     <div className="p-3 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-border)] space-y-2">
-                      <div className="text-xs font-semibold text-emerald-400">
+                      <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
                         Prior NeoSapien Memories Connected:
                       </div>
                       {matchingMemories.map((mm) => (
@@ -759,7 +759,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
                           </span>
                           <button
                             onClick={() => openMemoryReview(mm)}
-                            className="text-emerald-400 hover:underline"
+                            className="text-emerald-700 dark:text-emerald-300 hover:underline"
                           >
                             View
                           </button>
@@ -783,7 +783,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
         <div className="space-y-6">
           {/* Discovery & Architecture Card */}
           <div className="bg-[var(--hub-card-bg)] border border-[var(--hub-border)] rounded-2xl p-6 shadow-sm">
-            <h2 className="text-base font-bold flex items-center gap-2 text-emerald-400">
+            <h2 className="text-base font-bold flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
               <Shield className="w-5 h-5" />
               Official Product Architecture & Integration Protocol
             </h2>
@@ -833,8 +833,8 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
                         <td className="py-2.5">
                           <Badge variant={log.status === 'success' ? 'emerald' : 'amber'}>{log.status}</Badge>
                         </td>
-                        <td className="py-2.5 text-emerald-400 font-bold">{log.memoriesImported}</td>
-                        <td className="py-2.5 text-blue-400">{log.memoriesUpdated}</td>
+                        <td className="py-2.5 text-emerald-700 dark:text-emerald-300 font-bold">{log.memoriesImported}</td>
+                        <td className="py-2.5 text-blue-700 dark:text-blue-300">{log.memoriesUpdated}</td>
                         <td className="py-2.5 text-[var(--hub-muted)]">{log.details || 'OK'}</td>
                       </tr>
                     ))}
@@ -963,7 +963,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
 
             {selectedMemory.decisions?.length > 0 && (
               <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-400 mb-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 mb-2">
                   Key Decisions Agreed Upon
                 </h4>
                 <div className="space-y-1.5">
@@ -972,7 +972,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
                       key={i}
                       className="text-xs p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[var(--hub-ink)] flex items-start gap-2"
                     >
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                      <CheckCircle2 className="w-4 h-4 text-emerald-700 dark:text-emerald-300 shrink-0 mt-0.5" />
                       <span>{d.text}</span>
                     </div>
                   ))}
@@ -982,7 +982,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
 
             {selectedMemory.actionItems?.length > 0 && (
               <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 mb-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300 mb-2">
                   Action Items & Commitments
                 </h4>
                 <div className="space-y-2">
@@ -1033,7 +1033,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
                   setIsEditingMemory(false);
                   onNavigateToAI?.(`Analyze this NeoSapien memory: "${selectedMemory.title}". What are the critical engineering tradeoffs and next steps?`);
                 }}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-purple-500/15 border border-purple-500/30 text-purple-400 text-xs font-semibold hover:bg-purple-500/25 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-purple-500/15 border border-purple-500/30 text-purple-700 dark:text-purple-300 text-xs font-semibold hover:bg-purple-500/25 transition-colors cursor-pointer"
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 Ask Yashwanth AI About This Memory
@@ -1079,8 +1079,8 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
               <div
                 className={`text-xs p-3 rounded-xl ${
                   importMessage.startsWith('Success')
-                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                    : 'bg-red-500/15 text-red-400 border border-red-500/30'
+                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
+                    : 'bg-red-500/15 text-red-700 dark:text-red-300 border border-red-500/30'
                 }`}
               >
                 {importMessage}
@@ -1090,7 +1090,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
             <div className="flex items-center justify-between pt-3 border-t border-[var(--hub-border)]">
               <button
                 onClick={handleLoadSampleMeeting}
-                className="text-xs text-emerald-400 hover:underline font-medium"
+                className="text-xs text-emerald-700 dark:text-emerald-300 hover:underline font-medium"
               >
                 Load Sample Robotics Meeting
               </button>

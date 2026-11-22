@@ -360,10 +360,10 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
       {/* Google Calendar Cloud Sync Status Notice */}
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xs">
         <div className="flex items-center gap-2 text-[var(--hub-muted)]">
-          <CalendarDays className="w-4 h-4 text-blue-500 flex-none" />
+          <CalendarDays className="w-4 h-4 text-blue-700 dark:text-blue-300 flex-none" />
           <span>
             Google Calendar Sync:{' '}
-            <strong className={isGoogleConnected ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-[var(--hub-ink)] font-semibold'}>
+            <strong className={isGoogleConnected ? 'text-emerald-700 dark:text-emerald-400 font-semibold' : 'text-[var(--hub-ink)] font-semibold'}>
               {isGoogleConnected ? 'Connected' : 'Ready to Connect'}
             </strong>{' '}
             ({isGoogleConnected ? 'Two-way sync active with Google Calendar' : 'Connect Google Workspace in Settings to enable two-way sync'})

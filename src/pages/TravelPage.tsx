@@ -69,15 +69,15 @@ export const TravelPage: React.FC<TravelPageProps> = ({ currentArea, areas }) =>
   const getModeIcon = (mode: TravelRecord['mode']) => {
     switch (mode) {
       case 'Flight':
-        return <Plane className="w-4 h-4 text-blue-500" />;
+        return <Plane className="w-4 h-4 text-blue-700 dark:text-blue-300" />;
       case 'Train':
-        return <Train className="w-4 h-4 text-emerald-500" />;
+        return <Train className="w-4 h-4 text-emerald-700 dark:text-emerald-300" />;
       case 'Cab / Car':
-        return <Car className="w-4 h-4 text-amber-500" />;
+        return <Car className="w-4 h-4 text-amber-800 dark:text-amber-300" />;
       case 'Bus':
-        return <Bus className="w-4 h-4 text-purple-500" />;
+        return <Bus className="w-4 h-4 text-purple-700 dark:text-purple-300" />;
       default:
-        return <Navigation className="w-4 h-4 text-teal-500" />;
+        return <Navigation className="w-4 h-4 text-teal-700 dark:text-teal-300" />;
     }
   };
 
@@ -222,7 +222,7 @@ export const TravelPage: React.FC<TravelPageProps> = ({ currentArea, areas }) =>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {sortedTravel.length === 0 ? (
           <div className="col-span-full bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-12 text-center text-sm text-[var(--hub-muted)]">
-            <Plane className="w-10 h-10 mx-auto text-blue-500 mb-3 opacity-60" />
+            <Plane className="w-10 h-10 mx-auto text-blue-700 dark:text-blue-300 mb-3 opacity-60" />
             <h3 className="text-base font-bold text-[var(--hub-ink)]">No trips in this view</h3>
             <p className="text-xs mt-1">Plan your next site visit, supplier meeting, or conference trip.</p>
           </div>
@@ -255,7 +255,7 @@ export const TravelPage: React.FC<TravelPageProps> = ({ currentArea, areas }) =>
                   </div>
 
                   <h3 className="text-lg font-bold font-heading text-[var(--hub-ink)] flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-red-500 flex-none" />
+                    <MapPin className="w-4 h-4 text-red-700 dark:text-red-300 flex-none" />
                     <span>{trip.destination}</span>
                   </h3>
 
@@ -265,7 +265,7 @@ export const TravelPage: React.FC<TravelPageProps> = ({ currentArea, areas }) =>
 
                   <div className="flex flex-wrap items-center gap-4 text-xs text-[var(--hub-muted)] mt-3">
                     <span className="flex items-center gap-1 font-semibold text-[var(--hub-ink)]">
-                      <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                      <Calendar className="w-3.5 h-3.5 text-blue-700 dark:text-blue-300" />
                       {formatShortDate(trip.start_date)}
                       {trip.start_date !== trip.end_date && ` - ${formatShortDate(trip.end_date)}`}
                     </span>
@@ -300,7 +300,7 @@ export const TravelPage: React.FC<TravelPageProps> = ({ currentArea, areas }) =>
                     onClick={() => handleToggleCompleted(trip)}
                     className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                       isCompleted
-                        ? 'text-emerald-600 hover:bg-emerald-500/10'
+                        ? 'text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10'
                         : 'text-[var(--hub-muted)] hover:text-emerald-600 hover:bg-[var(--hub-bg)]'
                     }`}
                     title={isCompleted ? 'Mark active' : 'Mark completed'}

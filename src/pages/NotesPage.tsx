@@ -182,7 +182,7 @@ export const NotesPage: React.FC<NotesPageProps> = ({ currentArea, areas }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {sortedNotes.length === 0 ? (
           <div className="col-span-full bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-12 text-center text-sm text-[var(--hub-muted)]">
-            <FileText className="w-10 h-10 mx-auto text-amber-500 mb-3 opacity-60" />
+            <FileText className="w-10 h-10 mx-auto text-amber-800 dark:text-amber-300 mb-3 opacity-60" />
             <h3 className="text-base font-bold text-[var(--hub-ink)]">No notes found</h3>
             <p className="text-xs mt-1">Capture your first engineering note or founder principle.</p>
           </div>
@@ -205,7 +205,7 @@ export const NotesPage: React.FC<NotesPageProps> = ({ currentArea, areas }) => {
                     onClick={() => handleTogglePin(note)}
                     className={`p-1 rounded-md transition-colors cursor-pointer flex-none ${
                       note.pinned
-                        ? 'text-amber-500 bg-amber-500/10'
+                        ? 'text-amber-800 dark:text-amber-300 bg-amber-500/10'
                         : 'text-[var(--hub-muted)] hover:text-amber-500 hover:bg-[var(--hub-bg)]'
                     }`}
                     title={note.pinned ? 'Unpin from dashboard' : 'Pin to dashboard'}

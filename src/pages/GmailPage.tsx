@@ -99,7 +99,7 @@ export const GmailPage: React.FC<GmailPageProps> = ({ onNavigateToTasks }) => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold font-heading text-[var(--hub-ink)] tracking-tight flex items-center gap-2">
-            <Mail className="w-6 h-6 text-red-500" />
+            <Mail className="w-6 h-6 text-red-700 dark:text-red-300" />
             <span>Gmail Intelligence & Follow-Ups</span>
           </h2>
           <p className="text-sm text-[var(--hub-muted)] mt-0.5">
@@ -122,7 +122,7 @@ export const GmailPage: React.FC<GmailPageProps> = ({ onNavigateToTasks }) => {
       {/* Connection Banner */}
       {!isConnected ? (
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-6 text-center space-y-3">
-          <Mail className="w-10 h-10 text-amber-600 mx-auto" />
+          <Mail className="w-10 h-10 text-amber-800 dark:text-amber-300 mx-auto" />
           <h3 className="font-heading font-bold text-base text-[var(--hub-ink)]">
             Connect Your Google Account
           </h3>
@@ -215,7 +215,7 @@ export const GmailPage: React.FC<GmailPageProps> = ({ onNavigateToTasks }) => {
 
                   {item.suggestedAction && (
                     <div className="p-2.5 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] flex items-center gap-2 text-xs text-[var(--hub-accent)] font-medium">
-                      <Sparkles className="w-3.5 h-3.5 flex-none text-amber-500" />
+                      <Sparkles className="w-3.5 h-3.5 flex-none text-amber-800 dark:text-amber-300" />
                       <span>AI Suggestion: {item.suggestedAction}</span>
                     </div>
                   )}

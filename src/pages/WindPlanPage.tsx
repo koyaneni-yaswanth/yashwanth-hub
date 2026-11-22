@@ -321,18 +321,18 @@ export const WindPlanPage: React.FC = () => {
                 className="w-16 h-16 sm:w-20 sm:h-20 flex-none"
               />
               {progressPercent === 100 && (
-                <Sparkles className="w-6 h-6 text-amber-500 absolute -top-1 -right-1 animate-bounce" />
+                <Sparkles className="w-6 h-6 text-amber-800 dark:text-amber-300 absolute -top-1 -right-1 animate-bounce" />
               )}
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-teal-500/10 text-teal-700 dark:text-teal-400 border border-teal-500/20">
                   VNIT Venture Vault Incubation
                 </span>
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-800 dark:text-amber-400 border border-amber-500/20">
                   Patent Published
                 </span>
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono text-[10px] bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono text-[10px] bg-sky-500/10 text-sky-700 dark:text-sky-400 border border-sky-500/20">
                   TRL 4 → TRL 5/6 Sprint
                 </span>
               </div>
@@ -349,7 +349,7 @@ export const WindPlanPage: React.FC = () => {
           <div className="flex flex-row lg:flex-col items-center lg:items-end justify-between gap-2 border-t lg:border-t-0 pt-3 lg:pt-0 border-[var(--hub-line)]">
             <div className="text-left lg:text-right">
               <div className="text-xs text-[var(--hub-muted)] font-medium">Sprint Progress</div>
-              <div className="font-heading font-extrabold text-2xl text-teal-600 dark:text-teal-400">
+              <div className="font-heading font-extrabold text-2xl text-teal-700 dark:text-teal-400">
                 {progressPercent}%
               </div>
             </div>
@@ -365,7 +365,7 @@ export const WindPlanPage: React.FC = () => {
         <div className="mt-6 pt-4 border-t border-[var(--hub-line)]">
           <div className="flex items-center justify-between text-xs text-[var(--hub-muted)] mb-2 font-medium">
             <span>Gate 1: Baseline Audit (Day 7)</span>
-            <span className="text-amber-500 font-bold flex items-center gap-1">
+            <span className="text-amber-800 dark:text-amber-300 font-bold flex items-center gap-1">
               <Flame className="w-3.5 h-3.5" /> DAY 45 FREEZE GATE (Architecture Lock)
             </span>
             <span>Final Gate: Pilot Handover (Day 90)</span>
@@ -396,9 +396,9 @@ export const WindPlanPage: React.FC = () => {
         <div className="p-4 rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-line)]">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-heading font-bold text-xs uppercase tracking-wider text-[var(--hub-muted)] flex items-center gap-1.5">
-              <Zap className="w-4 h-4 text-sky-500" /> Physics Baseline
+              <Zap className="w-4 h-4 text-sky-700 dark:text-sky-300" /> Physics Baseline
             </h3>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-500/10 text-sky-500 font-semibold">
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-500/10 text-sky-700 dark:text-sky-300 font-semibold">
               P = ½ρAv³
             </span>
           </div>
@@ -417,7 +417,7 @@ export const WindPlanPage: React.FC = () => {
             </div>
             <div className="flex justify-between py-1">
               <span className="text-[var(--hub-muted)]">Rated at 11.0 m/s:</span>
-              <span className="font-mono text-teal-600 dark:text-teal-400 font-bold">250W–300W electrical</span>
+              <span className="font-mono text-teal-700 dark:text-teal-400 font-bold">250W–300W electrical</span>
             </div>
           </div>
         </div>
@@ -426,9 +426,9 @@ export const WindPlanPage: React.FC = () => {
         <div className="p-4 rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-line)]">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-heading font-bold text-xs uppercase tracking-wider text-[var(--hub-muted)] flex items-center gap-1.5">
-              <Cpu className="w-4 h-4 text-amber-500" /> Shootout Pods
+              <Cpu className="w-4 h-4 text-amber-800 dark:text-amber-300" /> Shootout Pods
             </h3>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 font-semibold">
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-800 dark:text-amber-300 font-semibold">
               Freeze Day 45
             </span>
           </div>
@@ -443,11 +443,11 @@ export const WindPlanPage: React.FC = () => {
             </div>
             <div className="flex justify-between py-1 border-b border-[var(--hub-line)]/50">
               <span className="text-[var(--hub-muted)]">Decision Standard:</span>
-              <span className="font-mono text-amber-500 font-semibold">Scored on Measured Data</span>
+              <span className="font-mono text-amber-800 dark:text-amber-300 font-semibold">Scored on Measured Data</span>
             </div>
             <div className="flex justify-between py-1">
               <span className="text-[var(--hub-muted)]">Sunk Cost Rule:</span>
-              <span className="font-mono text-red-500 font-semibold">Drop losing pod immediately</span>
+              <span className="font-mono text-red-700 dark:text-red-300 font-semibold">Drop losing pod immediately</span>
             </div>
           </div>
         </div>
@@ -456,9 +456,9 @@ export const WindPlanPage: React.FC = () => {
         <div className="p-4 rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-line)]">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-heading font-bold text-xs uppercase tracking-wider text-[var(--hub-muted)] flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-teal-500" /> Locked Specs
+              <ShieldCheck className="w-4 h-4 text-teal-700 dark:text-teal-300" /> Locked Specs
             </h3>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-teal-500/10 text-teal-500 font-semibold">
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-teal-500/10 text-teal-700 dark:text-teal-300 font-semibold">
               Wood Retired
             </span>
           </div>
@@ -477,7 +477,7 @@ export const WindPlanPage: React.FC = () => {
             </div>
             <div className="flex justify-between py-1">
               <span className="text-[var(--hub-muted)]">Failsafe Braking:</span>
-              <span className="font-mono text-teal-600 dark:text-teal-400 font-semibold">500W Dump Load + E-Stop Resistor</span>
+              <span className="font-mono text-teal-700 dark:text-teal-400 font-semibold">500W Dump Load + E-Stop Resistor</span>
             </div>
           </div>
         </div>
@@ -489,7 +489,7 @@ export const WindPlanPage: React.FC = () => {
           onClick={() => setActiveTab('roadmap')}
           className={`flex items-center gap-2 px-4 py-2.5 font-heading text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer ${
             activeTab === 'roadmap'
-              ? 'border-teal-500 text-teal-600 dark:text-teal-400'
+              ? 'border-teal-500 text-teal-700 dark:text-teal-400'
               : 'border-transparent text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
           }`}
         >
@@ -500,7 +500,7 @@ export const WindPlanPage: React.FC = () => {
           onClick={() => setActiveTab('tasks')}
           className={`flex items-center gap-2 px-4 py-2.5 font-heading text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer ${
             activeTab === 'tasks'
-              ? 'border-teal-500 text-teal-600 dark:text-teal-400'
+              ? 'border-teal-500 text-teal-700 dark:text-teal-400'
               : 'border-transparent text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
           }`}
         >
@@ -511,7 +511,7 @@ export const WindPlanPage: React.FC = () => {
           onClick={() => setActiveTab('shootout')}
           className={`flex items-center gap-2 px-4 py-2.5 font-heading text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer ${
             activeTab === 'shootout'
-              ? 'border-teal-500 text-teal-600 dark:text-teal-400'
+              ? 'border-teal-500 text-teal-700 dark:text-teal-400'
               : 'border-transparent text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
           }`}
         >
@@ -522,7 +522,7 @@ export const WindPlanPage: React.FC = () => {
           onClick={() => setActiveTab('telemetry')}
           className={`flex items-center gap-2 px-4 py-2.5 font-heading text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer ${
             activeTab === 'telemetry'
-              ? 'border-teal-500 text-teal-600 dark:text-teal-400'
+              ? 'border-teal-500 text-teal-700 dark:text-teal-400'
               : 'border-transparent text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
           }`}
         >
@@ -533,7 +533,7 @@ export const WindPlanPage: React.FC = () => {
           onClick={() => setActiveTab('bom')}
           className={`flex items-center gap-2 px-4 py-2.5 font-heading text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer ${
             activeTab === 'bom'
-              ? 'border-teal-500 text-teal-600 dark:text-teal-400'
+              ? 'border-teal-500 text-teal-700 dark:text-teal-400'
               : 'border-transparent text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
           }`}
         >
@@ -544,7 +544,7 @@ export const WindPlanPage: React.FC = () => {
           onClick={() => setActiveTab('decisions')}
           className={`flex items-center gap-2 px-4 py-2.5 font-heading text-xs font-bold border-b-2 transition-all whitespace-nowrap cursor-pointer ${
             activeTab === 'decisions'
-              ? 'border-teal-500 text-teal-600 dark:text-teal-400'
+              ? 'border-teal-500 text-teal-700 dark:text-teal-400'
               : 'border-transparent text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
           }`}
         >
@@ -570,7 +570,7 @@ export const WindPlanPage: React.FC = () => {
                   className="w-full flex items-center justify-between p-4 bg-[var(--hub-surface-raised)]/50 hover:bg-[var(--hub-surface-raised)] text-left transition-colors cursor-pointer"
                 >
                   <div className="flex items-center gap-3">
-                    <span className="w-7 h-7 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 font-bold flex items-center justify-center text-xs font-mono">
+                    <span className="w-7 h-7 rounded-lg bg-teal-500/10 text-teal-700 dark:text-teal-400 font-bold flex items-center justify-center text-xs font-mono">
                       P{pIdx + 1}
                     </span>
                     <div>
@@ -581,7 +581,7 @@ export const WindPlanPage: React.FC = () => {
                   </div>
                   <div className="flex items-center gap-2">
                     {phase.badge && (
-                      <span className="hidden sm:inline-block px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                      <span className="hidden sm:inline-block px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-500/20">
                         {phase.badge}
                       </span>
                     )}
@@ -622,7 +622,7 @@ export const WindPlanPage: React.FC = () => {
                                   type="checkbox"
                                   checked={isDone}
                                   onChange={() => toggleCheck(itemId)}
-                                  className="mt-0.5 w-4 h-4 rounded text-teal-600 focus:ring-teal-500 cursor-pointer flex-none"
+                                  className="mt-0.5 w-4 h-4 rounded text-teal-700 dark:text-teal-300 focus:ring-teal-500 cursor-pointer flex-none"
                                 />
                                 <span className="leading-relaxed">{taskStr}</span>
                               </label>
@@ -632,7 +632,7 @@ export const WindPlanPage: React.FC = () => {
 
                         {/* Deliverable badge */}
                         <div className="flex items-center gap-2 text-xs text-[var(--hub-muted)] bg-[var(--hub-bg)] p-2.5 rounded-lg border border-[var(--hub-line)]">
-                          <FileCheck className="w-4 h-4 text-teal-500 flex-none" />
+                          <FileCheck className="w-4 h-4 text-teal-700 dark:text-teal-300 flex-none" />
                           <span>
                             <strong className="text-[var(--hub-ink)]">Key Deliverable:</strong> {week.d}
                           </span>
@@ -651,7 +651,7 @@ export const WindPlanPage: React.FC = () => {
       {activeTab === 'tasks' && (
         <div className="space-y-4">
           <div className="p-4 rounded-xl bg-sky-500/10 border border-sky-500/20 text-xs text-sky-900 dark:text-sky-200 flex items-start gap-3">
-            <Clock className="w-5 h-5 text-sky-500 flex-none mt-0.5" />
+            <Clock className="w-5 h-5 text-sky-700 dark:text-sky-300 flex-none mt-0.5" />
             <div>
               <strong className="font-bold">Strict 2.0–3.0 Hour Scope Rule:</strong>
               <p className="mt-0.5 text-sky-800 dark:text-sky-300">
@@ -669,12 +669,12 @@ export const WindPlanPage: React.FC = () => {
               >
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="font-mono text-xs font-bold text-sky-500">{task.id}</span>
+                    <span className="font-mono text-xs font-bold text-sky-700 dark:text-sky-300">{task.id}</span>
                     <span className="text-[11px] font-semibold text-[var(--hub-muted)]">
                       {task.owner} ({task.est})
                     </span>
                   </div>
-                  <div className="text-[11px] font-bold text-teal-600 dark:text-teal-400 mb-1">
+                  <div className="text-[11px] font-bold text-teal-700 dark:text-teal-400 mb-1">
                     {task.track}
                   </div>
                   <h4 className="font-heading font-bold text-sm text-[var(--hub-ink)] mb-3 leading-snug">
@@ -682,13 +682,13 @@ export const WindPlanPage: React.FC = () => {
                   </h4>
 
                   <div className="p-2.5 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs mb-3">
-                    <div className="text-[10px] uppercase font-bold text-teal-500 mb-0.5 tracking-wider">
+                    <div className="text-[10px] uppercase font-bold text-teal-700 dark:text-teal-300 mb-0.5 tracking-wider">
                       Definition of Done (DoD)
                     </div>
                     <p className="text-[var(--hub-ink)] text-[11.5px] leading-relaxed">{task.dod}</p>
                   </div>
 
-                  <div className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1.5 mb-2">
+                  <div className="text-[11px] text-amber-800 dark:text-amber-400 flex items-center gap-1.5 mb-2">
                     <AlertTriangle className="w-3.5 h-3.5 flex-none" />
                     <span>Safety: {task.safety}</span>
                   </div>
@@ -698,9 +698,9 @@ export const WindPlanPage: React.FC = () => {
                   <span
                     className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
                       task.status === 'DONE'
-                        ? 'bg-green-500/10 text-green-500'
+                        ? 'bg-green-500/10 text-green-700 dark:text-green-300'
                         : task.status === 'IN_PROGRESS'
-                        ? 'bg-amber-500/10 text-amber-500'
+                        ? 'bg-amber-500/10 text-amber-800 dark:text-amber-300'
                         : 'bg-[var(--hub-bg)] text-[var(--hub-muted)]'
                     }`}
                   >
@@ -710,7 +710,7 @@ export const WindPlanPage: React.FC = () => {
                     onClick={() => {
                       alert(`Task ${task.id} proof submitted: Photo/CSV verified.`);
                     }}
-                    className="text-xs text-teal-600 dark:text-teal-400 hover:underline font-semibold"
+                    className="text-xs text-teal-700 dark:text-teal-400 hover:underline font-semibold"
                   >
                     Upload Proof & Metric →
                   </button>
@@ -735,7 +735,7 @@ export const WindPlanPage: React.FC = () => {
             {/* Pod A */}
             <div className="p-5 rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-line)]">
               <div className="flex items-center justify-between mb-3">
-                <span className="font-mono text-xs px-2 py-0.5 rounded bg-sky-500/10 text-sky-500 font-bold">
+                <span className="font-mono text-xs px-2 py-0.5 rounded bg-sky-500/10 text-sky-700 dark:text-sky-300 font-bold">
                   POD A
                 </span>
                 <span className="text-xs text-[var(--hub-muted)]">2 EE Juniors + 1 MME</span>
@@ -749,23 +749,23 @@ export const WindPlanPage: React.FC = () => {
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between py-1.5 border-b border-[var(--hub-line)]">
                   <span>Starting / Cogging Torque:</span>
-                  <span className="font-mono font-bold text-green-500">&lt; 0.02 N·m (Zero contact)</span>
+                  <span className="font-mono font-bold text-green-700 dark:text-green-300">&lt; 0.02 N·m (Zero contact)</span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-[var(--hub-line)]">
                   <span>High-Speed Efficiency:</span>
-                  <span className="font-mono font-bold text-sky-500">~88%–92% (High-TSR λ = 6.0)</span>
+                  <span className="font-mono font-bold text-sky-700 dark:text-sky-300">~88%–92% (High-TSR λ = 6.0)</span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-[var(--hub-line)]">
                   <span>Storm Overload Behavior:</span>
-                  <span className="font-mono font-bold text-teal-500">Inherent non-destructive slip</span>
+                  <span className="font-mono font-bold text-teal-700 dark:text-teal-300">Inherent non-destructive slip</span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-[var(--hub-line)]">
                   <span>Acoustic Noise at 5m:</span>
-                  <span className="font-mono font-bold text-green-500">&lt; 35 dBA (Near silent)</span>
+                  <span className="font-mono font-bold text-green-700 dark:text-green-300">&lt; 35 dBA (Near silent)</span>
                 </div>
                 <div className="flex justify-between py-1.5">
                   <span>Critical Risk:</span>
-                  <span className="font-mono text-red-500">1.5mm air gap runout sensitivity</span>
+                  <span className="font-mono text-red-700 dark:text-red-300">1.5mm air gap runout sensitivity</span>
                 </div>
               </div>
             </div>
@@ -773,7 +773,7 @@ export const WindPlanPage: React.FC = () => {
             {/* Pod B */}
             <div className="p-5 rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-line)]">
               <div className="flex items-center justify-between mb-3">
-                <span className="font-mono text-xs px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 font-bold">
+                <span className="font-mono text-xs px-2 py-0.5 rounded bg-amber-500/10 text-amber-800 dark:text-amber-300 font-bold">
                   POD B
                 </span>
                 <span className="text-xs text-[var(--hub-muted)]">1 EE Junior + 1 MME</span>
@@ -787,23 +787,23 @@ export const WindPlanPage: React.FC = () => {
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between py-1.5 border-b border-[var(--hub-line)]">
                   <span>Starting Aerodynamic Torque:</span>
-                  <span className="font-mono font-bold text-green-500">Exceptional (Cm ≈ 0.32)</span>
+                  <span className="font-mono font-bold text-green-700 dark:text-green-300">Exceptional (Cm ≈ 0.32)</span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-[var(--hub-line)]">
                   <span>Cut-in Wind Speed:</span>
-                  <span className="font-mono font-bold text-sky-500">1.8 m/s (Spins in room draft)</span>
+                  <span className="font-mono font-bold text-sky-700 dark:text-sky-300">1.8 m/s (Spins in room draft)</span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-[var(--hub-line)]">
                   <span>Gearbox Efficiency:</span>
-                  <span className="font-mono font-bold text-amber-500">~82%–88% (PTFE lube)</span>
+                  <span className="font-mono font-bold text-amber-800 dark:text-amber-300">~82%–88% (PTFE lube)</span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-[var(--hub-line)]">
                   <span>IP Commercial Moat:</span>
-                  <span className="font-mono font-bold text-teal-500">Published Indian Patent</span>
+                  <span className="font-mono font-bold text-teal-700 dark:text-teal-300">Published Indian Patent</span>
                 </div>
                 <div className="flex justify-between py-1.5">
                   <span>Critical Risk:</span>
-                  <span className="font-mono text-red-500">Tooth wear and acoustic whine</span>
+                  <span className="font-mono text-red-700 dark:text-red-300">Tooth wear and acoustic whine</span>
                 </div>
               </div>
             </div>
@@ -817,7 +817,7 @@ export const WindPlanPage: React.FC = () => {
           {/* Interactive Calculator */}
           <div className="p-5 rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-line)]">
             <h3 className="font-heading font-bold text-sm text-[var(--hub-ink)] mb-3 flex items-center gap-2">
-              <Activity className="w-4 h-4 text-teal-500" /> Aerodynamic & Electrical Power Calculator
+              <Activity className="w-4 h-4 text-teal-700 dark:text-teal-300" /> Aerodynamic & Electrical Power Calculator
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
               <div>
@@ -875,19 +875,19 @@ export const WindPlanPage: React.FC = () => {
               </div>
               <div>
                 <div className="text-[10px] text-[var(--hub-muted)] font-mono uppercase">Wind Power (P_wind)</div>
-                <div className="font-heading font-extrabold text-base text-sky-500 mt-0.5">
+                <div className="font-heading font-extrabold text-base text-sky-700 dark:text-sky-300 mt-0.5">
                   {pWind.toFixed(1)} W
                 </div>
               </div>
               <div>
                 <div className="text-[10px] text-[var(--hub-muted)] font-mono uppercase">Electrical Output (P_elec)</div>
-                <div className="font-heading font-extrabold text-base text-teal-600 dark:text-teal-400 mt-0.5">
+                <div className="font-heading font-extrabold text-base text-teal-700 dark:text-teal-400 mt-0.5">
                   {pElec.toFixed(1)} W
                 </div>
               </div>
               <div>
                 <div className="text-[10px] text-[var(--hub-muted)] font-mono uppercase">Daily Yield (8h equiv)</div>
-                <div className="font-heading font-extrabold text-base text-amber-500 mt-0.5">
+                <div className="font-heading font-extrabold text-base text-amber-800 dark:text-amber-300 mt-0.5">
                   {((pElec * 8) / 1000).toFixed(2)} kWh
                 </div>
               </div>
@@ -918,23 +918,23 @@ export const WindPlanPage: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-[var(--hub-line)]/50">
                   <tr>
-                    <td className="py-2 text-sky-500 font-bold">PS-T001</td>
+                    <td className="py-2 text-sky-700 dark:text-sky-300 font-bold">PS-T001</td>
                     <td>4.5 m/s</td>
                     <td>120 RPM</td>
                     <td>480 RPM</td>
                     <td>12.2 V</td>
                     <td>1.22 A</td>
-                    <td className="text-teal-500 font-bold">14.88 W</td>
+                    <td className="text-teal-700 dark:text-teal-300 font-bold">14.88 W</td>
                     <td>0.265</td>
                   </tr>
                   <tr>
-                    <td className="py-2 text-sky-500 font-bold">PS-T002</td>
+                    <td className="py-2 text-sky-700 dark:text-sky-300 font-bold">PS-T002</td>
                     <td>6.2 m/s</td>
                     <td>185 RPM</td>
                     <td>740 RPM</td>
                     <td>18.4 V</td>
                     <td>3.68 A</td>
-                    <td className="text-teal-500 font-bold">67.71 W</td>
+                    <td className="text-teal-700 dark:text-teal-300 font-bold">67.71 W</td>
                     <td>0.231</td>
                   </tr>
                 </tbody>
@@ -956,7 +956,7 @@ export const WindPlanPage: React.FC = () => {
                 Total Estimated CapEx: ~₹38,500 | Sourced from data/bom_and_procurement.csv
               </p>
             </div>
-            <span className="font-mono text-xs px-2.5 py-1 rounded bg-teal-500/10 text-teal-600 dark:text-teal-400 font-bold">
+            <span className="font-mono text-xs px-2.5 py-1 rounded bg-teal-500/10 text-teal-700 dark:text-teal-400 font-bold">
               Target: &lt; ₹42,500 Unit Cost
             </span>
           </div>
@@ -976,58 +976,58 @@ export const WindPlanPage: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-[var(--hub-line)]/50">
                 <tr>
-                  <td className="py-2.5 font-mono text-sky-500 font-bold">BOM-001</td>
+                  <td className="py-2.5 font-mono text-sky-700 dark:text-sky-300 font-bold">BOM-001</td>
                   <td>Structure</td>
                   <td className="font-bold text-[var(--hub-ink)]">3030 T-Slot Aluminum Extrusion</td>
                   <td className="text-[var(--hub-muted)]">6063-T6 anodized (4m total)</td>
                   <td className="font-mono">4</td>
                   <td className="font-mono font-bold">₹2,600</td>
-                  <td><span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-500">PENDING APPROVAL</span></td>
+                  <td><span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-800 dark:text-amber-300">PENDING APPROVAL</span></td>
                 </tr>
                 <tr>
-                  <td className="py-2.5 font-mono text-sky-500 font-bold">BOM-003</td>
+                  <td className="py-2.5 font-mono text-sky-700 dark:text-sky-300 font-bold">BOM-003</td>
                   <td>Structure</td>
                   <td className="font-bold text-[var(--hub-ink)]">CNC Bearing Bulkhead Plates</td>
                   <td className="text-[var(--hub-muted)]">6.0mm 6061-T6 Aluminum</td>
                   <td className="font-mono">2</td>
                   <td className="font-mono font-bold">₹2,200</td>
-                  <td><span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-500">PENDING APPROVAL</span></td>
+                  <td><span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-800 dark:text-amber-300">PENDING APPROVAL</span></td>
                 </tr>
                 <tr>
-                  <td className="py-2.5 font-mono text-sky-500 font-bold">BOM-007</td>
+                  <td className="py-2.5 font-mono text-sky-700 dark:text-sky-300 font-bold">BOM-007</td>
                   <td>Generator</td>
                   <td className="font-bold text-[var(--hub-ink)]">Axial Flux Coreless Alternator</td>
                   <td className="text-[var(--hub-muted)]">300W–500W 24V/48V 300–600 RPM</td>
                   <td className="font-mono">1</td>
                   <td className="font-mono font-bold">₹14,500</td>
-                  <td><span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-500">PENDING APPROVAL</span></td>
+                  <td><span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-800 dark:text-amber-300">PENDING APPROVAL</span></td>
                 </tr>
                 <tr>
-                  <td className="py-2.5 font-mono text-sky-500 font-bold">BOM-008</td>
+                  <td className="py-2.5 font-mono text-sky-700 dark:text-sky-300 font-bold">BOM-008</td>
                   <td>Pod A</td>
                   <td className="font-bold text-[var(--hub-ink)]">N52 Neodymium Arc/Block Magnets</td>
                   <td className="text-[var(--hub-muted)]">High-coercivity NdFeB N52</td>
                   <td className="font-mono">48</td>
                   <td className="font-mono font-bold">₹5,760</td>
-                  <td><span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-500">PENDING APPROVAL</span></td>
+                  <td><span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-800 dark:text-amber-300">PENDING APPROVAL</span></td>
                 </tr>
                 <tr>
-                  <td className="py-2.5 font-mono text-sky-500 font-bold">BOM-012</td>
+                  <td className="py-2.5 font-mono text-sky-700 dark:text-sky-300 font-bold">BOM-012</td>
                   <td>Pod B</td>
                   <td className="font-bold text-[var(--hub-ink)]">POM-C Delrin Planetary Gear Set</td>
                   <td className="text-[var(--hub-muted)]">CNC Machined 1:10 speed increaser</td>
                   <td className="font-mono">1</td>
                   <td className="font-mono font-bold">₹3,200</td>
-                  <td><span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-500">PENDING APPROVAL</span></td>
+                  <td><span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-800 dark:text-amber-300">PENDING APPROVAL</span></td>
                 </tr>
                 <tr>
-                  <td className="py-2.5 font-mono text-sky-500 font-bold">BOM-017</td>
+                  <td className="py-2.5 font-mono text-sky-700 dark:text-sky-300 font-bold">BOM-017</td>
                   <td>Electronics</td>
                   <td className="font-bold text-[var(--hub-ink)]">Dynamic Braking Resistor Bank</td>
                   <td className="text-[var(--hub-muted)]">1.5 Ω 500W aluminum-housed wirewound</td>
                   <td className="font-mono">3</td>
                   <td className="font-mono font-bold">₹1,650</td>
-                  <td><span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-500">PENDING APPROVAL</span></td>
+                  <td><span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-800 dark:text-amber-300">PENDING APPROVAL</span></td>
                 </tr>
               </tbody>
             </table>
@@ -1045,8 +1045,8 @@ export const WindPlanPage: React.FC = () => {
             <div className="divide-y divide-[var(--hub-line)]">
               <div className="py-3">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="font-mono text-xs font-bold text-teal-600 dark:text-teal-400">DEC-001: Strict TRL 1–9 Adoption</span>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-500">APPROVED</span>
+                  <span className="font-mono text-xs font-bold text-teal-700 dark:text-teal-400">DEC-001: Strict TRL 1–9 Adoption</span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-700 dark:text-green-300">APPROVED</span>
                 </div>
                 <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
                   Informal "TRL 10" discarded. 90-day target is an evidence-based TRL 5 (lab validated) with stretch TRL 6 (outdoor telemetry). Commercial deployment is beyond TRL 9.
@@ -1055,8 +1055,8 @@ export const WindPlanPage: React.FC = () => {
 
               <div className="py-3">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="font-mono text-xs font-bold text-teal-600 dark:text-teal-400">DEC-002: Wooden Frame Decommissioned</span>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-500">APPROVED</span>
+                  <span className="font-mono text-xs font-bold text-teal-700 dark:text-teal-400">DEC-002: Wooden Frame Decommissioned</span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-700 dark:text-green-300">APPROVED</span>
                 </div>
                 <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
                   Moisture shifts gear centerlines by 0.5–2.0 mm, causing gear binding and magnetic air-gap rub. Complete shift to 3030 T-slot aluminum and 6061 plates mandated starting Day 16.
@@ -1065,8 +1065,8 @@ export const WindPlanPage: React.FC = () => {
 
               <div className="py-3">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="font-mono text-xs font-bold text-teal-600 dark:text-teal-400">DEC-003: Passive Furling Yaw over Active Servos</span>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-500">APPROVED</span>
+                  <span className="font-mono text-xs font-bold text-teal-700 dark:text-teal-400">DEC-003: Passive Furling Yaw over Active Servos</span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-700 dark:text-green-300">APPROVED</span>
                 </div>
                 <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
                   Active yaw servos draw 5W–15W continuously—eating up to 50% of generated power in 4–5 m/s winds. Passive tail vane with 5° furling hinge and 30A slip ring adopted.
@@ -1075,8 +1075,8 @@ export const WindPlanPage: React.FC = () => {
 
               <div className="py-3">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="font-mono text-xs font-bold text-teal-600 dark:text-teal-400">DEC-004: Two-Pod Parallel R&D with Day 45 Freeze Gate</span>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-500">APPROVED</span>
+                  <span className="font-mono text-xs font-bold text-teal-700 dark:text-teal-400">DEC-004: Two-Pod Parallel R&D with Day 45 Freeze Gate</span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-700 dark:text-green-300">APPROVED</span>
                 </div>
                 <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
                   Pod A (Magnetic) and Pod B (Planetary) compete until Day 44 under identical airflow. On Day 45, the winning architecture is frozen for commercial pilot production.

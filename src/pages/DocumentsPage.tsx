@@ -64,11 +64,11 @@ export const DocumentsPage: React.FC<DocumentsPageProps> = ({ currentArea, areas
   const totalBytes = allDocs.reduce((sum, d) => sum + d.file_size, 0);
 
   const getFileIcon = (mime: string) => {
-    if (mime.startsWith('image/')) return <ImageIcon className="w-5 h-5 text-purple-500" />;
-    if (mime.includes('pdf')) return <FileText className="w-5 h-5 text-red-500" />;
+    if (mime.startsWith('image/')) return <ImageIcon className="w-5 h-5 text-purple-700 dark:text-purple-300" />;
+    if (mime.includes('pdf')) return <FileText className="w-5 h-5 text-red-700 dark:text-red-300" />;
     if (mime.includes('sheet') || mime.includes('csv') || mime.includes('excel'))
-      return <FileSpreadsheet className="w-5 h-5 text-emerald-500" />;
-    return <File className="w-5 h-5 text-blue-500" />;
+      return <FileSpreadsheet className="w-5 h-5 text-emerald-700 dark:text-emerald-300" />;
+    return <File className="w-5 h-5 text-blue-700 dark:text-blue-300" />;
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {

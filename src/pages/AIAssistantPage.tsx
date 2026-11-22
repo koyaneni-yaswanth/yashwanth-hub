@@ -788,12 +788,12 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
                                 </div>
                                 <div className="text-[11px] text-[var(--hub-muted)]">{act.description}</div>
                                 {act.verified_record_id && (
-                                  <div className="text-[11px] text-emerald-500 font-mono">
+                                  <div className="text-[11px] text-emerald-700 dark:text-emerald-300 font-mono">
                                     Verified saved ID: {act.verified_record_id.slice(0, 12)}
                                   </div>
                                 )}
                                 {act.error && (
-                                  <div className="text-[11px] text-red-500 flex items-center gap-1">
+                                  <div className="text-[11px] text-red-700 dark:text-red-300 flex items-center gap-1">
                                     <AlertTriangle className="w-3 h-3" /> {act.error}
                                   </div>
                                 )}
@@ -812,7 +812,7 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
                                     </button>
                                     <button
                                       onClick={() => handleRejectAction(msg.id, act.id)}
-                                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-500/30 text-red-500 text-xs font-semibold hover:bg-red-500/10 cursor-pointer"
+                                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-500/30 text-red-700 dark:text-red-300 text-xs font-semibold hover:bg-red-500/10 cursor-pointer"
                                     >
                                       <X className="w-3.5 h-3.5" />
                                       <span>Reject</span>

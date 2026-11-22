@@ -181,7 +181,7 @@ export const ContactsPage: React.FC<ContactsPageProps> = ({ currentArea, areas }
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {sortedContacts.length === 0 ? (
           <div className="col-span-full bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-12 text-center text-sm text-[var(--hub-muted)]">
-            <Users className="w-10 h-10 mx-auto text-teal-600 mb-3 opacity-60" />
+            <Users className="w-10 h-10 mx-auto text-teal-700 dark:text-teal-300 mb-3 opacity-60" />
             <h3 className="text-base font-bold text-[var(--hub-ink)]">No contacts found</h3>
             <p className="text-xs mt-1">Add research advisors, suppliers, and collaborators.</p>
           </div>
@@ -224,7 +224,7 @@ export const ContactsPage: React.FC<ContactsPageProps> = ({ currentArea, areas }
                       href={`tel:${contact.phone}`}
                       className="flex items-center gap-2 text-[var(--hub-ink)] hover:text-[var(--hub-accent)] transition-colors py-0.5"
                     >
-                      <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                      <Phone className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-300" />
                       <span>{contact.phone}</span>
                     </a>
                   )}
@@ -234,7 +234,7 @@ export const ContactsPage: React.FC<ContactsPageProps> = ({ currentArea, areas }
                       href={`mailto:${contact.email}`}
                       className="flex items-center gap-2 text-[var(--hub-ink)] hover:text-[var(--hub-accent)] transition-colors py-0.5"
                     >
-                      <Mail className="w-3.5 h-3.5 text-blue-600" />
+                      <Mail className="w-3.5 h-3.5 text-blue-700 dark:text-blue-300" />
                       <span className="truncate">{contact.email}</span>
                     </a>
                   )}

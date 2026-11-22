@@ -213,7 +213,7 @@ export const FinancePage: React.FC<FinancePageProps> = ({ currentArea, areas }) 
       </div>
 
       {treasury.cashBalance === 0 && (
-        <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2.5">
+        <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2.5">
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
           <div>
             <strong>Capital Balance Unconfigured:</strong> No verified bank balance or grant sanction is configured yet. Use{' '}
@@ -228,25 +228,25 @@ export const FinancePage: React.FC<FinancePageProps> = ({ currentArea, areas }) 
           label="Entered Available Capital"
           value={formatINR(treasury.cashBalance)}
           subtext={treasury.verifiedLabel.slice(0, 42)}
-          icon={<IndianRupee className="w-5 h-5 text-emerald-600" />}
+          icon={<IndianRupee className="w-5 h-5 text-emerald-700 dark:text-emerald-300" />}
         />
         <StatCard
           label="Current Month Expenses"
           value={formatINR(currentMonthTotal)}
           subtext={`${currentMonthExpenses.length} recorded in ${currentMonth}`}
-          icon={<TrendingDown className="w-5 h-5 text-amber-600" />}
+          icon={<TrendingDown className="w-5 h-5 text-amber-800 dark:text-amber-300" />}
         />
         <StatCard
           label="Runway Calculation"
           value={runwayMonths ? `${runwayMonths} Months` : 'N/A'}
           subtext={runwayMonths ? 'Capital / current-month spend' : 'Requires capital & expense entries'}
-          icon={<Calendar className="w-5 h-5 text-blue-600" />}
+          icon={<Calendar className="w-5 h-5 text-blue-700 dark:text-blue-300" />}
         />
         <StatCard
           label="Tracked Grants"
           value={formatINR(grantPipelineTotal)}
           subtext={`${treasury.grants.length} grant record(s)`}
-          icon={<FileCheck className="w-5 h-5 text-teal-600" />}
+          icon={<FileCheck className="w-5 h-5 text-teal-700 dark:text-teal-300" />}
         />
       </div>
 
@@ -290,7 +290,7 @@ export const FinancePage: React.FC<FinancePageProps> = ({ currentArea, areas }) 
               </div>
               <div className="flex justify-between py-1.5 border-b border-[var(--hub-line)]">
                 <span className="text-[var(--hub-muted)]">Current Month Recorded Spend:</span>
-                <span className="font-bold text-amber-600 font-mono">{formatINR(currentMonthTotal)}</span>
+                <span className="font-bold text-amber-800 dark:text-amber-300 font-mono">{formatINR(currentMonthTotal)}</span>
               </div>
               <div className="flex justify-between py-1.5">
                 <span className="text-[var(--hub-muted)]">Computed Runway:</span>
@@ -345,7 +345,7 @@ export const FinancePage: React.FC<FinancePageProps> = ({ currentArea, areas }) 
               <p>No expenses recorded yet.</p>
               <button
                 onClick={() => setIsModalOpen(true)}
-                className="mt-2 text-teal-600 font-bold hover:underline cursor-pointer"
+                className="mt-2 text-teal-700 dark:text-teal-300 font-bold hover:underline cursor-pointer"
               >
                 Record first expense
               </button>
@@ -410,7 +410,7 @@ export const FinancePage: React.FC<FinancePageProps> = ({ currentArea, areas }) 
                       <p className="text-xs text-[var(--hub-muted)] mt-0.5">{g.title}</p>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="font-mono text-base font-bold text-emerald-600 dark:text-emerald-400">
+                      <span className="font-mono text-base font-bold text-emerald-700 dark:text-emerald-400">
                         {formatINR(g.amount)}
                       </span>
                       <button

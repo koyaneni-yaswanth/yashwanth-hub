@@ -496,7 +496,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
-            <Smartphone className="w-4 h-4 text-emerald-500" />
+            <Smartphone className="w-4 h-4 text-emerald-700 dark:text-emerald-300" />
             <span>Install App & Multi-Device Access (PWA)</span>
           </h3>
           <Badge variant={isStandalone ? 'emerald' : 'blue'}>
@@ -510,7 +510,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
 
         {isStandalone ? (
           <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-800 dark:text-emerald-300">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-none" />
+            <CheckCircle2 className="w-4 h-4 text-emerald-700 dark:text-emerald-300 flex-none" />
             <span>Running in native standalone app mode on this device. Offline cache and background sync are active.</span>
           </div>
         ) : (
@@ -538,7 +538,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
         )}
 
         {installStatus && (
-          <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+          <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
             {installStatus}
           </p>
         )}
@@ -548,7 +548,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
           {/* Android */}
           <div className="p-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)]/50 space-y-2">
             <div className="flex items-center gap-2 text-xs font-bold text-[var(--hub-ink)]">
-              <Smartphone className="w-4 h-4 text-emerald-600" />
+              <Smartphone className="w-4 h-4 text-emerald-700 dark:text-emerald-300" />
               <span>Android Phone & Tablet</span>
             </div>
             <ol className="text-[11px] text-[var(--hub-muted)] space-y-1 list-decimal list-inside leading-relaxed">
@@ -562,7 +562,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
           {/* Windows Desktop & Laptop */}
           <div className="p-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)]/50 space-y-2">
             <div className="flex items-center gap-2 text-xs font-bold text-[var(--hub-ink)]">
-              <Laptop className="w-4 h-4 text-blue-600" />
+              <Laptop className="w-4 h-4 text-blue-700 dark:text-blue-300" />
               <span>Windows Laptop & PC</span>
             </div>
             <ol className="text-[11px] text-[var(--hub-muted)] space-y-1 list-decimal list-inside leading-relaxed">
@@ -576,7 +576,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
           {/* iOS / iPadOS */}
           <div className="p-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)]/50 space-y-2">
             <div className="flex items-center gap-2 text-xs font-bold text-[var(--hub-ink)]">
-              <Tablet className="w-4 h-4 text-purple-600" />
+              <Tablet className="w-4 h-4 text-purple-700 dark:text-purple-300" />
               <span>iPhone & iPad (Safari)</span>
             </div>
             <ol className="text-[11px] text-[var(--hub-muted)] space-y-1 list-decimal list-inside leading-relaxed">
@@ -601,7 +601,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
-            <CalendarDays className="w-4 h-4 text-blue-500" />
+            <CalendarDays className="w-4 h-4 text-blue-700 dark:text-blue-300" />
             <span>Google Workspace Integration (Calendar, Meet, Drive, Gmail)</span>
           </h3>
           <Badge variant={googleConfig.connected ? 'emerald' : 'gray'}>
@@ -677,7 +677,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
 
               <button
                 onClick={handleDisconnectGoogle}
-                className="px-4 py-2 rounded-xl border border-red-500/30 text-red-600 text-xs font-semibold hover:bg-red-500/10 cursor-pointer"
+                className="px-4 py-2 rounded-xl border border-red-500/30 text-red-700 dark:text-red-300 text-xs font-semibold hover:bg-red-500/10 cursor-pointer"
               >
                 Disconnect & Revoke
               </button>
@@ -689,7 +689,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
             disabled={isTestingGoogle}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-ink)] hover:border-blue-500 cursor-pointer disabled:opacity-50"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isTestingGoogle ? 'animate-spin text-blue-500' : 'text-blue-500'}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isTestingGoogle ? 'animate-spin text-blue-700 dark:text-blue-300' : 'text-blue-700 dark:text-blue-300'}`} />
             <span>{isTestingGoogle ? 'Testing...' : 'Test Tasks Connection'}</span>
           </button>
         </div>
@@ -705,7 +705,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
-            <Bluetooth className="w-4 h-4 text-purple-600" />
+            <Bluetooth className="w-4 h-4 text-purple-700 dark:text-purple-300" />
             <span>NeoSapien "Neo 1" Device Integration</span>
           </h3>
           <Badge
@@ -738,7 +738,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
           {neoConfig.status === 'connected' ? (
             <button
               onClick={handleDisconnectNeoSapien}
-              className="text-xs text-red-600 font-bold hover:underline cursor-pointer"
+              className="text-xs text-red-700 dark:text-red-300 font-bold hover:underline cursor-pointer"
             >
               Disconnect
             </button>
@@ -760,7 +760,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
             disabled={isTestingNeo}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-ink)] hover:border-purple-500 cursor-pointer disabled:opacity-50"
           >
-            <Radio className={`w-3.5 h-3.5 ${isTestingNeo ? 'animate-spin text-purple-600' : 'text-purple-600'}`} />
+            <Radio className={`w-3.5 h-3.5 ${isTestingNeo ? 'animate-spin text-purple-700 dark:text-purple-300' : 'text-purple-700 dark:text-purple-300'}`} />
             <span>{isTestingNeo ? 'Testing MCP...' : 'Test NeoSapien MCP Gateway'}</span>
           </button>
         </div>
@@ -801,7 +801,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
       {/* 3. Appearance / Theme */}
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
         <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
-          <Sun className="w-4 h-4 text-amber-500" />
+          <Sun className="w-4 h-4 text-amber-800 dark:text-amber-300" />
           <span>Appearance & Theme</span>
         </h3>
 
@@ -891,7 +891,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
       {/* 5. Full Data Backup & Restore */}
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
         <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
-          <Database className="w-4 h-4 text-teal-600" />
+          <Database className="w-4 h-4 text-teal-700 dark:text-teal-300" />
           <span>Local Data Backup & Disaster Recovery</span>
         </h3>
 
@@ -909,7 +909,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
               onClick={handleCopyBackupText}
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer"
             >
-              {copiedBackup ? <Check className="w-3.5 h-3.5 text-teal-600" /> : <Copy className="w-3.5 h-3.5" />}
+              {copiedBackup ? <Check className="w-3.5 h-3.5 text-teal-700 dark:text-teal-300" /> : <Copy className="w-3.5 h-3.5" />}
               <span>{copiedBackup ? 'Copied to Clipboard!' : 'Copy Backup Text'}</span>
             </button>
           )}
@@ -955,7 +955,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
-            <Cloud className="w-4 h-4 text-blue-500" />
+            <Cloud className="w-4 h-4 text-blue-700 dark:text-blue-300" />
             <span>Cloud Sync Status (Supabase)</span>
           </h3>
           <div className="flex items-center gap-2">
@@ -970,7 +970,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
                 onClick={() => syncNow()}
                 className="flex items-center gap-1.5 px-3 py-1 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer"
               >
-                <RefreshCw className="w-3 h-3 text-emerald-600" />
+                <RefreshCw className="w-3 h-3 text-emerald-700 dark:text-emerald-300" />
                 <span>Sync Now ({status})</span>
               </button>
             )}
@@ -1049,7 +1049,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
                 onClick={() => setIsSchemaModalOpen(true)}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer"
               >
-                <Code2 className="w-3.5 h-3.5 text-blue-600" />
+                <Code2 className="w-3.5 h-3.5 text-blue-700 dark:text-blue-300" />
                 <span>View Production SQL Schema</span>
               </button>
             </div>
@@ -1060,7 +1060,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
       {/* 7. System Diagnostics */}
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
         <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
-          <HardDrive className="w-4 h-4 text-purple-500" />
+          <HardDrive className="w-4 h-4 text-purple-700 dark:text-purple-300" />
           <span>Local IndexedDB Diagnostics (YashwanthHubDB v2)</span>
         </h3>
 

@@ -105,13 +105,13 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({ onNavigate
   const getTypeIcon = (type: NotificationType) => {
     switch (type) {
       case 'meeting':
-        return <Video className="w-4 h-4 text-blue-500" />;
+        return <Video className="w-4 h-4 text-blue-700 dark:text-blue-300" />;
       case 'deadline':
-        return <AlertCircle className="w-4 h-4 text-red-500" />;
+        return <AlertCircle className="w-4 h-4 text-red-700 dark:text-red-300" />;
       case 'ai':
-        return <Sparkles className="w-4 h-4 text-teal-600" />;
+        return <Sparkles className="w-4 h-4 text-teal-700 dark:text-teal-300" />;
       default:
-        return <Bell className="w-4 h-4 text-amber-500" />;
+        return <Bell className="w-4 h-4 text-amber-800 dark:text-amber-300" />;
     }
   };
 
@@ -121,7 +121,7 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({ onNavigate
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold font-heading text-[var(--hub-ink)] tracking-tight flex items-center gap-2">
-            <Bell className="w-6 h-6 text-amber-500" />
+            <Bell className="w-6 h-6 text-amber-800 dark:text-amber-300" />
             <span>Intelligent Reminders & Notifications</span>
           </h2>
           <p className="text-sm text-[var(--hub-muted)] mt-0.5">
@@ -164,7 +164,7 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({ onNavigate
           </div>
           <button
             onClick={handleRequestPermission}
-            className="px-3.5 py-1.5 rounded-lg bg-amber-600 text-white font-semibold self-start sm:self-auto cursor-pointer hover:bg-amber-700 transition-colors"
+            className="px-3.5 py-1.5 rounded-lg bg-amber-700 text-white font-semibold self-start sm:self-auto cursor-pointer hover:bg-amber-800 transition-colors"
           >
             Enable Browser Push
           </button>
@@ -201,7 +201,7 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({ onNavigate
       <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl divide-y divide-[var(--hub-line)] overflow-hidden shadow-xs">
         {filteredNotifs.length === 0 ? (
           <div className="p-12 text-center text-xs text-[var(--hub-muted)]">
-            <CheckCircle2 className="w-8 h-8 mx-auto text-teal-600 mb-2 opacity-60" />
+            <CheckCircle2 className="w-8 h-8 mx-auto text-teal-700 dark:text-teal-300 mb-2 opacity-60" />
             <p className="font-semibold text-sm text-[var(--hub-ink)]">
               {allNotifications.length === 0 ? 'Nothing here yet' : 'All clear'}
             </p>

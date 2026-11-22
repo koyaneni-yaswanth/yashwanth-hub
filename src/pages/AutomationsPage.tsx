@@ -242,7 +242,7 @@ export const AutomationsPage: React.FC = () => {
 
       {/* Honest Server Configuration / Auth Diagnostic Banner */}
       {statusMessage && (
-        <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-3">
+        <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-3">
           <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
           <div className="space-y-1">
             <div className="font-bold">
@@ -258,7 +258,7 @@ export const AutomationsPage: React.FC = () => {
       )}
 
       {actionMessage && (
-        <div className="p-3.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-600 dark:text-blue-400 font-medium flex items-center justify-between">
+        <div className="p-3.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-700 dark:text-blue-400 font-medium flex items-center justify-between">
           <span>{actionMessage}</span>
           <button onClick={() => setActionMessage(null)} className="text-xs hover:underline cursor-pointer">
             Dismiss
@@ -271,7 +271,7 @@ export const AutomationsPage: React.FC = () => {
         <div className="bg-[var(--hub-surface)] border border-amber-500/40 rounded-xl p-5 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="font-heading font-bold text-sm text-[var(--hub-ink)] flex items-center gap-2">
-              <ShieldAlert className="w-4 h-4 text-amber-500" />
+              <ShieldAlert className="w-4 h-4 text-amber-800 dark:text-amber-300" />
               <span>Pending Human Approvals ({pendingApprovals.length})</span>
             </h3>
             <Badge variant="amber">Confirmation Required</Badge>
@@ -302,7 +302,7 @@ export const AutomationsPage: React.FC = () => {
                   <button
                     onClick={() => handleReviewJob(job.id, 'reject_job')}
                     disabled={reviewingJobId === job.id}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-red-500/30 text-red-500 text-xs font-semibold hover:bg-red-500/10 cursor-pointer disabled:opacity-50"
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-red-500/30 text-red-700 dark:text-red-300 text-xs font-semibold hover:bg-red-500/10 cursor-pointer disabled:opacity-50"
                   >
                     <ThumbsDown className="w-3.5 h-3.5" />
                     <span>Reject</span>
@@ -400,11 +400,11 @@ export const AutomationsPage: React.FC = () => {
                     <span className="text-[var(--hub-muted)]">Last Server Run:</span>
                     <span className="font-medium flex items-center gap-1.5">
                       {lastRun?.status === 'completed' ? (
-                        <span className="text-emerald-500 font-semibold flex items-center gap-1">
+                        <span className="text-emerald-700 dark:text-emerald-300 font-semibold flex items-center gap-1">
                           <CheckCircle2 className="w-3 h-3" /> {lastRun.duration_ms}ms
                         </span>
                       ) : lastRun?.status === 'failed' ? (
-                        <span className="text-red-500 font-semibold flex items-center gap-1">
+                        <span className="text-red-700 dark:text-red-300 font-semibold flex items-center gap-1">
                           <XCircle className="w-3 h-3" /> Failed
                         </span>
                       ) : (
@@ -477,7 +477,7 @@ export const AutomationsPage: React.FC = () => {
                     </span>
                   </div>
                   {q.error_message && (
-                    <div className="text-[11px] text-red-500">{q.error_message}</div>
+                    <div className="text-[11px] text-red-700 dark:text-red-300">{q.error_message}</div>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
@@ -748,11 +748,11 @@ export const AutomationsPage: React.FC = () => {
 
                 {selectedRun.error_log && (
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-red-500 flex items-center gap-1.5">
+                    <label className="text-xs font-bold text-red-700 dark:text-red-300 flex items-center gap-1.5">
                       <AlertCircle className="w-3.5 h-3.5" />
                       <span>Execution Error Log / Stack Trace</span>
                     </label>
-                    <pre className="p-3 rounded-lg bg-red-950/20 border border-red-500/30 text-red-400 font-mono text-[11px] overflow-x-auto whitespace-pre-wrap">
+                    <pre className="p-3 rounded-lg bg-red-950/20 border border-red-500/30 text-red-700 dark:text-red-300 font-mono text-[11px] overflow-x-auto whitespace-pre-wrap">
                       {selectedRun.error_log}
                     </pre>
                   </div>
