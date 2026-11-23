@@ -2,6 +2,8 @@ import { getSupabaseClient, isSupabaseConfigured } from '../../lib/supabase';
 import { db } from '../../db';
 import { SyncQueueService } from './syncQueueService';
 import { resolveRemoteUpsert, resolveRemoteDelete } from './conflict';
+import { applyLifeRealtime } from './lifeSync';
+import { LIFE_TABLES } from './lifeSyncCore';
 
 export class RealtimeSyncManager {
   private static channels: any[] = [];
@@ -127,6 +129,17 @@ export class RealtimeSyncManager {
         )
         .subscribe();
       this.channels.push(devicesChannel);
+
+      // 5. Goals, milestones, habits, habit logs, daily plans, focus sessions
+      for (const table of LIFE_TABLES) {
+        const channel = client
+          .channel(`realtime_${table}_channel`)
+          .on('postgres_changes', { event: '*', schema: 'public', table }, (payload: any) => {
+            applyLifeRealtime(table, payload).catch((err) => console.warn(`[lifeSync] Realtime ${table} failed:`, err));
+          })
+          .subscribe();
+        this.channels.push(channel);
+      }
 
       this.isSubscribed = true;
       console.log('RealtimeSyncManager: All universal Realtime channels connected.');

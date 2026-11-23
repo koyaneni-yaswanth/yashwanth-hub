@@ -864,7 +864,7 @@ export interface HabitLog {
 }
 
 // ---------------------------------------------------------------------------
-// Daily Compass & Deep Work (Phase 1). Local-first tables; not yet synced to cloud.
+// Daily Compass & Deep Work. Local-first tables, synced to Supabase by services/sync/lifeSync.ts.
 // ---------------------------------------------------------------------------
 
 /** One task placed on a day's plan, in the order the user wants to do it. */

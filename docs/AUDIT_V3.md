@@ -33,8 +33,8 @@ _Audit date: 23 Nov 2026 · Code at `v3-preview` (`cdb4bbc`) + this audit's fixe
 
 ## Partial
 
-- **Cloud sync coverage:** goals, goal milestones, habits, habit logs, daily plans and focus sessions are **local-only** (no sync-queue references) — they don't reach Supabase or other devices.
-- **Schema drift:** the repo defines 20 tables; the owner believes production has 27. Any tables created in the Supabase dashboard aren't in migrations, so they can't be reviewed or recreated.
+- **Cloud sync coverage:** goals, goal milestones, habits, habit logs, daily plans and focus sessions were local-only. _Phase 2: synced via `src/services/sync/lifeSync.ts` once `supabase/migrations/20261124_phase2_goals_habits_focus_sync.sql` is applied (owner action)._
+- **Schema drift:** the repo defines 20 tables; the owner believes production has 27. Any tables created in the Supabase dashboard aren't in migrations, so they can't be reviewed or recreated. The app also relies on `tasks`, `events`, `meetings`, `notes`, `projects`, `expenses`, `notifications` and `neo_memories`, none of which has a migration. _Run `supabase/schema-drift-check.sql` (read-only) to capture them._
 - **Documents:** some files are local-only ("File content is not available locally").
 - **Blocking `alert()` dialogs** in 14 places (Settings, Meetings, Gmail, Neo Memory, Documents, Wind Plan) instead of accessible inline/toast messages.
 

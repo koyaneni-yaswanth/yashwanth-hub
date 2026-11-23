@@ -20,6 +20,7 @@ import { SupabaseAuthService } from './services/auth/supabaseAuthService';
 import { QuickCaptureModal } from './components/common/QuickCaptureModal';
 import { PageErrorBoundary } from './components/common/PageErrorBoundary';
 import { repairTaskDueDates } from './services/sync/dueDateRepair';
+import { installLifeSyncHooks, startLifeSync } from './services/sync/lifeSync';
 import { PageSkeleton } from './components/common/PageSkeleton';
 import { TAB_TITLES, buildTabUrl, canonicalTab, documentTitleFor, readTabFromSearch } from './lib/navigation';
 import { Toaster } from './components/common/Toaster';
@@ -185,6 +186,8 @@ function HubMain() {
     });
 
     const initApp = async () => {
+      // Queue goals/habits/plans/focus writes for the cloud from the very first write.
+      installLifeSyncHooks();
       await initializeDatabase();
       setIsDbReady(true);
 
@@ -196,6 +199,7 @@ function HubMain() {
       RealtimeSyncManager.init();
       ReminderEngine.runIntelligenceScan().catch(() => {});
       repairTaskDueDates().catch(() => {});
+      startLifeSync();
       IntegrationVaultService.initSessionRestoration().catch(() => {});
 
       // Parse URL callbacks & navigation deep links AFTER session hydration
