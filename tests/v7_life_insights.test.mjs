@@ -132,3 +132,21 @@ test('describeRunningFocus reads a stored session safely', async () => {
   assert.equal(paused.paused, true);
   assert.equal(paused.remainingMs, 20 * 60000, 'time while paused does not count');
 });
+
+test('toDueKey and dueStatus: overdue is never "due today", timestamps compare correctly', async () => {
+  const { toDueKey, dueStatus } = await import('../src/lib/utils.ts');
+  assert.equal(toDueKey('2026-11-04'), '2026-11-04');
+  assert.equal(toDueKey('2026-11-04T00:00:00.000Z'), '2026-11-04', 'Google Tasks date-only encoding keeps its date');
+  assert.equal(toDueKey('2026-11-04T00:00:00Z'), '2026-11-04');
+  assert.equal(toDueKey(''), '');
+  assert.equal(toDueKey(undefined), '');
+  assert.equal(toDueKey('not a date'), '');
+  const T = '2026-11-23';
+  assert.equal(dueStatus('2026-11-04', false, T), 'overdue', 'the reported case: overdue since 4 Nov');
+  assert.equal(dueStatus('2026-11-04T00:00:00.000Z', false, T), 'overdue');
+  assert.equal(dueStatus('2026-11-23T00:00:00.000Z', false, T), 'today', 'a timestamp due today is today, not missing');
+  assert.equal(dueStatus('2026-11-23', false, T), 'today');
+  assert.equal(dueStatus('2026-11-25', false, T), 'upcoming');
+  assert.equal(dueStatus('2026-11-04', true, T), 'none', 'done tasks are never overdue');
+  assert.equal(dueStatus(undefined, false, T), 'none');
+});

@@ -19,6 +19,7 @@ import { IntegrationVaultService } from './services/integrationVaultService';
 import { SupabaseAuthService } from './services/auth/supabaseAuthService';
 import { QuickCaptureModal } from './components/common/QuickCaptureModal';
 import { PageErrorBoundary } from './components/common/PageErrorBoundary';
+import { repairTaskDueDates } from './services/sync/dueDateRepair';
 import { PageSkeleton } from './components/common/PageSkeleton';
 import { TAB_TITLES, buildTabUrl, documentTitleFor, readTabFromSearch } from './lib/navigation';
 
@@ -190,6 +191,7 @@ function HubMain() {
       DeviceFleetService.registerCurrentDevice().catch(() => {});
       RealtimeSyncManager.init();
       ReminderEngine.runIntelligenceScan().catch(() => {});
+      repairTaskDueDates().catch(() => {});
       IntegrationVaultService.initSessionRestoration().catch(() => {});
 
       // Parse URL callbacks & navigation deep links AFTER session hydration

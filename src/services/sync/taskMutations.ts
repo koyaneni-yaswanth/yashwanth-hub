@@ -1,4 +1,9 @@
 import type { Task } from '../../types';
+import { toDueKey } from '../../lib/utils.ts';
+
+/** Every write stores due dates as plain local days, whatever form the caller used. */
+const normaliseDue = <T extends { due_date?: string }>(x: T): T =>
+  x.due_date === undefined ? x : { ...x, due_date: toDueKey(x.due_date) || undefined };
 
 /**
  * The single persistence + cloud-sync pathway for tasks. Every screen that changes a
@@ -57,12 +62,13 @@ export function createTaskMutations(
   return {
     async create(input: NewTaskInput): Promise<TaskMutationResult> {
       const timestamp = now();
-      const task: Task = { ...input, id: input.id ?? newId(), created_at: timestamp, updated_at: timestamp } as Task;
+      const task: Task = normaliseDue({ ...input, id: input.id ?? newId(), created_at: timestamp, updated_at: timestamp } as Task);
       await store.add(task);
       return { task, sync: await enqueue(task.id, 'INSERT', task) };
     },
 
-    async update(task: Task, changes: Partial<Task>): Promise<TaskMutationResult> {
+    async update(task: Task, rawChanges: Partial<Task>): Promise<TaskMutationResult> {
+      const changes = 'due_date' in rawChanges ? normaliseDue(rawChanges) : rawChanges;
       const updated: Task = { ...task, ...changes, id: task.id, updated_at: now() };
       const { id: _id, ...patch } = { ...changes, updated_at: updated.updated_at };
       await store.update(task.id, patch);

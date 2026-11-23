@@ -41,6 +41,8 @@ import {
   getGreeting,
   getTodayISO,
   isOverdue,
+  toDueKey,
+  dueStatus,
   generateId,
 } from '../lib/utils';
 import { StatCard } from '../components/common/StatCard';
@@ -133,13 +135,19 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   // Filter based on selected area
   const tasks = currentArea === 'All' ? allTasks : allTasks.filter((t) => t.area === currentArea);
   const openTasks = tasks.filter((t) => !t.done);
+  // Dates are normalised (toDueKey) so timestamps from integrations compare correctly.
   const dueAndOverdueTasks = openTasks
-    .filter((t) => t.due_date && t.due_date <= today)
+    .filter((t) => {
+      const st = dueStatus(t.due_date, t.done, today);
+      return st === 'overdue' || st === 'today';
+    })
     .sort((a, b) => {
       if (a.starred && !b.starred) return -1;
       if (!a.starred && b.starred) return 1;
-      return (a.due_date || '').localeCompare(b.due_date || '');
+      return toDueKey(a.due_date).localeCompare(toDueKey(b.due_date));
     });
+  const overdueCount = dueAndOverdueTasks.filter((t) => dueStatus(t.due_date, t.done, today) === 'overdue').length;
+  const dueTodayCount = dueAndOverdueTasks.length - overdueCount;
 
   // Focus Mode state
   const [recommendationSkipIndex, setRecommendationSkipIndex] = useState(0);
@@ -157,14 +165,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         let score = 0;
         let label = 'Next up';
 
-        if (t.due_date) {
-          if (t.due_date < today) {
+        const dueKey = toDueKey(t.due_date);
+        if (dueKey) {
+          if (dueKey < today) {
             score += 50;
             label = 'Overdue';
-          } else if (t.due_date === today) {
+          } else if (dueKey === today) {
             score += 35;
             label = 'Due today';
-          } else if (t.due_date <= nextWeek) {
+          } else if (dueKey <= nextWeek) {
             score += 15;
             label = `Due ${formatShortDate(t.due_date)}`;
           } else {
@@ -208,7 +217,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   );
 
   const overdueTasks = React.useMemo(
-    () => openTasks.filter((t) => t.due_date && t.due_date < today),
+    () => openTasks.filter((t) => dueStatus(t.due_date, t.done, today) === 'overdue'),
     [openTasks, today]
   );
 
@@ -376,7 +385,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           <p className="text-sm text-[var(--hub-muted)] mt-0.5">
             {dueAndOverdueTasks.length === 0
               ? `All clear today • ${openTasks.length} open task${openTasks.length === 1 ? '' : 's'}`
-              : `${dueAndOverdueTasks.length} task${dueAndOverdueTasks.length === 1 ? '' : 's'} due today • ${scheduleCount} upcoming`}
+              : [
+                  overdueCount ? `${overdueCount} overdue` : '',
+                  dueTodayCount ? `${dueTodayCount} due today` : '',
+                  `${scheduleCount} upcoming`,
+                ]
+                  .filter(Boolean)
+                  .join(' • ')}
           </p>
         </div>
 

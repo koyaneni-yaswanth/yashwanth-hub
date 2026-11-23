@@ -708,7 +708,8 @@ export const WindPlanPage: React.FC = () => {
                   </span>
                   <button
                     onClick={() => {
-                      alert(`Task ${task.id} proof submitted: Photo/CSV verified.`);
+                      // Proof upload isn't built yet: say so honestly instead of claiming a verification.
+                      alert(`Proof upload isn't connected yet, so nothing was uploaded or verified for ${task.id}. Attach photos or CSVs in Files & Docs for now.`);
                     }}
                     className="text-xs text-teal-700 dark:text-teal-400 hover:underline font-semibold"
                   >

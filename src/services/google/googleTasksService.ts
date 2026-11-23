@@ -1,7 +1,7 @@
 import { GoogleAuthService } from './googleAuthService';
 import { db } from '../../db';
 import type { Task, GoogleTaskItem } from '../../types';
-import { generateId, getTodayISO } from '../../lib/utils';
+import { generateId, toDueKey } from '../../lib/utils';
 
 export class GoogleTasksService {
   private static BASE_URL = 'https://tasks.googleapis.com/tasks/v1';
@@ -151,7 +151,9 @@ export class GoogleTasksService {
           notes: gt.notes,
           area: 'Personal',
           priority: 'medium',
-          due_date: gt.due || getTodayISO(),
+          // Google sends date-only due dates as midnight-UTC timestamps; store a plain date.
+          // An undated Google task stays undated (it used to be given today's date).
+          due_date: gt.due ? toDueKey(gt.due) || undefined : undefined,
           starred: false,
           done: gt.status === 'completed',
           google_task_id: gt.id,
