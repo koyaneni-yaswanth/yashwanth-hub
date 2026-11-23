@@ -2,6 +2,8 @@ import { GoogleAuthService } from './googleAuthService';
 import { db } from '../../db';
 import type { Task, GoogleTaskItem } from '../../types';
 import { generateId, toDueKey } from '../../lib/utils';
+import { TaskService } from '../sync/taskService';
+import { decideStatusSync, matchLocalTask } from '../../lib/googleTaskSync';
 
 export class GoogleTasksService {
   private static BASE_URL = 'https://tasks.googleapis.com/tasks/v1';
@@ -119,6 +121,26 @@ export class GoogleTasksService {
     }
   }
 
+  /**
+   * Sets only the done/open status of a linked Google task (leaves its title,
+   * notes and due date as they are). Returns false if it could not be sent.
+   */
+  public static async setGoogleTaskStatus(googleTaskId: string, done: boolean, listId: string = '@default'): Promise<boolean> {
+    const token = GoogleAuthService.getAccessToken();
+    if (!token) return false;
+    try {
+      const res = await fetch(`${this.BASE_URL}/lists/${listId}/tasks/${googleTaskId}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(done ? { status: 'completed' } : { status: 'needsAction', completed: null }),
+      });
+      return res.ok;
+    } catch (e) {
+      console.warn('Failed to update Google task status:', e);
+      return false;
+    }
+  }
+
   // Bi-directional Two-Way Synchronization with conflict resolution
   public static async syncTwoWay(): Promise<{ imported: number; exported: number }> {
     const listId = (await this.getPrimaryTaskList()) || '@default';
@@ -127,20 +149,25 @@ export class GoogleTasksService {
 
     let imported = 0;
     let exported = 0;
+    const matched = new Set<string>();
 
     // 1. Process Google Tasks into local Yashwanth Hub
     for (const gt of gTasks) {
-      const match = localTasks.find((lt) => lt.google_task_id === gt.id || lt.text.trim().toLowerCase() === gt.title.trim().toLowerCase());
+      const match = matchLocalTask(gt, localTasks, matched);
       if (match) {
-        // Check if status changed in Google Tasks
-        const isDoneInGoogle = gt.status === 'completed';
-        if (match.done !== isDoneInGoogle) {
-          await db.tasks.update(match.id, {
-            done: isDoneInGoogle,
-            google_task_id: gt.id,
-            updated_at: new Date().toISOString(),
-          });
+        matched.add(match.id);
+        // Done/open status: whichever side changed it most recently wins. Local changes go
+        // through TaskService so they are queued for the cloud and repeats continue.
+        const decision = decideStatusSync(gt, match);
+        if (decision === 'import') {
+          await TaskService.update(match, { done: gt.status === 'completed', google_task_id: gt.id });
           imported++;
+        } else if (decision === 'export') {
+          if (await this.setGoogleTaskStatus(gt.id, match.done, listId)) exported++;
+          if (!match.google_task_id) await TaskService.update(match, { google_task_id: gt.id });
+        } else if (!match.google_task_id) {
+          // Same task matched by title: link it so it isn't exported again as a duplicate.
+          await TaskService.update(match, { google_task_id: gt.id });
         }
       } else {
         // New task created in Google Tasks -> Import into Yashwanth Hub
@@ -166,8 +193,9 @@ export class GoogleTasksService {
       }
     }
 
-    // 2. Export unsynced local tasks to Google Tasks
-    for (const lt of localTasks) {
+    // 2. Export unsynced local tasks to Google Tasks (re-read: step 1 may have linked
+    // tasks or created the next copy of a repeating task)
+    for (const lt of await db.tasks.toArray()) {
       if (!lt.google_task_id) {
         const gid = await this.pushTaskToGoogle(lt, listId);
         if (gid) exported++;

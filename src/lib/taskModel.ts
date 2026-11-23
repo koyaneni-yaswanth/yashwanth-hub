@@ -3,6 +3,7 @@
  * stages. Pure functions (no Dexie, no React) so they are unit-tested.
  */
 import type { Recurrence, RecurrenceFreq, Subtask, Task, TaskStage } from '../types';
+import { toDueKey } from './utils.ts';
 
 // ---------------------------------------------------------------------------
 // Dates (local calendar days as 'YYYY-MM-DD')
@@ -32,22 +33,33 @@ export const RECURRENCE_OPTIONS: { value: RecurrenceFreq; label: string; unit: s
   { value: 'yearly', label: 'Yearly', unit: 'year' },
 ];
 
+export const MAX_INTERVAL = 365;
+
+const usesAnchorDay = (freq: RecurrenceFreq) => freq === 'monthly' || freq === 'yearly';
+
 export function normaliseRecurrence(rec: Recurrence | undefined | null): Recurrence | undefined {
   if (!rec || !RECURRENCE_OPTIONS.some((o) => o.value === rec.freq)) return undefined;
-  const interval = Math.max(1, Math.min(365, Math.floor(Number(rec.interval) || 1)));
-  return { freq: rec.freq, interval: rec.freq === 'weekdays' ? 1 : interval, ...(rec.until ? { until: rec.until } : {}) };
+  const interval = Math.max(1, Math.min(MAX_INTERVAL, Math.floor(Number(rec.interval) || 1)));
+  const day = Number(rec.day);
+  return {
+    freq: rec.freq,
+    interval: rec.freq === 'weekdays' ? 1 : interval,
+    ...(rec.until ? { until: rec.until } : {}),
+    ...(usesAnchorDay(rec.freq) && Number.isInteger(day) && day >= 1 && day <= 31 ? { day } : {}),
+  };
 }
 
 /**
- * The next due date after `fromDue` (or after `today` if the task had no due
- * date). Returns null once the series has passed its `until` date.
- * Monthly/yearly keep the original day where possible (Jan 31 -> Feb 28 -> Mar 31).
+ * One step of the series: the next due date after `fromDue` (or after `today`
+ * if there is no due date). Returns null once the series has passed `until`.
+ * Monthly/yearly use the series' anchor day (recurrence.day) when set, so
+ * Jan 31 -> Feb 28 -> Mar 31 and Feb 29 -> Feb 28 -> ... -> Feb 29.
  */
 export function nextDueDate(rec: Recurrence, fromDue: string | undefined, today: string): string | null {
   const r = normaliseRecurrence(rec);
   if (!r) return null;
   const base = fromKey(fromDue || today);
-  const anchorDay = base.getDate();
+  const anchorDay = r.day ?? base.getDate();
   let next: Date;
   switch (r.freq) {
     case 'daily':
@@ -73,10 +85,36 @@ export function nextDueDate(rec: Recurrence, fromDue: string | undefined, today:
   return key;
 }
 
+/**
+ * The first date in the series after today. A task finished late (or one
+ * left overdue for weeks) gets its next copy in the future, not another
+ * overdue copy, while on-time completions keep the normal rhythm.
+ */
+export function nextDueAfterToday(rec: Recurrence, fromDue: string | undefined, today: string): string | null {
+  let due = nextDueDate(rec, fromDue, today);
+  for (let guard = 0; due !== null && due <= today && guard < 5000; guard++) due = nextDueDate(rec, due, today);
+  return due !== null && due <= today ? null : due;
+}
+
+/**
+ * Keeps a monthly/yearly series' anchor day in line with the due date chosen in
+ * the editor (a due date moved from the 31st to the 15th re-anchors to the 15th).
+ * A due date on the last day of a short month keeps a later anchor (31 -> Feb 28).
+ */
+export function alignAnchorDay(rec: Recurrence | undefined, dueDate: string | undefined): Recurrence | undefined {
+  if (!rec || !usesAnchorDay(rec.freq)) return rec;
+  const key = dueDate ? toDueKey(dueDate) : '';
+  if (!key) return rec;
+  const d = fromKey(key);
+  const day = d.getDate();
+  if (rec.day && rec.day > day && day === daysInMonth(d.getFullYear(), d.getMonth())) return rec;
+  return { ...rec, day };
+}
+
 export function describeRecurrence(rec: Recurrence | undefined): string {
   const r = normaliseRecurrence(rec);
   if (!r) return '';
-  if (r.freq === 'weekdays') return 'Every weekday';
+  if (r.freq === 'weekdays') return r.until ? `Every weekday until ${r.until}` : 'Every weekday';
   const unit = RECURRENCE_OPTIONS.find((o) => o.value === r.freq)!.unit;
   const base = r.interval === 1 ? (r.freq === 'daily' ? 'Daily' : `Every ${unit}`) : `Every ${r.interval} ${unit}s`;
   return r.until ? `${base} until ${r.until}` : base;
@@ -88,8 +126,12 @@ export function describeRecurrence(rec: Recurrence | undefined): string {
  * and completing again never creates duplicates.
  */
 export function buildNextOccurrence(task: Task, today: string, newId: string, now: string): Task | null {
-  if (!task.recurrence) return null;
-  const due = nextDueDate(task.recurrence, task.due_date, today);
+  const rec = normaliseRecurrence(task.recurrence);
+  if (!rec) return null;
+  const fromDue = task.due_date ? toDueKey(task.due_date) || undefined : undefined;
+  // Remember the series' day of month the first time, so short months don't shift it for good.
+  const series: Recurrence = usesAnchorDay(rec.freq) && !rec.day ? { ...rec, day: fromKey(fromDue || today).getDate() } : rec;
+  const due = nextDueAfterToday(series, fromDue, today);
   if (!due) return null;
   return {
     ...task,
@@ -97,6 +139,7 @@ export function buildNextOccurrence(task: Task, today: string, newId: string, no
     due_date: due,
     done: false,
     stage: 'todo',
+    recurrence: series,
     subtasks: task.subtasks?.map((s) => ({ ...s, done: false })),
     recurred_to: undefined,
     google_task_id: undefined,
@@ -172,21 +215,61 @@ export function moveToColumn(column: BoardColumn): Partial<Task> {
 /** Task fields added in v3. Older cloud schemas may not have these columns yet. */
 export const TASK_V3_FIELDS = ['subtasks', 'recurrence', 'blocked_by', 'stage', 'recurred_to'] as const;
 
+type Row = Record<string, unknown>;
+
+/** True when a task holds v3 data worth keeping (an untouched 'todo' stage is just the default). */
+export function hasTaskV3Values(task: Row | undefined | null): boolean {
+  if (!task) return false;
+  const arr = (v: unknown) => Array.isArray(v) && v.length > 0;
+  return arr(task.subtasks) || arr(task.blocked_by) || task.recurrence != null || task.stage === 'doing' || task.recurred_to != null;
+}
+
 /**
- * Applies a task arriving from the cloud without losing v3 fields the cloud
- * copy doesn't carry (e.g. before its columns exist).
+ * The task row to upload.
+ * - Cloud without the v3 columns: leave them out (they stay on the device).
+ * - Cloud with them: send every v3 column, a missing value as null, so a field
+ *   cleared on this device is cleared in the cloud too. Every task upload is a
+ *   full row, so "absent here" really means "empty".
  */
-export function mergeRemoteTask(local: Task | undefined, remote: Task): Task {
-  if (!local) return remote;
-  const merged = { ...remote } as Task & Record<string, unknown>;
+export function toCloudTaskPayload<T extends Row>(payload: T, cloudHasV3Columns: boolean): T {
+  if (!cloudHasV3Columns) return stripTaskV3Fields(payload);
+  const out: Row = { ...payload };
+  for (const key of TASK_V3_FIELDS) out[key] = payload[key] ?? null;
+  return out as T;
+}
+
+/**
+ * Applies a task arriving from the cloud.
+ * - A v3 key the cloud row doesn't carry (older schema) keeps the local value.
+ * - keepLocalV3: this device holds v3 values the cloud has never received
+ *   (saved before the columns existed); they win until they are uploaded.
+ * - Otherwise the cloud value applies; null means empty and is stored as absent.
+ */
+export function mergeRemoteTask(local: Task | undefined, remote: Task, opts: { keepLocalV3?: boolean } = {}): Task {
+  const merged = { ...remote } as Task & Row;
   for (const key of TASK_V3_FIELDS) {
-    if (!(key in remote) && local[key] !== undefined) merged[key] = local[key] as never;
+    const useLocal = !!local && (opts.keepLocalV3 || !(key in remote));
+    const value = useLocal ? local![key] : (remote as Task & Row)[key];
+    if (value === undefined || value === null) delete merged[key];
+    else merged[key] = value as never;
   }
   return merged;
 }
 
-export function stripTaskV3Fields<T extends Record<string, unknown>>(payload: T): T {
+export function stripTaskV3Fields<T extends Row>(payload: T): T {
   const copy = { ...payload };
   for (const key of TASK_V3_FIELDS) delete copy[key];
   return copy;
+}
+
+/** How the cloud answered the v3 column check. Only a "missing column/table" answer means no. */
+export type V3ColumnCheck = 'yes' | 'no' | 'unknown';
+
+export function classifyColumnProbeError(error: { code?: string; message?: string } | null | undefined): V3ColumnCheck {
+  if (!error) return 'yes';
+  const code = String(error.code ?? '');
+  const msg = String(error.message ?? '');
+  if (['42703', 'PGRST204', '42P01', 'PGRST205'].includes(code)) return 'no';
+  if (/column .* does not exist|could not find the .* column|relation .* does not exist|could not find the table/i.test(msg)) return 'no';
+  return 'unknown';
 }

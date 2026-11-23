@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { db } from '../db';
 import type { EventItem, EventKind, Area } from '../types';
-import { getTodayISO, generateId } from '../lib/utils';
+import { getTodayISO, generateId, toDueKey } from '../lib/utils';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { SyncQueueService } from '../services/sync/syncQueueService';
@@ -26,8 +26,9 @@ import { TaskService } from '../services/sync/taskService';
 import { CalendarDayList } from '../components/calendar/CalendarDayList';
 import {
   clashesWith,
-  endBeforeStart,
+  endsNextDay,
   findClashes,
+  sameStartEnd,
   formatTimeRange,
   fromDateKey,
   itemKey,
@@ -153,23 +154,38 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
 
   // One timeline: events, meetings (not cancelled) and, optionally, tasks with a due date.
   const inArea = (area?: string) => currentArea === 'All' || area === currentArea;
+  const eventItem = (e: EventItem): CalItem => ({ id: e.id, source: 'event', title: e.title, date: e.date, start: e.start_time, end: e.end_time });
+  const activeMeetings = allMeetings.filter((m) => m.status !== 'cancelled');
+  const meetingItem = (m: (typeof activeMeetings)[number]): CalItem => ({
+    id: m.id,
+    source: 'meeting',
+    title: m.title,
+    date: m.date,
+    start: m.start_time,
+    end: m.end_time,
+  });
   const calItems: CalItem[] = [
-    ...events.map((e) => ({ id: e.id, source: 'event' as const, title: e.title, date: e.date, start: e.start_time, end: e.end_time })),
-    ...allMeetings
-      .filter((m) => m.status !== 'cancelled' && inArea(m.area))
-      .map((m) => ({ id: m.id, source: 'meeting' as const, title: m.title, date: m.date, start: m.start_time, end: m.end_time })),
+    ...events.map(eventItem),
+    ...activeMeetings.filter((m) => inArea(m.area)).map(meetingItem),
     ...(showTasks
       ? allTasks
-          .filter((t) => t.due_date && inArea(t.area))
-          .map((t) => ({ id: t.id, source: 'task' as const, title: t.text, date: t.due_date!, done: t.done }))
+          // Due dates are normalised: some integrations store timestamps rather than plain dates.
+          .map((t) => ({ t, key: toDueKey(t.due_date) }))
+          .filter(({ t, key }) => key && inArea(t.area))
+          .map(({ t, key }) => ({ id: t.id, source: 'task' as const, title: t.text, date: key, done: t.done }))
       : []),
   ];
-  const clashes = findClashes(calItems);
+  // Clashes are checked against your whole schedule, whichever area is being viewed.
+  const scheduleItems: CalItem[] = [...allEvents.map(eventItem), ...activeMeetings.map(meetingItem)];
+  const clashes = findClashes(scheduleItems);
 
-  // Live checks for the event form.
-  const formEndInvalid = endBeforeStart(formStartTime, formEndTime);
+  // Live checks for the event form. An end before the start means the event ends the next day;
+  // only a zero-length time range is refused (and never for an event saved that way before).
+  const formTimesUnchanged = !!editingEvent && formStartTime === (editingEvent.start_time || '') && formEndTime === (editingEvent.end_time || '');
+  const formEndInvalid = sameStartEnd(formStartTime, formEndTime) && !formTimesUnchanged;
+  const formEndsNextDay = endsNextDay(formStartTime, formEndTime);
   const formClashes = isModalOpen
-    ? clashesWith({ id: editingEvent?.id, source: 'event', date: formDate, start: formStartTime || undefined, end: formEndTime || undefined }, calItems)
+    ? clashesWith({ id: editingEvent?.id, source: 'event', date: formDate, start: formStartTime || undefined, end: formEndTime || undefined }, scheduleItems)
     : [];
 
   const toggleTaskFromCalendar = async (taskId: string) => {
@@ -184,6 +200,14 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
   const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 is Sunday
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
+  // Clashing items on the dates currently on screen (for the header count).
+  const visibleDays = new Set(
+    viewMode === 'month'
+      ? Array.from({ length: daysInMonth }, (_, i) => `${year}-${String(month + 1).padStart(2, '0')}-${String(i + 1).padStart(2, '0')}`)
+      : rangeFor(viewMode, currentDate)
+  );
+  const visibleClashCount = calItems.filter((it) => visibleDays.has(it.date) && clashes.has(itemKey(it))).length;
+
   // Navigation handlers
   const handlePrev = () => {
     if (viewMode === 'month') {
@@ -191,9 +215,9 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
     } else if (viewMode === 'agenda') {
       setCurrentDate(new Date(year, month, currentDate.getDate() - 14));
     } else if (viewMode === 'week') {
-      setCurrentDate(new Date(currentDate.getTime() - 7 * 86400000));
+      setCurrentDate(new Date(year, month, currentDate.getDate() - 7));
     } else {
-      setCurrentDate(new Date(currentDate.getTime() - 86400000));
+      setCurrentDate(new Date(year, month, currentDate.getDate() - 1));
     }
   };
 
@@ -203,9 +227,9 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
     } else if (viewMode === 'agenda') {
       setCurrentDate(new Date(year, month, currentDate.getDate() + 14));
     } else if (viewMode === 'week') {
-      setCurrentDate(new Date(currentDate.getTime() + 7 * 86400000));
+      setCurrentDate(new Date(year, month, currentDate.getDate() + 7));
     } else {
-      setCurrentDate(new Date(currentDate.getTime() + 86400000));
+      setCurrentDate(new Date(year, month, currentDate.getDate() + 1));
     }
   };
 
@@ -426,10 +450,10 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
         </h3>
 
         <div className="text-xs text-[var(--hub-muted)] hidden sm:block">
-          {clashes.size > 0 ? (
+          {visibleClashCount > 0 ? (
             <span className="inline-flex items-center gap-1 font-semibold text-amber-800 dark:text-amber-300">
               <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />
-              {clashes.size} clashing {clashes.size === 1 ? 'item' : 'items'}
+              {visibleClashCount} clashing {visibleClashCount === 1 ? 'item' : 'items'} here
             </span>
           ) : (
             `${events.length} events`
@@ -563,7 +587,9 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
                         {shownMeetings.map((m) => (
                           <div
                             key={`m-${m.id}`}
-                            className="text-[11px] p-1 rounded font-medium truncate bg-purple-500/5 border border-purple-500/20 flex items-center gap-1"
+                            // Meetings are managed on the Meetings page; a click here must not start a new event.
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-[11px] p-1 rounded font-medium truncate bg-purple-500/5 border border-purple-500/20 flex items-center gap-1 cursor-default"
                             title={`${m.title} (meeting, ${formatTimeRange(m)})`}
                           >
                             <span className="w-1.5 h-1.5 rounded-full flex-none bg-purple-500" />
@@ -571,9 +597,15 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
                           </div>
                         ))}
                         {shownTasks.map((t) => (
-                          <div
+                          <button
                             key={`t-${t.id}`}
-                            className={`text-[11px] px-1 truncate flex items-center gap-1 ${t.done ? 'line-through text-[var(--hub-muted)]' : 'text-[var(--hub-ink)]'}`}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void toggleTaskFromCalendar(t.id);
+                            }}
+                            aria-label={`${t.done ? 'Reopen' : 'Complete'} task: ${t.title}`}
+                            className={`w-full text-left text-[11px] px-1 truncate flex items-center gap-1 rounded hover:bg-[var(--hub-surface-hover)] cursor-pointer ${t.done ? 'line-through text-[var(--hub-muted)]' : 'text-[var(--hub-ink)]'}`}
                             title={`Task due: ${t.title}${t.done ? ' (done)' : ''}`}
                           >
                             {t.done ? (
@@ -582,7 +614,7 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
                               <Square className="w-3 h-3 flex-none text-[var(--hub-muted)]" aria-hidden="true" />
                             )}
                             <span className="truncate">{t.title}</span>
-                          </div>
+                          </button>
                         ))}
                         {hidden > 0 && <div className="text-[10px] text-[var(--hub-muted)] font-medium pl-1">+{hidden} more</div>}
                       </div>
@@ -684,8 +716,11 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
 
           {formEndInvalid && (
             <p id="event-time-error" role="alert" className="text-xs font-semibold text-[var(--hub-red)]">
-              End time must be after the start time.
+              The end time is the same as the start time. Change one of them, or clear the end time.
             </p>
+          )}
+          {!formEndInvalid && formEndsNextDay && (
+            <p className="text-xs text-[var(--hub-muted)]">Ends the next day ({formEndTime}).</p>
           )}
           {!formEndInvalid && formClashes.length > 0 && (
             <div role="status" className="flex items-start gap-2 p-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-xs text-amber-900 dark:text-amber-200">

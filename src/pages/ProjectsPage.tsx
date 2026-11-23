@@ -37,6 +37,7 @@ import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { SyncQueueService } from '../services/sync/syncQueueService';
+import { TaskService } from '../services/sync/taskService';
 import { AIGateway } from '../services/ai/aiGateway';
 
 interface ProjectsPageProps {
@@ -373,11 +374,9 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
       setNewTaskTitle('');
     };
 
+    // Through TaskService like every other screen, so a repeating task creates its next copy.
     const handleToggleLinkedTask = async (t: Task) => {
-      const now = new Date().toISOString();
-      await db.tasks.update(t.id, { done: !t.done, updated_at: now });
-      const updatedTask = await db.tasks.get(t.id);
-      if (updatedTask) SyncQueueService.enqueueChange('tasks', t.id, 'UPDATE', updatedTask).catch(() => {});
+      await TaskService.toggleDone(t);
     };
 
     const handleAddLinkedNote = async (e: React.FormEvent) => {

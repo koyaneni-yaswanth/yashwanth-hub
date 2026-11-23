@@ -24,8 +24,10 @@ import { IntegrationVaultService } from '../services/integrationVaultService';
 import { SubtaskEditor, RepeatPicker, BlockedByPicker } from '../components/tasks/TaskFieldsEditor';
 import { TaskChips } from '../components/tasks/TaskChips';
 import { TaskBoard } from '../components/tasks/TaskBoard';
-import { cleanSubtasks, moveToColumn, normaliseRecurrence, openBlockers, type BoardColumn } from '../lib/taskModel';
+import { alignAnchorDay, cleanSubtasks, moveToColumn, normaliseRecurrence, openBlockers, type BoardColumn } from '../lib/taskModel';
 import { toast } from '../lib/toast';
+import { GoogleAuthService } from '../services/google/googleAuthService';
+import { GoogleTasksService } from '../services/google/googleTasksService';
 
 const VIEW_KEY = 'yash_tasks_view';
 const readView = (): 'list' | 'board' => {
@@ -172,13 +174,15 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
       due_date: formDueDate || undefined,
       notes: formNotes.trim() || undefined,
       subtasks: cleanSubtasks(formSubtasks),
-      recurrence: normaliseRecurrence(formRecurrence),
+      recurrence: alignAnchorDay(normaliseRecurrence(formRecurrence), formDueDate || undefined),
       blocked_by: formBlockedBy.length ? formBlockedBy : undefined,
       stage: formStage,
     };
 
     if (editingTask) {
-      await TaskService.update(editingTask, fields);
+      // A finished copy of an old series that is given a repeat again starts a new series.
+      const restartSeries = fields.recurrence && editingTask.recurred_to ? { recurred_to: undefined } : {};
+      await TaskService.update(editingTask, { ...fields, ...restartSeries });
     } else {
       await TaskService.create({ ...fields, starred: false, done: false });
     }
@@ -190,20 +194,8 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
     const nextDone = !task.done;
     await completeOrReopen(task, { done: nextDone });
 
-    // Asynchronously dispatch task status to Google Tasks and NeoSapien MCP if synced/connected
+    // Asynchronously dispatch task status to NeoSapien MCP if connected (Google is handled in completeOrReopen)
     try {
-      if (task.google_task_id) {
-        fetch('/api/integrations/google-tasks', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'complete',
-            taskId: task.google_task_id,
-            completed: nextDone,
-          }),
-        }).catch((err) => console.warn('[TasksPage] Google task toggle background error:', err));
-      }
-
       fetch('/api/integrations/neosapien', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -223,9 +215,12 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
     }
   };
 
-  /** Shared by the checkbox and the board: reports blockers and the next repeat. */
+  /** Shared by the checkbox and the board: reports blockers and the next repeat, and tells Google. */
   const completeOrReopen = async (task: Task, changes: Partial<Task>) => {
     const res = await TaskService.update(task, changes);
+    if (res.task.google_task_id && res.task.done !== task.done && GoogleAuthService.isConnected()) {
+      void GoogleTasksService.setGoogleTaskStatus(res.task.google_task_id, res.task.done);
+    }
     if (changes.done && !task.done) {
       const waiting = openBlockers(task, tasksById);
       if (res.next) {
@@ -239,6 +234,8 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
 
   const handleMoveOnBoard = async (task: Task, column: BoardColumn) => {
     await completeOrReopen(task, moveToColumn(column));
+    // Completing announces itself; other moves get a short polite confirmation.
+    if (column !== 'done') toast(`Moved “${task.text}” to ${column === 'doing' ? 'In progress' : 'To do'}.`, 'info', 3000);
   };
 
   const toggleSubtask = async (task: Task, subtaskId: string) => {
@@ -683,7 +680,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
           </div>
 
           <SubtaskEditor value={formSubtasks} onChange={setFormSubtasks} />
-          <RepeatPicker value={formRecurrence} onChange={setFormRecurrence} hasDueDate={Boolean(formDueDate)} />
+          <RepeatPicker value={formRecurrence} onChange={setFormRecurrence} dueDate={formDueDate} />
           <BlockedByPicker taskId={editingTask?.id ?? null} value={formBlockedBy} onChange={setFormBlockedBy} tasks={allTasks} />
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-[var(--hub-line)]">

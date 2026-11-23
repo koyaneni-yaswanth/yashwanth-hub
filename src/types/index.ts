@@ -42,6 +42,8 @@ export interface Recurrence {
   interval: number;
   /** Last allowed due date, 'YYYY-MM-DD'. */
   until?: string;
+  /** Monthly/yearly: the series' day of month, so a short month doesn't shift it for good. */
+  day?: number;
 }
 
 export type TaskStage = 'todo' | 'doing';

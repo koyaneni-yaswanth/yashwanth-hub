@@ -18,7 +18,7 @@ import {
   TASK_V3_FIELDS,
 } from '../src/lib/taskModel.ts';
 import { createTaskMutations } from '../src/services/sync/taskMutations.ts';
-import { toMinutes, timeSpan, clashesWith, findClashes, endBeforeStart, rangeFor, sortDay, itemKey } from '../src/lib/calendarModel.ts';
+import { toMinutes, timeSpan, clashesWith, findClashes, sameStartEnd, endsNextDay, rangeFor, sortDay, itemKey } from '../src/lib/calendarModel.ts';
 
 const T = (id, extra = {}) => ({ id, text: `Task ${id}`, area: 'Personal', priority: 'medium', starred: false, done: false, created_at: 'c', updated_at: 'u', ...extra });
 
@@ -117,7 +117,7 @@ test('cloud safety: realtime merge keeps v3 fields the cloud lacks; stripping re
   assert.equal(merged.text, 'renamed');
   assert.equal(merged.stage, 'doing');
   assert.equal(merged.subtasks.length, 1);
-  assert.equal(mergeRemoteTask(local, { ...remote, stage: null }).stage, null, 'a cloud copy that has the column wins');
+  assert.equal(mergeRemoteTask(local, { ...remote, stage: null }).stage, undefined, 'a cloud copy that has the column wins (null = empty)');
   const stripped = stripTaskV3Fields({ ...local, recurrence: { freq: 'daily', interval: 1 } });
   for (const k of TASK_V3_FIELDS) assert.ok(!(k in stripped));
   assert.equal(stripped.text, 'Task a');
@@ -135,9 +135,10 @@ test('calendar: minutes, spans, end-before-start', () => {
   assert.deepEqual(timeSpan({ source: 'event', start: '10:00' }), [600, 660], 'no end -> 1 hour');
   assert.equal(timeSpan({ source: 'task', start: '10:00' }), null);
   assert.equal(timeSpan({ source: 'event' }), null, 'all-day items never clash');
-  assert.ok(endBeforeStart('11:00', '10:00'));
-  assert.ok(endBeforeStart('11:00', '11:00'));
-  assert.ok(!endBeforeStart('11:00', ''));
+  assert.ok(sameStartEnd('11:00', '11:00'), 'zero-length range is refused');
+  assert.ok(!sameStartEnd('11:00', '10:00'), 'end before start is an overnight event, not an error');
+  assert.ok(endsNextDay('23:00', '01:00'));
+  assert.ok(!sameStartEnd('11:00', '') && !endsNextDay('11:00', ''));
 });
 
 test('calendar: clash detection across events and meetings', () => {

@@ -13,6 +13,8 @@ const normaliseDue = <T extends { due_date?: string }>(x: T): T =>
  */
 
 export interface TaskStore {
+  /** Reads the stored row (optional for simple test stores). Used so decisions never rest on a stale copy. */
+  get?(id: string): Promise<Task | undefined>;
   add(task: Task): Promise<unknown>;
   update(id: string, changes: Partial<Task>): Promise<unknown>;
   put(task: Task): Promise<unknown>;
@@ -51,6 +53,22 @@ export function createTaskMutations(
   const newId = options.newId ?? (() => Math.random().toString(36).slice(2) + Date.now().toString(36));
   const onQueueError = options.onQueueError ?? ((err) => console.warn('[tasks] Could not queue cloud sync:', err));
 
+  // Updates to the same task run one after another, each on the stored row, so a double-click
+  // (two calls carrying the same stale task) can't both pass the "create next occurrence" check.
+  const chains = new Map<string, Promise<unknown>>();
+  const serial = <T,>(id: string, fn: () => Promise<T>): Promise<T> => {
+    const run = (chains.get(id) ?? Promise.resolve()).then(fn, fn);
+    const tail = run.then(
+      () => undefined,
+      () => undefined
+    );
+    chains.set(id, tail);
+    void tail.then(() => {
+      if (chains.get(id) === tail) chains.delete(id);
+    });
+    return run;
+  };
+
   // The local write is the source of truth; a queue failure is reported, never hidden,
   // and never rolls back the user's change.
   const enqueue = async (recordId: string, action: 'INSERT' | 'UPDATE' | 'DELETE', payload: unknown): Promise<SyncOutcome> => {
@@ -71,29 +89,33 @@ export function createTaskMutations(
       return { task, sync: await enqueue(task.id, 'INSERT', task) };
     },
 
-    async update(task: Task, rawChanges: Partial<Task>): Promise<TaskMutationResult> {
-      let changes = 'due_date' in rawChanges ? normaliseDue(rawChanges) : rawChanges;
+    update(task: Task, rawChanges: Partial<Task>): Promise<TaskMutationResult> {
+      return serial(task.id, async () => {
+        let changes = 'due_date' in rawChanges ? normaliseDue(rawChanges) : rawChanges;
+        // Decide on the stored row when we can: the caller's copy may be from an older render.
+        const current = (store.get ? await store.get(task.id) : undefined) ?? task;
 
-      // Completing a repeating task creates the next one and hands the series over to it,
-      // so undo + complete again can never create a duplicate.
-      let next: Task | null = null;
-      if (changes.done === true && !task.done && task.recurrence && !task.recurred_to) {
-        next = buildNextOccurrence({ ...task, ...changes }, today(), newId(), now());
-        if (next) changes = { ...changes, recurrence: undefined, recurred_to: next.id };
-      }
+        // Completing a repeating task creates the next one and hands the series over to it,
+        // so undo + complete again can never create a duplicate.
+        let next: Task | null = null;
+        if (changes.done === true && !current.done && current.recurrence && !current.recurred_to) {
+          next = buildNextOccurrence({ ...current, ...changes }, today(), newId(), now());
+          if (next) changes = { ...changes, recurrence: undefined, recurred_to: next.id };
+        }
 
-      const updated: Task = { ...task, ...changes, id: task.id, updated_at: now() };
-      for (const key of Object.keys(updated) as (keyof Task)[]) if (updated[key] === undefined) delete updated[key];
-      const { id: _id, ...patch } = { ...changes, updated_at: updated.updated_at };
-      await store.update(task.id, patch);
-      const sync = await enqueue(task.id, 'UPDATE', updated);
+        const updated: Task = { ...current, ...changes, id: task.id, updated_at: now() };
+        for (const key of Object.keys(updated) as (keyof Task)[]) if (updated[key] === undefined) delete updated[key];
+        const { id: _id, ...patch } = { ...changes, updated_at: updated.updated_at };
+        await store.update(task.id, patch);
+        const sync = await enqueue(task.id, 'UPDATE', updated);
 
-      if (next) {
-        await store.add(next);
-        await enqueue(next.id, 'INSERT', next);
-        return { task: updated, sync, next };
-      }
-      return { task: updated, sync };
+        if (next) {
+          await store.add(next);
+          await enqueue(next.id, 'INSERT', next);
+          return { task: updated, sync, next };
+        }
+        return { task: updated, sync };
+      });
     },
 
     toggleDone(task: Task) {

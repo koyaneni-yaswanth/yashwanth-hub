@@ -34,20 +34,33 @@ export function toMinutes(time: string | undefined): number | null {
 /** Default length used for a timed item without an end time. */
 export const DEFAULT_DURATION_MIN = 60;
 
-/** [start, end) in minutes for a timed item, or null for all-day items and tasks. */
+/**
+ * [start, end) in minutes on its own date for a timed item, or null for all-day
+ * items and tasks. An end earlier than the start means the item runs past
+ * midnight; on its start date it then lasts until the end of the day.
+ */
 export function timeSpan(item: Pick<CalItem, 'start' | 'end' | 'source'>): [number, number] | null {
   if (item.source === 'task') return null;
   const s = toMinutes(item.start);
   if (s === null) return null;
   const e = toMinutes(item.end);
-  return [s, e !== null && e > s ? e : Math.min(24 * 60, s + DEFAULT_DURATION_MIN)];
+  if (e !== null && e > s) return [s, e];
+  if (e !== null && e < s) return [s, 24 * 60];
+  return [s, Math.min(24 * 60, s + DEFAULT_DURATION_MIN)];
 }
 
-/** True when an end time is set but is not after the start time. */
-export function endBeforeStart(start: string | undefined, end: string | undefined): boolean {
+/** True when an end time is set and equals the start time (a zero-length event). */
+export function sameStartEnd(start: string | undefined, end: string | undefined): boolean {
   const s = toMinutes(start);
   const e = toMinutes(end);
-  return s !== null && e !== null && e <= s;
+  return s !== null && e !== null && e === s;
+}
+
+/** True when the end time is earlier than the start time, i.e. the event ends the next day. */
+export function endsNextDay(start: string | undefined, end: string | undefined): boolean {
+  const s = toMinutes(start);
+  const e = toMinutes(end);
+  return s !== null && e !== null && e < s;
 }
 
 /** Timed items on the same day that overlap `candidate` (touching end-to-start is fine). */
@@ -101,5 +114,6 @@ export function rangeFor(view: 'day' | 'week' | 'agenda', anchor: Date): string[
 
 export function formatTimeRange(item: Pick<CalItem, 'start' | 'end'>): string {
   if (!item.start) return 'All day';
-  return item.end ? `${item.start}–${item.end}` : item.start;
+  if (!item.end) return item.start;
+  return `${item.start}–${item.end}${endsNextDay(item.start, item.end) ? ' (next day)' : ''}`;
 }

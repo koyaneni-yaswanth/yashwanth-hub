@@ -36,8 +36,10 @@ export class RealtimeSyncManager {
                   SyncQueueService.hasPendingChange('tasks', payload.new.id),
                 ]);
                 if (resolveRemoteUpsert(local, payload.new, pending) === 'apply') {
-                  // Keep subtasks / repeat / blockers if the cloud copy doesn't carry them yet.
-                  await db.tasks.put(mergeRemoteTask(local, payload.new));
+                  // Keep subtasks / repeat / blockers the cloud doesn't carry yet, or that this
+                  // device saved before the cloud had the columns (they win until uploaded).
+                  const keepLocalV3 = await SyncQueueService.isTaskV3Unsynced(payload.new.id);
+                  await db.tasks.put(mergeRemoteTask(local, payload.new, { keepLocalV3 }));
                 }
               }
             } else if (payload.eventType === 'DELETE') {

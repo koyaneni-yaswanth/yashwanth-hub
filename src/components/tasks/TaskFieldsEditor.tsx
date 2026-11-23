@@ -1,7 +1,7 @@
 import React, { useId, useState } from 'react';
 import { Plus, X, Repeat, Link2, ListChecks } from 'lucide-react';
 import type { Recurrence, RecurrenceFreq, Subtask, Task } from '../../types';
-import { RECURRENCE_OPTIONS, describeRecurrence, wouldCreateCycle } from '../../lib/taskModel';
+import { MAX_INTERVAL, RECURRENCE_OPTIONS, describeRecurrence, wouldCreateCycle } from '../../lib/taskModel';
 import { generateId } from '../../lib/utils';
 
 const fieldCls =
@@ -66,6 +66,8 @@ export const SubtaskEditor: React.FC<{ value: Subtask[]; onChange: (next: Subtas
               add();
             }
           }}
+          // A step typed but not yet added is kept when focus moves on (e.g. straight to Save).
+          onBlur={add}
           placeholder="Add a step, then press Enter"
           className={`${inputCls} py-1.5`}
         />
@@ -83,13 +85,17 @@ export const SubtaskEditor: React.FC<{ value: Subtask[]; onChange: (next: Subtas
 };
 
 /** Repeat picker: frequency, every-N interval and an optional end date. */
-export const RepeatPicker: React.FC<{ value: Recurrence | undefined; onChange: (next: Recurrence | undefined) => void; hasDueDate: boolean }> = ({
+export const RepeatPicker: React.FC<{ value: Recurrence | undefined; onChange: (next: Recurrence | undefined) => void; dueDate: string }> = ({
   value,
   onChange,
-  hasDueDate,
+  dueDate,
 }) => {
   const id = useId();
   const unit = RECURRENCE_OPTIONS.find((o) => o.value === value?.freq)?.unit;
+  // The interval box may be empty while typing; only whole numbers 1-365 are applied.
+  const [intervalText, setIntervalText] = useState<string | null>(null);
+  const intervalInvalid = intervalText !== null && !(Number.isInteger(Number(intervalText)) && Number(intervalText) >= 1 && Number(intervalText) <= MAX_INTERVAL);
+  const untilBeforeDue = Boolean(value?.until && dueDate && value.until < dueDate);
   return (
     <div>
       <label htmlFor={`${id}-freq`} className={labelCls}>
@@ -115,11 +121,19 @@ export const RepeatPicker: React.FC<{ value: Recurrence | undefined; onChange: (
             <input
               type="number"
               min={1}
-              max={365}
-              value={value.interval}
-              onChange={(e) => onChange({ ...value, interval: Math.max(1, Number(e.target.value) || 1) })}
-              aria-label={`Repeat every how many ${unit}s`}
-              className={`${fieldCls} w-16`}
+              max={MAX_INTERVAL}
+              step={1}
+              value={intervalText ?? String(value.interval)}
+              onChange={(e) => {
+                const text = e.target.value;
+                setIntervalText(text);
+                const n = Number(text);
+                if (text !== '' && Number.isInteger(n) && n >= 1 && n <= MAX_INTERVAL) onChange({ ...value, interval: n });
+              }}
+              onBlur={() => setIntervalText(null)}
+              aria-label={`Repeat every how many ${unit}s (1 to ${MAX_INTERVAL})`}
+              aria-invalid={intervalInvalid}
+              className={`${fieldCls} w-20`}
             />
             <span className="shrink-0">{unit}{value.interval === 1 ? '' : 's'}</span>
           </label>
@@ -130,16 +144,28 @@ export const RepeatPicker: React.FC<{ value: Recurrence | undefined; onChange: (
             <input
               type="date"
               value={value.until ?? ''}
+              min={dueDate || undefined}
               onChange={(e) => onChange({ ...value, until: e.target.value || undefined })}
               aria-label="Repeat until (optional)"
+              aria-invalid={untilBeforeDue}
               className={`${fieldCls} w-40`}
             />
           </label>
         )}
       </div>
-      {value && (
+      {value && intervalInvalid && (
+        <p role="alert" className="mt-1.5 text-xs font-semibold text-[var(--hub-red)]">
+          Enter a whole number from 1 to {MAX_INTERVAL}. Keeping every {value.interval}.
+        </p>
+      )}
+      {value && untilBeforeDue && (
+        <p role="alert" className="mt-1.5 text-xs font-semibold text-amber-800 dark:text-amber-300">
+          The end date is before the due date, so completing this task won't create another one.
+        </p>
+      )}
+      {value && !untilBeforeDue && (
         <p className="mt-1.5 text-xs text-[var(--hub-muted)]">
-          {describeRecurrence(value)}. Completing it creates the next one{hasDueDate ? ', due on the next date in the series' : ', due from today'}.
+          {describeRecurrence(value)}. Completing it creates the next one{dueDate ? ', due on the next date in the series' : ', counting from the day you complete it'}.
         </p>
       )}
     </div>

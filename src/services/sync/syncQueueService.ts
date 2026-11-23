@@ -2,32 +2,31 @@ import { db } from '../../db';
 import { getSupabaseClient, isSupabaseConfigured } from '../../lib/supabase';
 import type { SyncQueueItem } from '../../types';
 import { generateId } from '../../lib/utils';
-import { TASK_V3_FIELDS, stripTaskV3Fields } from '../../lib/taskModel';
+import {
+  TASK_V3_FIELDS,
+  classifyColumnProbeError,
+  hasTaskV3Values,
+  toCloudTaskPayload,
+  type V3ColumnCheck,
+} from '../../lib/taskModel';
+
+type Client = NonNullable<ReturnType<typeof getSupabaseClient>>;
+
+/** Tasks whose subtasks / repeat / blockers / stage never reached the cloud (saved before the columns existed). */
+const V3_UNSYNCED_KEY = 'tasks_v3_unsynced';
+/** How long a "columns missing" answer is trusted before checking again. */
+const V3_NO_RECHECK_MS = 60_000;
 
 export class SyncQueueService {
   private static isFlushing = false;
-  /** Whether the cloud tasks table has the Phase 3 columns (checked once per session). */
-  private static taskV3Columns: Promise<boolean> | null = null;
-
-  private static cloudHasTaskV3Columns(client: NonNullable<ReturnType<typeof getSupabaseClient>>): Promise<boolean> {
-    if (!this.taskV3Columns) {
-      this.taskV3Columns = Promise.resolve(client.from('tasks').select(TASK_V3_FIELDS.join(',')).limit(1))
-        .then(({ error }) => {
-          if (error) {
-            // Retry the check later in case the migration is applied while the app is open.
-            setTimeout(() => (this.taskV3Columns = null), 10 * 60 * 1000);
-            return false;
-          }
-          return true;
-        })
-        .catch(() => {
-          this.taskV3Columns = null;
-          return false;
-        });
-    }
-    return this.taskV3Columns;
-  }
+  /** Set when a change is queued during a flush, so another flush picks it up. */
+  private static flushAgain = false;
   private static listeners: ((count: number) => void)[] = [];
+
+  /** Last definite answer about the cloud tasks table's v3 columns. 'yes' is kept for the session. */
+  private static v3Check: { state: 'yes' | 'no'; at: number } | null = null;
+  private static v3BackfillStarted = false;
+  private static v3Unsynced: Promise<Set<string>> | null = null;
 
   /**
    * Initializes offline queue network event listeners.
@@ -55,6 +54,79 @@ export class SyncQueueService {
     this.listeners.forEach((l) => l(count));
   }
 
+  // ---------------------------------------------------------------------------
+  // Tasks v3 columns: check, local-only tracking and backfill
+  // ---------------------------------------------------------------------------
+
+  private static loadV3Unsynced(): Promise<Set<string>> {
+    if (!this.v3Unsynced) {
+      this.v3Unsynced = db.settings
+        .get(V3_UNSYNCED_KEY)
+        .then((s) => new Set<string>(Array.isArray(s?.value) ? (s!.value as string[]) : []))
+        .catch(() => new Set<string>());
+    }
+    return this.v3Unsynced;
+  }
+
+  private static async saveV3Unsynced(set: Set<string>): Promise<void> {
+    await db.settings.put({ key: V3_UNSYNCED_KEY, value: [...set], updated_at: new Date().toISOString() });
+  }
+
+  /** True when this device holds v3 values for the task that the cloud has not received yet. */
+  public static async isTaskV3Unsynced(taskId: string): Promise<boolean> {
+    return (await this.loadV3Unsynced()).has(taskId);
+  }
+
+  private static async markV3Unsynced(taskId: string): Promise<void> {
+    const set = await this.loadV3Unsynced();
+    if (set.has(taskId)) return;
+    set.add(taskId);
+    await this.saveV3Unsynced(set);
+  }
+
+  private static async clearV3Unsynced(taskId: string): Promise<void> {
+    const set = await this.loadV3Unsynced();
+    if (set.delete(taskId)) await this.saveV3Unsynced(set);
+  }
+
+  /**
+   * Does the cloud tasks table have the v3 columns?
+   * Only a "missing column/table" error means no; network or server errors are
+   * 'unknown', so uploads wait and retry instead of silently dropping fields.
+   */
+  private static async checkTaskV3Columns(client: Client): Promise<V3ColumnCheck> {
+    if (this.v3Check?.state === 'yes') return 'yes';
+    if (this.v3Check?.state === 'no' && Date.now() - this.v3Check.at < V3_NO_RECHECK_MS) return 'no';
+    let result: V3ColumnCheck;
+    try {
+      const { error } = await client.from('tasks').select(TASK_V3_FIELDS.join(',')).limit(1);
+      result = classifyColumnProbeError(error);
+    } catch {
+      result = 'unknown';
+    }
+    if (result !== 'unknown') this.v3Check = { state: result, at: Date.now() };
+    if (result === 'yes') await this.backfillTaskV3();
+    return result;
+  }
+
+  /** Once the columns exist, upload the full row of every task whose v3 values stayed on this device. */
+  private static async backfillTaskV3(): Promise<void> {
+    if (this.v3BackfillStarted) return;
+    this.v3BackfillStarted = true;
+    for (const id of [...(await this.loadV3Unsynced())]) {
+      const task = await db.tasks.get(id);
+      if (!task) {
+        await this.clearV3Unsynced(id);
+        continue;
+      }
+      await this.enqueueChange('tasks', id, 'UPDATE', task);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Queue
+  // ---------------------------------------------------------------------------
+
   /**
    * Enqueues an offline or online mutation to be reconciled with the cloud database.
    */
@@ -78,9 +150,10 @@ export class SyncQueueService {
     const count = await db.sync_queue.count();
     this.notify(count);
 
-    // If online, trigger immediate flush
+    // If online, trigger immediate flush (or a follow-up one if a flush is running)
     if (typeof navigator !== 'undefined' && navigator.onLine) {
-      this.flushQueue().catch((err) => console.warn('Flush error:', err));
+      if (this.isFlushing) this.flushAgain = true;
+      else this.flushQueue().catch((err) => console.warn('Flush error:', err));
     }
   }
 
@@ -98,8 +171,12 @@ export class SyncQueueService {
     if (!client) return { processed: 0, failed: 0 };
 
     this.isFlushing = true;
+    this.flushAgain = false;
     let processed = 0;
     let failed = 0;
+    // Checked at most once per flush, and only if a task is being uploaded.
+    let v3: Promise<V3ColumnCheck> | null = null;
+    const v3Columns = () => (v3 ??= this.checkTaskV3Columns(client));
 
     try {
       const items = await db.sync_queue.orderBy('created_at').toArray();
@@ -108,12 +185,22 @@ export class SyncQueueService {
         try {
           if (item.action === 'INSERT' || item.action === 'UPDATE') {
             let payload = item.payload;
-            // Older cloud schemas lack the Tasks v3 columns: send the rest rather than failing the whole task.
-            if (item.table_name === 'tasks' && payload && !(await this.cloudHasTaskV3Columns(client))) {
-              payload = stripTaskV3Fields(payload);
+            let uploadedV3 = false;
+            if (item.table_name === 'tasks' && payload) {
+              const state = await v3Columns();
+              if (state === 'unknown') {
+                throw new Error('Could not confirm which task columns the cloud has; will retry.');
+              }
+              if (state === 'no' && hasTaskV3Values(payload)) {
+                // These fields stay on this device for now; remember to upload them once the columns exist.
+                await this.markV3Unsynced(item.record_id);
+              }
+              payload = toCloudTaskPayload(payload, state === 'yes');
+              uploadedV3 = state === 'yes';
             }
             const { error } = await (client.from(item.table_name) as any).upsert(payload);
             if (error) throw error;
+            if (uploadedV3) await this.clearV3Unsynced(item.record_id);
           } else if (item.action === 'DELETE') {
             const { error } = await (client.from(item.table_name) as any)
               .delete()
@@ -145,6 +232,12 @@ export class SyncQueueService {
       this.isFlushing = false;
       const remainingCount = await db.sync_queue.count();
       this.notify(remainingCount);
+      if (this.flushAgain) {
+        this.flushAgain = false;
+        setTimeout(() => {
+          this.flushQueue().catch((err) => console.warn('Flush error:', err));
+        }, 0);
+      }
     }
 
     return { processed, failed };

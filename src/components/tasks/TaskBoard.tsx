@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Calendar, Star } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Calendar, Check, Play, Star, Undo2 } from 'lucide-react';
 import type { Task } from '../../types';
 import { BOARD_COLUMNS, boardColumnOf, type BoardColumn } from '../../lib/taskModel';
 import { formatShortDate, isOverdue } from '../../lib/utils';
@@ -7,9 +7,17 @@ import { TaskChips } from './TaskChips';
 
 const DONE_LIMIT = 30;
 
+/** The buttons a card shows for the columns it is not in. */
+const MOVE_ACTIONS: Record<BoardColumn, { label: string; Icon: typeof Check }> = {
+  todo: { label: 'To do', Icon: Undo2 },
+  doing: { label: 'Start', Icon: Play },
+  done: { label: 'Done', Icon: Check },
+};
+
 /**
  * Kanban board: To do / In progress / Done. Cards can be dragged between
- * columns, or moved with the "Move to" menu on each card (keyboard and touch).
+ * columns, or moved with the buttons on each card (keyboard and touch); a move
+ * only happens when a button is pressed, and focus follows the moved card.
  */
 export const TaskBoard: React.FC<{
   tasks: Task[];
@@ -19,6 +27,22 @@ export const TaskBoard: React.FC<{
 }> = ({ tasks, byId, onMove, onOpen }) => {
   const [dragId, setDragId] = useState<string | null>(null);
   const [overCol, setOverCol] = useState<BoardColumn | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  // After a keyboard/touch move the card re-mounts in its new column; put focus back on it.
+  const focusAfterMove = useRef<string | null>(null);
+  useEffect(() => {
+    const id = focusAfterMove.current;
+    if (!id || !rootRef.current) return;
+    const card = [...rootRef.current.querySelectorAll<HTMLElement>('[data-card-id]')].find((el) => el.dataset.cardId === id);
+    if (!card) return;
+    focusAfterMove.current = null;
+    (card.querySelector<HTMLElement>('[data-move-button]') ?? card.querySelector<HTMLElement>('button'))?.focus();
+  }, [tasks]);
+
+  const moveWithButton = (task: Task, col: BoardColumn) => {
+    focusAfterMove.current = task.id;
+    onMove(task, col);
+  };
 
   const columns = BOARD_COLUMNS.map((c) => {
     let list = tasks.filter((t) => boardColumnOf(t) === c.id);
@@ -34,7 +58,7 @@ export const TaskBoard: React.FC<{
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-start">
+    <div ref={rootRef} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-start">
       {columns.map((col) => (
         <section
           key={col.id}
@@ -68,6 +92,7 @@ export const TaskBoard: React.FC<{
                 return (
                   <li
                     key={t.id}
+                    data-card-id={t.id}
                     draggable
                     onDragStart={(e) => {
                       setDragId(t.id);
@@ -105,21 +130,24 @@ export const TaskBoard: React.FC<{
                       )}
                       <TaskChips task={t} byId={byId} />
                     </div>
-                    <label className="mt-2 flex items-center gap-1.5 text-xs text-[var(--hub-muted)]">
-                      <span>Move to</span>
-                      <select
-                        value={col.id}
-                        onChange={(e) => onMove(t, e.target.value as BoardColumn)}
-                        aria-label={`Move “${t.text}” to column`}
-                        className="py-0.5 px-1.5 rounded-md border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)] text-xs cursor-pointer"
-                      >
-                        {BOARD_COLUMNS.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5" role="group" aria-label={`Move “${t.text}”`}>
+                      {BOARD_COLUMNS.filter((c) => c.id !== col.id).map((c, i) => {
+                        const { label, Icon } = MOVE_ACTIONS[c.id];
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            {...(i === 0 ? { 'data-move-button': '' } : {})}
+                            onClick={() => moveWithButton(t, c.id)}
+                            aria-label={`${c.id === 'done' ? 'Mark done' : `Move to ${c.label}`}: ${t.text}`}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-medium text-[var(--hub-ink)] hover:border-[var(--hub-accent)] hover:text-[var(--hub-accent)] cursor-pointer"
+                          >
+                            <Icon className="w-3 h-3" aria-hidden="true" />
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </li>
                 );
               })}
