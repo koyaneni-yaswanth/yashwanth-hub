@@ -1,5 +1,6 @@
 import React from 'react';
-import { AlertTriangle, RotateCcw, Home } from 'lucide-react';
+import { AlertTriangle, RotateCcw, Home, RefreshCw } from 'lucide-react';
+import { isChunkLoadError, reloadOnceForNewVersion } from '../../lib/chunkReload';
 
 interface PageErrorBoundaryProps {
   /** Changing this key (e.g. the active tab) clears a previous error. */
@@ -12,15 +13,8 @@ interface PageErrorBoundaryProps {
 interface PageErrorBoundaryState {
   error: Error | null;
   resetKey: string;
-}
-
-const CHUNK_RELOAD_FLAG = 'yash_chunk_reload_at';
-
-/** A lazy page chunk failed to load — usually a new deploy replaced the old hashed files. */
-function isChunkLoadError(error: Error): boolean {
-  return /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|ChunkLoadError/i.test(
-    error.message || ''
-  );
+  /** A stale-deploy reload is under way: show a calm "updating" note, not an error. */
+  reloading: boolean;
 }
 
 /**
@@ -28,10 +22,11 @@ function isChunkLoadError(error: Error): boolean {
  * rest of the app stay usable instead of the whole screen going blank.
  */
 export class PageErrorBoundary extends React.Component<PageErrorBoundaryProps, PageErrorBoundaryState> {
-  state: PageErrorBoundaryState = { error: null, resetKey: this.props.resetKey };
+  state: PageErrorBoundaryState = { error: null, resetKey: this.props.resetKey, reloading: false };
 
   static getDerivedStateFromError(error: Error): Partial<PageErrorBoundaryState> {
-    return { error };
+    // Optimistically show "updating" for chunk errors; componentDidCatch clears it if no reload starts.
+    return { error, reloading: isChunkLoadError(error) };
   }
 
   // Navigating to another page clears a previous page's error.
@@ -39,24 +34,19 @@ export class PageErrorBoundary extends React.Component<PageErrorBoundaryProps, P
     props: PageErrorBoundaryProps,
     state: PageErrorBoundaryState
   ): Partial<PageErrorBoundaryState> | null {
-    return props.resetKey !== state.resetKey ? { error: null, resetKey: props.resetKey } : null;
+    return props.resetKey !== state.resetKey ? { error: null, resetKey: props.resetKey, reloading: false } : null;
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error(`[PageErrorBoundary] ${this.props.pageName} crashed:`, error, info.componentStack);
-
-    // Stale-deploy recovery: reload once to pick up the new asset manifest.
+    // Stale-deploy recovery: reload once to pick up the new version.
     if (isChunkLoadError(error)) {
-      try {
-        const last = Number(sessionStorage.getItem(CHUNK_RELOAD_FLAG) || 0);
-        if (Date.now() - last > 30_000) {
-          sessionStorage.setItem(CHUNK_RELOAD_FLAG, String(Date.now()));
-          window.location.reload();
-        }
-      } catch {
-        // sessionStorage unavailable — fall through to the manual retry UI.
+      if (reloadOnceForNewVersion()) {
+        console.info(`[PageErrorBoundary] ${this.props.pageName}: newer version deployed, reloading once.`);
+        return;
       }
+      this.setState({ reloading: false });
     }
+    console.error(`[PageErrorBoundary] ${this.props.pageName} crashed:`, error, info.componentStack);
   }
 
   private handleRetry = () => {
@@ -68,8 +58,17 @@ export class PageErrorBoundary extends React.Component<PageErrorBoundaryProps, P
   };
 
   render() {
-    const { error } = this.state;
+    const { error, reloading } = this.state;
     if (!error) return this.props.children;
+
+    if (reloading) {
+      return (
+        <div role="status" aria-live="polite" className="flex items-center justify-center min-h-[50vh] px-4 text-sm text-[var(--hub-muted)] gap-2">
+          <RefreshCw className="w-4 h-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+          Loading the latest version…
+        </div>
+      );
+    }
 
     const offline = typeof navigator !== 'undefined' && !navigator.onLine;
     const chunkError = isChunkLoadError(error);

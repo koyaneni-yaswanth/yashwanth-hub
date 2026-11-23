@@ -101,3 +101,21 @@ test('ambient background day parts', () => {
   assert.deepEqual([0, 4, 5, 8, 9, 16, 17, 19, 20, 23].map(dayPartFor),
     ['night', 'night', 'dawn', 'dawn', 'day', 'day', 'dusk', 'dusk', 'night', 'night']);
 });
+
+import { isChunkLoadError, reloadOnceForNewVersion } from '../src/lib/chunkReload.ts';
+
+test('stale-deploy recovery: detects chunk errors and reloads at most once per 30 s', () => {
+  assert.ok(isChunkLoadError(new TypeError('Failed to fetch dynamically imported module: https://x/assets/DashboardPage-abc.js')));
+  assert.ok(isChunkLoadError(new Error('Unable to preload CSS for /assets/x.css')));
+  assert.ok(!isChunkLoadError(new Error('Cannot read properties of undefined')));
+  const store = new Map();
+  let reloads = 0;
+  globalThis.sessionStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+  globalThis.window = { location: { reload: () => { reloads++; } } };
+  assert.equal(reloadOnceForNewVersion(1_000_000), true);
+  assert.equal(reloadOnceForNewVersion(1_010_000), false, 'guarded within 30 s');
+  assert.equal(reloadOnceForNewVersion(1_040_001), true, 'allowed again later');
+  assert.equal(reloads, 2);
+  delete globalThis.window;
+  delete globalThis.sessionStorage;
+});
