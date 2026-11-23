@@ -277,12 +277,162 @@
    motion is switched off under prefers-reduced-motion (bottom of this block).
    ========================================================================== */
 
-/* Ambient light: two very soft glows behind the app, fixed so they don't scroll. */
-body {
-  background-image:
-    radial-gradient(60rem 30rem at 85% -10%, var(--hub-glow), transparent 70%),
-    radial-gradient(40rem 24rem at -10% 110%, var(--hub-glow-2), transparent 70%);
-  background-attachment: fixed;
+/* Ambient background (AmbientBackground.tsx): aurora light, wind streamlines,
+   a fading dot grid and grain. Fixed behind everything; colours shift with the
+   time of day (data-daypart) and the theme. Content surfaces stay opaque, so
+   text contrast is unaffected. */
+.hub-ambient {
+  --amb-a: rgba(13, 148, 136, 0.16);
+  --amb-b: rgba(56, 189, 248, 0.12);
+  --amb-c: rgba(217, 119, 6, 0.08);
+  --amb-wind: #0b6e6e;
+  --amb-wind-opacity: 0.24;
+  --amb-dot: rgba(18, 38, 43, 0.075);
+  --amb-grain: 0.05;
+  --amb-px: 0;
+  --amb-py: 0;
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+.hub-ambient[data-daypart="dawn"] {
+  --amb-a: rgba(244, 114, 82, 0.14);
+  --amb-b: rgba(251, 191, 36, 0.13);
+  --amb-c: rgba(13, 148, 136, 0.10);
+}
+.hub-ambient[data-daypart="dusk"] {
+  --amb-a: rgba(217, 119, 6, 0.14);
+  --amb-b: rgba(190, 80, 140, 0.10);
+  --amb-c: rgba(13, 148, 136, 0.10);
+}
+.hub-ambient[data-daypart="night"] {
+  --amb-a: rgba(79, 70, 229, 0.11);
+  --amb-b: rgba(13, 148, 136, 0.12);
+  --amb-c: rgba(56, 189, 248, 0.08);
+}
+:root.dark .hub-ambient {
+  --amb-a: rgba(79, 195, 184, 0.22);
+  --amb-b: rgba(56, 130, 220, 0.18);
+  --amb-c: rgba(240, 162, 75, 0.10);
+  --amb-wind: #63d1c7;
+  --amb-wind-opacity: 0.22;
+  --amb-dot: rgba(230, 240, 239, 0.06);
+  --amb-grain: 0.07;
+}
+:root.dark .hub-ambient[data-daypart="dawn"] {
+  --amb-a: rgba(244, 114, 82, 0.18);
+  --amb-b: rgba(79, 195, 184, 0.17);
+  --amb-c: rgba(251, 191, 36, 0.10);
+}
+:root.dark .hub-ambient[data-daypart="dusk"] {
+  --amb-a: rgba(240, 162, 75, 0.17);
+  --amb-b: rgba(168, 85, 247, 0.15);
+  --amb-c: rgba(79, 195, 184, 0.12);
+}
+:root.dark .hub-ambient[data-daypart="night"] {
+  --amb-a: rgba(99, 102, 241, 0.24);
+  --amb-b: rgba(79, 195, 184, 0.18);
+  --amb-c: rgba(56, 189, 248, 0.11);
+}
+
+.hub-ambient__aurora {
+  position: absolute;
+  inset: -10%;
+  transform: translate3d(calc(var(--amb-px) * -18px), calc(var(--amb-py) * -14px), 0);
+  transition: transform 600ms var(--hub-ease-out);
+}
+.hub-ambient__blob {
+  position: absolute;
+  border-radius: 50%;
+  will-change: transform;
+  transition: background 1200ms ease;
+}
+.hub-ambient__blob--a {
+  width: 70vmax; height: 55vmax; top: -22vmax; right: -12vmax;
+  background: radial-gradient(closest-side, var(--amb-a), transparent);
+  animation: hub-amb-drift-a 48s ease-in-out infinite alternate;
+}
+.hub-ambient__blob--b {
+  width: 60vmax; height: 50vmax; bottom: -24vmax; left: -16vmax;
+  background: radial-gradient(closest-side, var(--amb-b), transparent);
+  animation: hub-amb-drift-b 62s ease-in-out infinite alternate;
+}
+.hub-ambient__blob--c {
+  width: 42vmax; height: 36vmax; top: 30%; left: 38%;
+  background: radial-gradient(closest-side, var(--amb-c), transparent);
+  animation: hub-amb-drift-c 54s ease-in-out infinite alternate;
+}
+@keyframes hub-amb-drift-a {
+  to { transform: translate3d(-9vmax, 7vmax, 0) scale(1.12); }
+}
+@keyframes hub-amb-drift-b {
+  to { transform: translate3d(10vmax, -6vmax, 0) scale(1.08); }
+}
+@keyframes hub-amb-drift-c {
+  0% { transform: translate3d(0, 0, 0) scale(0.9); }
+  100% { transform: translate3d(-14vmax, -8vmax, 0) scale(1.15); }
+}
+
+.hub-ambient__grid {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(var(--amb-dot) 1px, transparent 1.4px);
+  background-size: 26px 26px;
+  -webkit-mask-image: radial-gradient(120% 70% at 50% 0%, #000 0%, transparent 75%);
+  mask-image: radial-gradient(120% 70% at 50% 0%, #000 0%, transparent 75%);
+  transform: translate3d(calc(var(--amb-px) * 6px), calc(var(--amb-py) * 5px), 0);
+  transition: transform 600ms var(--hub-ease-out);
+}
+
+.hub-ambient__wind {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: var(--amb-wind-opacity);
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 100%);
+}
+.hub-ambient__stream {
+  fill: none;
+  stroke: url(#hub-amb-wind);
+  stroke-width: 1;
+  stroke-linecap: round;
+  stroke-dasharray: 520 1180;
+  animation: hub-amb-flow 30s linear infinite;
+}
+@keyframes hub-amb-flow {
+  to { stroke-dashoffset: -3400; }
+}
+
+.hub-ambient__grain {
+  position: absolute;
+  inset: 0;
+  opacity: var(--amb-grain);
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-ambient__blob,
+  .hub-ambient__stream {
+    animation: none;
+  }
+  .hub-ambient__aurora,
+  .hub-ambient__grid {
+    transform: none;
+    transition: none;
+  }
+}
+
+/* Windows high-contrast / forced colours: drop the decoration entirely. */
+@media (forced-colors: active) {
+  .hub-ambient {
+    display: none;
+  }
 }
 
 /* Page enter: the page fades up, then its sections follow in a short cascade. */

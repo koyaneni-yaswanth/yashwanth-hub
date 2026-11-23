@@ -94,3 +94,10 @@ test('toasts: queue, cap at three, dismiss; no alert() left in src', () => {
     assert.ok(!/(^|[^.\w])alert\(/.test(code), f);
   }
 });
+
+import { dayPartFor } from '../src/lib/dayPart.ts';
+
+test('ambient background day parts', () => {
+  assert.deepEqual([0, 4, 5, 8, 9, 16, 17, 19, 20, 23].map(dayPartFor),
+    ['night', 'night', 'dawn', 'dawn', 'day', 'day', 'dusk', 'dusk', 'night', 'night']);
+});

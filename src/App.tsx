@@ -23,6 +23,7 @@ import { repairTaskDueDates } from './services/sync/dueDateRepair';
 import { PageSkeleton } from './components/common/PageSkeleton';
 import { TAB_TITLES, buildTabUrl, canonicalTab, documentTitleFor, readTabFromSearch } from './lib/navigation';
 import { Toaster } from './components/common/Toaster';
+import { AmbientBackground } from './components/layout/AmbientBackground';
 
 // Pages are code-split: each one downloads only when first opened (or prefetched while idle).
 const pageLoaders = {
@@ -470,7 +471,8 @@ function HubMain() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--hub-bg)] text-[var(--hub-ink)] flex flex-col font-sans transition-colors duration-200">
+    <div className="min-h-screen text-[var(--hub-ink)] flex flex-col font-sans transition-colors duration-200">
+      <AmbientBackground />
       <a href="#main-content" className="hub-skip-link">
         Skip to content
       </a>
