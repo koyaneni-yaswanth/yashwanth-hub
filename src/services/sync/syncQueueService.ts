@@ -2,9 +2,31 @@ import { db } from '../../db';
 import { getSupabaseClient, isSupabaseConfigured } from '../../lib/supabase';
 import type { SyncQueueItem } from '../../types';
 import { generateId } from '../../lib/utils';
+import { TASK_V3_FIELDS, stripTaskV3Fields } from '../../lib/taskModel';
 
 export class SyncQueueService {
   private static isFlushing = false;
+  /** Whether the cloud tasks table has the Phase 3 columns (checked once per session). */
+  private static taskV3Columns: Promise<boolean> | null = null;
+
+  private static cloudHasTaskV3Columns(client: NonNullable<ReturnType<typeof getSupabaseClient>>): Promise<boolean> {
+    if (!this.taskV3Columns) {
+      this.taskV3Columns = Promise.resolve(client.from('tasks').select(TASK_V3_FIELDS.join(',')).limit(1))
+        .then(({ error }) => {
+          if (error) {
+            // Retry the check later in case the migration is applied while the app is open.
+            setTimeout(() => (this.taskV3Columns = null), 10 * 60 * 1000);
+            return false;
+          }
+          return true;
+        })
+        .catch(() => {
+          this.taskV3Columns = null;
+          return false;
+        });
+    }
+    return this.taskV3Columns;
+  }
   private static listeners: ((count: number) => void)[] = [];
 
   /**
@@ -85,7 +107,12 @@ export class SyncQueueService {
       for (const item of items) {
         try {
           if (item.action === 'INSERT' || item.action === 'UPDATE') {
-            const { error } = await (client.from(item.table_name) as any).upsert(item.payload);
+            let payload = item.payload;
+            // Older cloud schemas lack the Tasks v3 columns: send the rest rather than failing the whole task.
+            if (item.table_name === 'tasks' && payload && !(await this.cloudHasTaskV3Columns(client))) {
+              payload = stripTaskV3Fields(payload);
+            }
+            const { error } = await (client.from(item.table_name) as any).upsert(payload);
             if (error) throw error;
           } else if (item.action === 'DELETE') {
             const { error } = await (client.from(item.table_name) as any)

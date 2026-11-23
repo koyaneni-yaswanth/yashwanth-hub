@@ -11,6 +11,7 @@
  */
 import type { DailyPlan, FocusSession, Goal, GoalMilestone, Habit, HabitLog, Note, Task } from '../types';
 import { addDays, computeHabitStats, parseDateKey, weekStart } from './habits.ts';
+import { isBlocked } from './taskModel.ts';
 
 export type ComponentKey = 'habits' | 'focus' | 'goals' | 'tasks' | 'reflection';
 
@@ -233,9 +234,14 @@ export function nextActions(input: NextActionInput, limit = 3): NextAction[] {
   }
 
   // 2. Overdue tasks, most urgent first.
+  // Tasks still waiting on another open task go last: they can't be finished yet.
   const overdue = input.tasks
     .filter((t) => !t.done && t.due_date && t.due_date < today)
-    .sort((a, b) => ['urgent', 'high', 'medium', 'low'].indexOf(a.priority) - ['urgent', 'high', 'medium', 'low'].indexOf(b.priority));
+    .sort(
+      (a, b) =>
+        Number(isBlocked(a, tasksById)) - Number(isBlocked(b, tasksById)) ||
+        ['urgent', 'high', 'medium', 'low'].indexOf(a.priority) - ['urgent', 'high', 'medium', 'low'].indexOf(b.priority)
+    );
   if (overdue[0]) {
     const t = overdue[0];
     out.push({

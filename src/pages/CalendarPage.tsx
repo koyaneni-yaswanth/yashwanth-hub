@@ -5,23 +5,45 @@ import {
   ChevronLeft,
   ChevronRight,
   Plus,
-  Clock,
-  MapPin,
   Trash2,
-  Edit2,
   CalendarDays,
   RefreshCw,
+  AlertTriangle,
+  ListTodo,
+  Square,
+  CheckSquare,
 } from 'lucide-react';
 import { db } from '../db';
 import type { EventItem, EventKind, Area } from '../types';
-import { formatFullDate, getTodayISO, generateId } from '../lib/utils';
-import { Badge } from '../components/common/Badge';
+import { getTodayISO, generateId } from '../lib/utils';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { SyncQueueService } from '../services/sync/syncQueueService';
 import { getSupabaseClient } from '../lib/supabase';
 import { GoogleAuthService } from '../services/google/googleAuthService';
 import { GoogleCalendarService } from '../services/google/googleCalendarService';
+import { TaskService } from '../services/sync/taskService';
+import { CalendarDayList } from '../components/calendar/CalendarDayList';
+import {
+  clashesWith,
+  endBeforeStart,
+  findClashes,
+  formatTimeRange,
+  fromDateKey,
+  itemKey,
+  rangeFor,
+  type CalItem,
+} from '../lib/calendarModel';
+
+type CalView = 'month' | 'week' | 'day' | 'agenda';
+const SHOW_TASKS_KEY = 'yash_calendar_show_tasks';
+const readShowTasks = () => {
+  try {
+    return localStorage.getItem(SHOW_TASKS_KEY) !== '0';
+  } catch {
+    return true;
+  }
+};
 
 interface CalendarPageProps {
   currentArea: string;
@@ -32,7 +54,16 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
   const today = getTodayISO();
 
   // Calendar View State: Month | Week | Day
-  const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('month');
+  const [viewMode, setViewMode] = useState<CalView>('month');
+  const [showTasks, setShowTasksState] = useState(readShowTasks);
+  const setShowTasks = (v: boolean) => {
+    setShowTasksState(v);
+    try {
+      localStorage.setItem(SHOW_TASKS_KEY, v ? '1' : '0');
+    } catch {
+      // Remembering this is a convenience only.
+    }
+  };
   const [currentDate, setCurrentDate] = useState(new Date());
 
   // Sync & Loading State
@@ -117,6 +148,34 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
   // Live Query from IndexedDB (Dexie) - Clean local-first reactive source
   const allEvents = useLiveQuery(() => db.events.toArray(), []) || [];
   const events = currentArea === 'All' ? allEvents : allEvents.filter((e) => e.area === currentArea);
+  const allTasks = useLiveQuery(() => db.tasks.toArray(), []) || [];
+  const allMeetings = useLiveQuery(() => db.meetings.toArray(), []) || [];
+
+  // One timeline: events, meetings (not cancelled) and, optionally, tasks with a due date.
+  const inArea = (area?: string) => currentArea === 'All' || area === currentArea;
+  const calItems: CalItem[] = [
+    ...events.map((e) => ({ id: e.id, source: 'event' as const, title: e.title, date: e.date, start: e.start_time, end: e.end_time })),
+    ...allMeetings
+      .filter((m) => m.status !== 'cancelled' && inArea(m.area))
+      .map((m) => ({ id: m.id, source: 'meeting' as const, title: m.title, date: m.date, start: m.start_time, end: m.end_time })),
+    ...(showTasks
+      ? allTasks
+          .filter((t) => t.due_date && inArea(t.area))
+          .map((t) => ({ id: t.id, source: 'task' as const, title: t.text, date: t.due_date!, done: t.done }))
+      : []),
+  ];
+  const clashes = findClashes(calItems);
+
+  // Live checks for the event form.
+  const formEndInvalid = endBeforeStart(formStartTime, formEndTime);
+  const formClashes = isModalOpen
+    ? clashesWith({ id: editingEvent?.id, source: 'event', date: formDate, start: formStartTime || undefined, end: formEndTime || undefined }, calItems)
+    : [];
+
+  const toggleTaskFromCalendar = async (taskId: string) => {
+    const task = allTasks.find((t) => t.id === taskId);
+    if (task) await TaskService.update(task, { done: !task.done });
+  };
 
   // Month calculations
   const year = currentDate.getFullYear();
@@ -129,6 +188,8 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
   const handlePrev = () => {
     if (viewMode === 'month') {
       setCurrentDate(new Date(year, month - 1, 1));
+    } else if (viewMode === 'agenda') {
+      setCurrentDate(new Date(year, month, currentDate.getDate() - 14));
     } else if (viewMode === 'week') {
       setCurrentDate(new Date(currentDate.getTime() - 7 * 86400000));
     } else {
@@ -139,6 +200,8 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
   const handleNext = () => {
     if (viewMode === 'month') {
       setCurrentDate(new Date(year, month + 1, 1));
+    } else if (viewMode === 'agenda') {
+      setCurrentDate(new Date(year, month, currentDate.getDate() + 14));
     } else if (viewMode === 'week') {
       setCurrentDate(new Date(currentDate.getTime() + 7 * 86400000));
     } else {
@@ -178,7 +241,7 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
 
   const handleSaveEvent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formTitle.trim()) return;
+    if (!formTitle.trim() || formEndInvalid) return;
 
     const now = new Date().toISOString();
 
@@ -245,22 +308,6 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
     }
   };
 
-  // Helper for kind badge color
-  const getKindVariant = (kind: EventKind) => {
-    switch (kind) {
-      case 'Meeting':
-        return 'purple';
-      case 'Deadline':
-        return 'red';
-      case 'Travel':
-        return 'blue';
-      case 'Milestone':
-        return 'emerald';
-      default:
-        return 'teal';
-    }
-  };
-
   // Generate calendar grid cells for month view
   const calendarCells = [];
   // Empty leading days
@@ -275,6 +322,9 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
       dateStr: dStr,
       isToday: dStr === today,
       dayEvents: events.filter((e) => e.date === dStr),
+      dayTasks: showTasks ? calItems.filter((it) => it.source === 'task' && it.date === dStr) : [],
+      dayMeetings: calItems.filter((it) => it.source === 'meeting' && it.date === dStr),
+      hasClash: calItems.some((it) => it.date === dStr && clashes.has(itemKey(it))),
     });
   }
 
@@ -291,13 +341,14 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
           {/* View mode toggle */}
           <div className="flex items-center bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-1 text-xs font-semibold">
-            {(['month', 'week', 'day'] as const).map((mode) => (
+            {(['month', 'week', 'day', 'agenda'] as const).map((mode) => (
               <button
                 key={mode}
                 onClick={() => setViewMode(mode)}
+                aria-pressed={viewMode === mode}
                 className={`px-3 py-1.5 rounded-lg capitalize transition-colors cursor-pointer ${
                   viewMode === mode
                     ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)]'
@@ -308,6 +359,21 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
               </button>
             ))}
           </div>
+
+          <button
+            type="button"
+            onClick={() => setShowTasks(!showTasks)}
+            aria-pressed={showTasks}
+            title="Show tasks with a due date on the calendar"
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-semibold cursor-pointer transition-colors ${
+              showTasks
+                ? 'border-[var(--hub-accent)] text-[var(--hub-accent)] bg-[var(--hub-accent)]/10'
+                : 'border-[var(--hub-line)] text-[var(--hub-muted)] bg-[var(--hub-surface)] hover:text-[var(--hub-ink)]'
+            }`}
+          >
+            <ListTodo className="w-4 h-4" aria-hidden="true" />
+            <span>Tasks</span>
+          </button>
 
           <button
             onClick={() => openCreateModal()}
@@ -344,16 +410,30 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
           </button>
         </div>
 
-        <h3 className="font-heading font-bold text-base sm:text-lg text-[var(--hub-ink)]">
-          {currentDate.toLocaleDateString('en-IN', {
-            month: 'long',
-            year: 'numeric',
-            ...(viewMode === 'day' ? { day: 'numeric', weekday: 'long' } : {}),
-          })}
+        <h3 className="font-heading font-bold text-base sm:text-lg text-[var(--hub-ink)] text-center">
+          {viewMode === 'week' || viewMode === 'agenda'
+            ? (() => {
+                const r = rangeFor(viewMode, currentDate);
+                const a = fromDateKey(r[0]);
+                const b = fromDateKey(r[r.length - 1]);
+                return `${a.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} – ${b.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+              })()
+            : currentDate.toLocaleDateString('en-IN', {
+                month: 'long',
+                year: 'numeric',
+                ...(viewMode === 'day' ? { day: 'numeric', weekday: 'long' } : {}),
+              })}
         </h3>
 
         <div className="text-xs text-[var(--hub-muted)] hidden sm:block">
-          {events.length} total events
+          {clashes.size > 0 ? (
+            <span className="inline-flex items-center gap-1 font-semibold text-amber-800 dark:text-amber-300">
+              <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />
+              {clashes.size} clashing {clashes.size === 1 ? 'item' : 'items'}
+            </span>
+          ) : (
+            `${events.length} events`
+          )}
         </div>
       </div>
 
@@ -438,42 +518,76 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
                     >
                       {cell.dayNumber}
                     </span>
-                    {cell.dayEvents.length > 0 && (
-                      <span className="text-[10px] font-bold text-[var(--hub-muted)] sm:hidden">
-                        {cell.dayEvents.length}
-                      </span>
-                    )}
+                    <span className="flex items-center gap-1">
+                      {cell.hasClash && (
+                        <span title="Overlapping times on this day" className="text-amber-700 dark:text-amber-300">
+                          <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />
+                          <span className="sr-only">Overlapping times on this day</span>
+                        </span>
+                      )}
+                      {cell.dayEvents.length + cell.dayMeetings.length + cell.dayTasks.length > 0 && (
+                        <span className="text-[10px] font-bold text-[var(--hub-muted)] sm:hidden">
+                          {cell.dayEvents.length + cell.dayMeetings.length + cell.dayTasks.length}
+                        </span>
+                      )}
+                    </span>
                   </div>
 
-                  <div className="space-y-1 overflow-y-auto max-h-[70px]">
-                    {cell.dayEvents.slice(0, 3).map((ev) => (
-                      <div
-                        key={ev.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openEditModal(ev);
-                        }}
-                        className="text-[11px] p-1 rounded font-medium truncate bg-[var(--hub-bg)] border border-[var(--hub-line)] hover:border-[var(--hub-accent)] transition-all flex items-center gap-1"
-                        title={`${ev.title} (${ev.kind})`}
-                      >
-                        <span
-                          className={`w-1.5 h-1.5 rounded-full flex-none ${
-                            ev.kind === 'Deadline'
-                              ? 'bg-red-500'
-                              : ev.kind === 'Meeting'
-                              ? 'bg-purple-500'
-                              : 'bg-teal-500'
-                          }`}
-                        />
-                        <span className="truncate text-[var(--hub-ink)]">{ev.title}</span>
+                  {(() => {
+                    // At most 3 lines per day (events, then meetings, then tasks), then "+N more".
+                    const MAX = 3;
+                    const shownEvents = cell.dayEvents.slice(0, MAX);
+                    const shownMeetings = cell.dayMeetings.slice(0, MAX - shownEvents.length);
+                    const shownTasks = cell.dayTasks.slice(0, MAX - shownEvents.length - shownMeetings.length);
+                    const hidden = cell.dayEvents.length + cell.dayMeetings.length + cell.dayTasks.length - shownEvents.length - shownMeetings.length - shownTasks.length;
+                    return (
+                      <div className="space-y-1">
+                        {shownEvents.map((ev) => (
+                          <div
+                            key={ev.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openEditModal(ev);
+                            }}
+                            className="text-[11px] p-1 rounded font-medium truncate bg-[var(--hub-bg)] border border-[var(--hub-line)] hover:border-[var(--hub-accent)] transition-all flex items-center gap-1"
+                            title={`${ev.title} (${ev.kind})`}
+                          >
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full flex-none ${
+                                ev.kind === 'Deadline' ? 'bg-red-500' : ev.kind === 'Meeting' ? 'bg-purple-500' : 'bg-teal-500'
+                              }`}
+                            />
+                            <span className="truncate text-[var(--hub-ink)]">{ev.title}</span>
+                          </div>
+                        ))}
+                        {shownMeetings.map((m) => (
+                          <div
+                            key={`m-${m.id}`}
+                            className="text-[11px] p-1 rounded font-medium truncate bg-purple-500/5 border border-purple-500/20 flex items-center gap-1"
+                            title={`${m.title} (meeting, ${formatTimeRange(m)})`}
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full flex-none bg-purple-500" />
+                            <span className="truncate text-[var(--hub-ink)]">{m.title}</span>
+                          </div>
+                        ))}
+                        {shownTasks.map((t) => (
+                          <div
+                            key={`t-${t.id}`}
+                            className={`text-[11px] px-1 truncate flex items-center gap-1 ${t.done ? 'line-through text-[var(--hub-muted)]' : 'text-[var(--hub-ink)]'}`}
+                            title={`Task due: ${t.title}${t.done ? ' (done)' : ''}`}
+                          >
+                            {t.done ? (
+                              <CheckSquare className="w-3 h-3 flex-none text-[var(--hub-accent)]" aria-hidden="true" />
+                            ) : (
+                              <Square className="w-3 h-3 flex-none text-[var(--hub-muted)]" aria-hidden="true" />
+                            )}
+                            <span className="truncate">{t.title}</span>
+                          </div>
+                        ))}
+                        {hidden > 0 && <div className="text-[10px] text-[var(--hub-muted)] font-medium pl-1">+{hidden} more</div>}
                       </div>
-                    ))}
-                    {cell.dayEvents.length > 3 && (
-                      <div className="text-[10px] text-[var(--hub-muted)] font-medium pl-1">
-                        +{cell.dayEvents.length - 3} more
-                      </div>
-                    )}
-                  </div>
+                    );
+                  })()}
                 </div>
               );
             })}
@@ -489,71 +603,21 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
         </div>
       )}
 
-      {/* Week / Day View List */}
-      {(viewMode === 'week' || viewMode === 'day') && (
-        <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl divide-y divide-[var(--hub-line)] shadow-xs">
-          {events.length === 0 ? (
-            <div className="p-12 text-center text-sm text-[var(--hub-muted)]">
-              <CalendarIcon className="w-10 h-10 mx-auto text-[var(--hub-muted)] mb-3 opacity-60" />
-              <p className="font-medium text-[var(--hub-ink)]">No events scheduled</p>
-              <p className="text-xs mt-1">Click "Add Event" to schedule an event or meeting.</p>
-            </div>
-          ) : (
-            events
-              .sort((a, b) => (a.date + (a.start_time || '')).localeCompare(b.date + (b.start_time || '')))
-              .map((ev) => (
-                <div
-                  key={ev.id}
-                  className="flex items-start justify-between gap-4 p-4 hover:bg-[var(--hub-bg)]/50 transition-colors"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Badge variant={getKindVariant(ev.kind)} dot>
-                        {ev.kind}
-                      </Badge>
-                      {ev.area && <Badge variant="teal">{ev.area}</Badge>}
-                      <span className="text-xs font-medium text-[var(--hub-muted)] flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {formatFullDate(ev.date)} {ev.start_time ? `at ${ev.start_time}` : ''}
-                      </span>
-                    </div>
-
-                    <h4 className="text-sm font-bold text-[var(--hub-ink)]">{ev.title}</h4>
-
-                    {ev.place && (
-                      <p className="text-xs text-[var(--hub-muted)] flex items-center gap-1 mt-1">
-                        <MapPin className="w-3.5 h-3.5" />
-                        <span>{ev.place}</span>
-                      </p>
-                    )}
-
-                    {ev.notes && (
-                      <p className="text-xs text-[var(--hub-muted)] mt-1.5 whitespace-pre-wrap">
-                        {ev.notes}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-1 flex-none">
-                    <button
-                      onClick={() => openEditModal(ev)}
-                      className="p-1.5 rounded-lg text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-bg)] cursor-pointer"
-                      title="Edit event"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => setEventToDelete(ev.id)}
-                      className="p-1.5 rounded-lg text-[var(--hub-muted)] hover:text-red-600 hover:bg-[var(--hub-bg)] cursor-pointer"
-                      title="Delete event"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))
-          )}
-        </div>
+      {/* Day / Week / Agenda: one section per day, with clashes flagged */}
+      {viewMode !== 'month' && (
+        <CalendarDayList
+          days={rangeFor(viewMode, currentDate)}
+          items={calItems}
+          clashes={clashes}
+          today={today}
+          hideEmptyDays={viewMode === 'agenda'}
+          onOpenEvent={(id) => {
+            const ev = allEvents.find((e) => e.id === id);
+            if (ev) openEditModal(ev);
+          }}
+          onToggleTask={toggleTaskFromCalendar}
+          onAdd={(date) => openCreateModal(date)}
+        />
       )}
 
       {/* Create / Edit Modal */}
@@ -611,10 +675,26 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
                 type="time"
                 value={formEndTime}
                 onChange={(e) => setFormEndTime(e.target.value)}
+                aria-invalid={formEndInvalid}
+                aria-describedby={formEndInvalid ? 'event-time-error' : undefined}
                 className="w-full py-2 px-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)] text-sm"
               />
             </div>
           </div>
+
+          {formEndInvalid && (
+            <p id="event-time-error" role="alert" className="text-xs font-semibold text-[var(--hub-red)]">
+              End time must be after the start time.
+            </p>
+          )}
+          {!formEndInvalid && formClashes.length > 0 && (
+            <div role="status" className="flex items-start gap-2 p-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-xs text-amber-900 dark:text-amber-200">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-px" aria-hidden="true" />
+              <span>
+                Overlaps with {formClashes.map((c) => `“${c.title}” (${formatTimeRange(c)}${c.source === 'meeting' ? ', meeting' : ''})`).join(', ')}. You can still save it.
+              </span>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -679,6 +759,19 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-[var(--hub-line)]">
+            {editingEvent && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsModalOpen(false);
+                  setEventToDelete(editingEvent.id);
+                }}
+                className="mr-auto inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg text-[var(--hub-red)] hover:bg-red-500/10 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" aria-hidden="true" />
+                Delete
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setIsModalOpen(false)}
@@ -688,7 +781,8 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
             </button>
             <button
               type="submit"
-              className="px-5 py-2 text-sm font-semibold rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs"
+              disabled={formEndInvalid}
+              className="px-5 py-2 text-sm font-semibold rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] hover:bg-[var(--hub-accent-hover)] cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {editingEvent ? 'Save Changes' : 'Schedule Event'}
             </button>

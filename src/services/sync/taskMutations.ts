@@ -1,5 +1,6 @@
 import type { Task } from '../../types';
-import { toDueKey } from '../../lib/utils.ts';
+import { getTodayISO, toDueKey } from '../../lib/utils.ts';
+import { buildNextOccurrence } from '../../lib/taskModel.ts';
 
 /** Every write stores due dates as plain local days, whatever form the caller used. */
 const normaliseDue = <T extends { due_date?: string }>(x: T): T =>
@@ -34,6 +35,8 @@ export type SyncOutcome = 'queued' | 'queue-failed';
 export interface TaskMutationResult {
   task: Task;
   sync: SyncOutcome;
+  /** Set when completing a repeating task created its next occurrence. */
+  next?: Task;
 }
 
 export type NewTaskInput = Omit<Task, 'id' | 'created_at' | 'updated_at'> & { id?: string };
@@ -41,9 +44,10 @@ export type NewTaskInput = Omit<Task, 'id' | 'created_at' | 'updated_at'> & { id
 export function createTaskMutations(
   store: TaskStore,
   queue: ChangeQueue,
-  options: { now?: () => string; newId?: () => string; onQueueError?: (err: unknown) => void } = {}
+  options: { now?: () => string; newId?: () => string; today?: () => string; onQueueError?: (err: unknown) => void } = {}
 ) {
   const now = options.now ?? (() => new Date().toISOString());
+  const today = options.today ?? getTodayISO;
   const newId = options.newId ?? (() => Math.random().toString(36).slice(2) + Date.now().toString(36));
   const onQueueError = options.onQueueError ?? ((err) => console.warn('[tasks] Could not queue cloud sync:', err));
 
@@ -68,11 +72,28 @@ export function createTaskMutations(
     },
 
     async update(task: Task, rawChanges: Partial<Task>): Promise<TaskMutationResult> {
-      const changes = 'due_date' in rawChanges ? normaliseDue(rawChanges) : rawChanges;
+      let changes = 'due_date' in rawChanges ? normaliseDue(rawChanges) : rawChanges;
+
+      // Completing a repeating task creates the next one and hands the series over to it,
+      // so undo + complete again can never create a duplicate.
+      let next: Task | null = null;
+      if (changes.done === true && !task.done && task.recurrence && !task.recurred_to) {
+        next = buildNextOccurrence({ ...task, ...changes }, today(), newId(), now());
+        if (next) changes = { ...changes, recurrence: undefined, recurred_to: next.id };
+      }
+
       const updated: Task = { ...task, ...changes, id: task.id, updated_at: now() };
+      for (const key of Object.keys(updated) as (keyof Task)[]) if (updated[key] === undefined) delete updated[key];
       const { id: _id, ...patch } = { ...changes, updated_at: updated.updated_at };
       await store.update(task.id, patch);
-      return { task: updated, sync: await enqueue(task.id, 'UPDATE', updated) };
+      const sync = await enqueue(task.id, 'UPDATE', updated);
+
+      if (next) {
+        await store.add(next);
+        await enqueue(next.id, 'INSERT', next);
+        return { task: updated, sync, next };
+      }
+      return { task: updated, sync };
     },
 
     toggleDone(task: Task) {

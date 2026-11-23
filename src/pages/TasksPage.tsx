@@ -10,15 +10,31 @@ import {
   Filter,
   Calendar,
   RefreshCw,
+  List as ListIcon,
+  Columns3,
 } from 'lucide-react';
 import { db } from '../db';
-import type { Task, Area, Priority } from '../types';
+import type { Task, Area, Priority, Subtask, Recurrence, TaskStage } from '../types';
 import { formatShortDate, getTodayISO, isOverdue } from '../lib/utils';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { TaskService } from '../services/sync/taskService';
 import { IntegrationVaultService } from '../services/integrationVaultService';
+import { SubtaskEditor, RepeatPicker, BlockedByPicker } from '../components/tasks/TaskFieldsEditor';
+import { TaskChips } from '../components/tasks/TaskChips';
+import { TaskBoard } from '../components/tasks/TaskBoard';
+import { cleanSubtasks, moveToColumn, normaliseRecurrence, openBlockers, type BoardColumn } from '../lib/taskModel';
+import { toast } from '../lib/toast';
+
+const VIEW_KEY = 'yash_tasks_view';
+const readView = (): 'list' | 'board' => {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'board' ? 'board' : 'list';
+  } catch {
+    return 'list';
+  }
+};
 
 interface TasksPageProps {
   currentArea: string;
@@ -32,6 +48,15 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'done' | 'starred' | 'overdue'>('all');
   const [selectedAreaFilter, setSelectedAreaFilter] = useState(currentArea);
+  const [view, setViewState] = useState<'list' | 'board'>(readView);
+  const setView = (v: 'list' | 'board') => {
+    setViewState(v);
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      // Remembering the view is a convenience only.
+    }
+  };
 
   // Sync State
   const [isSyncing, setIsSyncing] = useState(false);
@@ -48,6 +73,10 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
   const [formPriority, setFormPriority] = useState<Priority>('medium');
   const [formDueDate, setFormDueDate] = useState('');
   const [formNotes, setFormNotes] = useState('');
+  const [formSubtasks, setFormSubtasks] = useState<Subtask[]>([]);
+  const [formRecurrence, setFormRecurrence] = useState<Recurrence | undefined>(undefined);
+  const [formBlockedBy, setFormBlockedBy] = useState<string[]>([]);
+  const [formStage, setFormStage] = useState<TaskStage>('todo');
 
   // Delete Confirm State
   const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
@@ -55,29 +84,34 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
 
   // Live Query
   const allTasks = useLiveQuery(() => db.tasks.toArray(), []) || [];
+  const tasksById = new Map(allTasks.map((t) => [t.id, t]));
 
   // Filter & Search Logic
   const filteredTasks = allTasks.filter((task) => {
     // Area filter
     if (selectedAreaFilter !== 'All' && task.area !== selectedAreaFilter) return false;
 
-    // Status filter
+    // Status filter (the board shows every status in its own column)
+    if (view === 'board') return matchesSearch(task);
     if (statusFilter === 'open' && task.done) return false;
     if (statusFilter === 'done' && !task.done) return false;
     if (statusFilter === 'starred' && !task.starred) return false;
     if (statusFilter === 'overdue' && (!task.due_date || task.done || task.due_date >= today)) return false;
 
-    // Search query
+    return matchesSearch(task);
+  });
+
+  function matchesSearch(task: Task): boolean {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const matchText = task.text.toLowerCase().includes(q);
       const matchDesc = task.description?.toLowerCase().includes(q) || false;
       const matchNotes = task.notes?.toLowerCase().includes(q) || false;
-      if (!matchText && !matchDesc && !matchNotes) return false;
+      const matchSub = task.subtasks?.some((st) => st.text.toLowerCase().includes(q)) || false;
+      if (!matchText && !matchDesc && !matchNotes && !matchSub) return false;
     }
-
     return true;
-  });
+  }
 
   // Sorting: Starred first, then Overdue, then Due Date, then Priority
   const sortedTasks = [...filteredTasks].sort((a, b) => {
@@ -104,6 +138,10 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
     setFormPriority('medium');
     setFormDueDate(today);
     setFormNotes('');
+    setFormSubtasks([]);
+    setFormRecurrence(undefined);
+    setFormBlockedBy([]);
+    setFormStage('todo');
     setIsModalOpen(true);
   };
 
@@ -115,6 +153,10 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
     setFormPriority(task.priority);
     setFormDueDate(task.due_date || '');
     setFormNotes(task.notes || '');
+    setFormSubtasks(task.subtasks ?? []);
+    setFormRecurrence(task.recurrence);
+    setFormBlockedBy(task.blocked_by ?? []);
+    setFormStage(task.stage === 'doing' ? 'doing' : 'todo');
     setIsModalOpen(true);
   };
 
@@ -129,6 +171,10 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
       priority: formPriority,
       due_date: formDueDate || undefined,
       notes: formNotes.trim() || undefined,
+      subtasks: cleanSubtasks(formSubtasks),
+      recurrence: normaliseRecurrence(formRecurrence),
+      blocked_by: formBlockedBy.length ? formBlockedBy : undefined,
+      stage: formStage,
     };
 
     if (editingTask) {
@@ -142,7 +188,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
 
   const handleToggleTask = async (task: Task) => {
     const nextDone = !task.done;
-    await TaskService.toggleDone(task);
+    await completeOrReopen(task, { done: nextDone });
 
     // Asynchronously dispatch task status to Google Tasks and NeoSapien MCP if synced/connected
     try {
@@ -175,6 +221,29 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
     } catch {
       // Non-blocking
     }
+  };
+
+  /** Shared by the checkbox and the board: reports blockers and the next repeat. */
+  const completeOrReopen = async (task: Task, changes: Partial<Task>) => {
+    const res = await TaskService.update(task, changes);
+    if (changes.done && !task.done) {
+      const waiting = openBlockers(task, tasksById);
+      if (res.next) {
+        toast(`Done. Next “${res.next.text}” is due ${formatShortDate(res.next.due_date!)}.`, 'success');
+      } else if (waiting.length) {
+        toast(`Marked done, though it was still waiting on “${waiting[0].text}”${waiting.length > 1 ? ` and ${waiting.length - 1} more` : ''}.`, 'info');
+      }
+    }
+    return res;
+  };
+
+  const handleMoveOnBoard = async (task: Task, column: BoardColumn) => {
+    await completeOrReopen(task, moveToColumn(column));
+  };
+
+  const toggleSubtask = async (task: Task, subtaskId: string) => {
+    const subtasks = (task.subtasks ?? []).map((st) => (st.id === subtaskId ? { ...st, done: !st.done } : st));
+    await TaskService.update(task, { subtasks });
   };
 
   const handleSyncNow = async () => {
@@ -285,7 +354,27 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
             ) : task.synced ? (
               <Badge variant="emerald" dot>Cloud Synced</Badge>
             ) : null}
+            {task.stage === 'doing' && !task.done && <Badge variant="blue">In progress</Badge>}
+            <TaskChips task={task} byId={tasksById} />
           </div>
+
+          {task.subtasks && task.subtasks.length > 0 && !task.done && (
+            <ul className="mt-2.5 space-y-1" aria-label={`Subtasks of ${task.text}`}>
+              {task.subtasks.map((st) => (
+                <li key={st.id}>
+                  <label className="inline-flex items-start gap-2 text-xs cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={st.done}
+                      onChange={() => toggleSubtask(task, st.id)}
+                      className="mt-0.5 w-3.5 h-3.5 rounded cursor-pointer"
+                    />
+                    <span className={st.done ? 'line-through text-[var(--hub-muted)]' : 'text-[var(--hub-ink)]'}>{st.text}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         {/* Actions */}
@@ -328,7 +417,28 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
             Organize, prioritize and execute tasks across workspaces
           </p>
         </div>
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <div role="group" aria-label="Task view" className="inline-flex p-0.5 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-surface)]">
+            {(
+              [
+                { id: 'list', label: 'List', Icon: ListIcon },
+                { id: 'board', label: 'Board', Icon: Columns3 },
+              ] as const
+            ).map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setView(id)}
+                aria-pressed={view === id}
+                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-[10px] text-sm font-semibold cursor-pointer transition-colors ${
+                  view === id ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)]' : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
+                }`}
+              >
+                <Icon className="w-4 h-4" aria-hidden="true" />
+                {label}
+              </button>
+            ))}
+          </div>
           <button
             onClick={handleSyncNow}
             disabled={isSyncing}
@@ -396,7 +506,8 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
           </div>
         </div>
 
-        {/* Status Filter Pills */}
+        {/* Status Filter Pills (list view only; the board shows each status as a column) */}
+        {view === 'list' && (
         <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-[var(--hub-line)]">
           {(
             [
@@ -429,9 +540,15 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
             </button>
           )}
         </div>
+        )}
       </div>
 
+      {view === 'board' && (
+        <TaskBoard tasks={filteredTasks} byId={tasksById} onMove={handleMoveOnBoard} onOpen={openEditModal} />
+      )}
+
       {/* Task List */}
+      {view === 'list' && (
       <div className="space-y-4">
         {sortedTasks.length === 0 ? (
           <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-12 text-center">
@@ -467,6 +584,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
           <div className="space-y-2">{sortedTasks.map(renderTaskItem)}</div>
         )}
       </div>
+      )}
 
       {/* Create / Edit Modal */}
       <Modal
@@ -548,6 +666,25 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
               className="w-full py-2 px-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)] text-sm"
             />
           </div>
+
+          <div>
+            <label htmlFor="task-stage" className="block text-xs font-bold text-[var(--hub-ink)] uppercase tracking-wider mb-1">
+              Status
+            </label>
+            <select
+              id="task-stage"
+              value={formStage}
+              onChange={(e) => setFormStage(e.target.value as TaskStage)}
+              className="w-full py-2 px-3 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)] text-sm"
+            >
+              <option value="todo">To do</option>
+              <option value="doing">In progress</option>
+            </select>
+          </div>
+
+          <SubtaskEditor value={formSubtasks} onChange={setFormSubtasks} />
+          <RepeatPicker value={formRecurrence} onChange={setFormRecurrence} hasDueDate={Boolean(formDueDate)} />
+          <BlockedByPicker taskId={editingTask?.id ?? null} value={formBlockedBy} onChange={setFormBlockedBy} tasks={allTasks} />
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-[var(--hub-line)]">
             <button

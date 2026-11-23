@@ -4,6 +4,7 @@ import { SyncQueueService } from './syncQueueService';
 import { resolveRemoteUpsert, resolveRemoteDelete } from './conflict';
 import { applyLifeRealtime } from './lifeSync';
 import { LIFE_TABLES } from './lifeSyncCore';
+import { mergeRemoteTask } from '../../lib/taskModel';
 
 export class RealtimeSyncManager {
   private static channels: any[] = [];
@@ -35,7 +36,8 @@ export class RealtimeSyncManager {
                   SyncQueueService.hasPendingChange('tasks', payload.new.id),
                 ]);
                 if (resolveRemoteUpsert(local, payload.new, pending) === 'apply') {
-                  await db.tasks.put(payload.new);
+                  // Keep subtasks / repeat / blockers if the cloud copy doesn't carry them yet.
+                  await db.tasks.put(mergeRemoteTask(local, payload.new));
                 }
               }
             } else if (payload.eventType === 'DELETE') {

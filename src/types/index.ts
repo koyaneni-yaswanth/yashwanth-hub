@@ -16,7 +16,35 @@ export interface Task {
   created_at: string;
   updated_at: string;
   synced?: boolean;
+  /** Checklist of small steps inside the task. */
+  subtasks?: Subtask[];
+  /** Repeats: completing the task creates the next one (see lib/taskModel.ts). */
+  recurrence?: Recurrence;
+  /** Ids of tasks that must be finished first. */
+  blocked_by?: string[];
+  /** Board column for open tasks (done tasks are always in Done). */
+  stage?: TaskStage;
+  /** On a finished repeating task: the id of the next occurrence it created. */
+  recurred_to?: string;
 }
+
+export interface Subtask {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
+export type RecurrenceFreq = 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'yearly';
+
+export interface Recurrence {
+  freq: RecurrenceFreq;
+  /** Every N days/weeks/months/years (ignored for weekdays). */
+  interval: number;
+  /** Last allowed due date, 'YYYY-MM-DD'. */
+  until?: string;
+}
+
+export type TaskStage = 'todo' | 'doing';
 
 export type ProjectStatus = 'planning' | 'active' | 'paused' | 'completed';
 
