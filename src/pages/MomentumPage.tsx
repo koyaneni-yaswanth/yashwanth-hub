@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useMemo, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Sparkles, Target, AlertTriangle, TrendingUp, ArrowRight, Timer, BookOpen, Compass, ChevronDown } from 'lucide-react';
 import { db } from '../db';
@@ -20,7 +20,9 @@ import {
 } from '../lib/momentum';
 import { DOMAINS, domainBalance, domainById, domainOf, goalDomain, habitDomain } from '../lib/lifeDomains';
 import { lifeInsights, projectSystem, snapshotAt, weekLabel } from '../lib/lifeInsights';
-import { bestFocusWindow, formatHour } from '../lib/focus';
+import { bestFocusWindow, describeRunningFocus, FOCUS_RUN_KEY, formatClock, formatHour, type RunningFocusInfo } from '../lib/focus';
+import { TourCard, type TourStep } from '../components/momentum/Tour';
+import { markTourSeen, tourSeen } from '../lib/tour';
 import { TaskService } from '../services/sync/taskService';
 import { CompassPanel, InsightCards, MemoryList, MemoryPanel, ProjectList, ProjectPanel, TimeMachineBar, type CompassHabit } from '../components/momentum/CommandDeck';
 import type { SceneGoal, SceneHabit, SceneMemory, SceneProject } from '../components/momentum/LifeConstellation';
@@ -57,6 +59,26 @@ export const MomentumPage: React.FC<MomentumPageProps> = ({ onNavigate }) => {
   // Weekly Time Machine: 0 = now, 1 = last week, ...
   const [weeksAgo, setWeeksAgo] = useState(0);
   const [pulse, setPulse] = useState<{ habitId: string; key: number } | null>(null);
+  const [tourIndex, setTourIndex] = useState<number | null>(null);
+  const [showTourOffer, setShowTourOffer] = useState(() => !tourSeen());
+  // A deep-work session running on the Deep Work page puts the scene into its focus field.
+  const [running, setRunning] = useState<RunningFocusInfo | null>(null);
+  useEffect(() => {
+    const read = () => {
+      try {
+        setRunning(describeRunningFocus(localStorage.getItem(FOCUS_RUN_KEY), Date.now()));
+      } catch {
+        setRunning(null);
+      }
+    };
+    read();
+    const id = window.setInterval(read, 1000);
+    window.addEventListener('storage', read);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener('storage', read);
+    };
+  }, []);
 
   const raw = useLiveQuery(async () => {
     const [habits, logs, goals, milestones, sessions, tasks, notes, plans, projects] = await Promise.all([
@@ -272,6 +294,43 @@ export const MomentumPage: React.FC<MomentumPageProps> = ({ onNavigate }) => {
         .slice(0, 4)
     : [];
   const selectedProjectSys = selectedProject ? d.projSystems.find((p) => p.id === selectedProject) : undefined;
+  // ---------------- Onboarding tour ----------------
+  const firstGoal = d.forecasts[0];
+  const habitGoalId = d.sceneHabits.find((h) => h.goalId && d.sceneGoals.some((g) => g.id === h.goalId))?.goalId;
+  const tourSteps: TourStep[] = [
+    { id: 'welcome', title: 'Welcome to Yashwanth OS', body: 'Your goals, habits, deep work and reflections as one living system. This short tour shows how to read it. Press Escape any time to leave.', stop: { kind: 'home' } },
+    { id: 'core', title: 'Your Life Score', body: `The glowing core is your Life Score${d.score.score !== null ? ` (${d.score.score})` : ''}. It blends habit consistency, deep work, goal milestones, tasks on time and reflection, and grows as they do.`, stop: { kind: 'core' } },
+    ...(firstGoal
+      ? [{ id: 'goal', title: 'Goals are planets', body: `Each planet is a goal, coloured by life area. Its ring fills with progress, and an amber glow means behind pace. This is “${firstGoal.goal.title}”: ${PACE[firstGoal.pace].label.toLowerCase()}, ${Math.round(firstGoal.progress * 100)}% done.`, stop: { kind: 'goal' as const, id: firstGoal.goal.id } }]
+      : []),
+    { id: 'habits', title: 'Habits orbit their goals', body: 'Satellites are habits. Consistent ones leave bright trails, long streaks draw a visible ring, and missed ones dim and drift. Checking one off sends out a pulse of light.', stop: habitGoalId ? { kind: 'goal', id: habitGoalId } : { kind: 'core' } },
+    { id: 'focus', title: 'Deep work flows as light', body: 'Focus sessions linked to a goal stream light from the core to its planet; the rest feed the ring around the core. While a session runs, the scene settles into a calm focus field.', stop: { kind: 'home' } },
+    ...(d.memories.length
+      ? [{ id: 'journal', title: 'Your journal, connected', body: 'The outer nodes are journal entries, linked when they share a theme. Click one, or pick it from Memory nodes, to read it next to related goals.', stop: { kind: 'memories' as const } }]
+      : []),
+    ...(d.sceneProjects.length
+      ? [{ id: 'projects', title: 'Projects orbit outside', body: `Diamonds are projects: tasks circle as satellites and milestones sit on a ring, bright when done. This is “${d.sceneProjects[0].title}”.`, stop: { kind: 'project' as const, id: d.sceneProjects[0].id } }]
+      : []),
+    { id: 'deck', title: 'Your command deck', body: 'Today’s compass, insights and the Next Best Action turn all of this into one clear next step. You can tick off tasks and habits right here.', stop: { kind: 'home' }, scrollTo: 'compass-title' },
+    { id: 'time', title: 'Travel through time', body: 'Slide back through the last 12 weeks to see your whole system as it was, handy for a weekly review.', stop: { kind: 'home' }, scrollTo: 'tm-title' },
+  ];
+  const goToStep = (i: number) => {
+    setTourIndex(i);
+    const st = tourSteps[i];
+    const target = st?.scrollTo ? document.getElementById(st.scrollTo) : document.getElementById('constellation-title')?.parentElement;
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    target?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
+  };
+  const startTour = () => {
+    markTourSeen();
+    setShowTourOffer(false);
+    setSelectedGoal(null);
+    setSelectedProject(null);
+    setSelectedMemory(null);
+    goToStep(0);
+  };
+  const tourStop = tourIndex !== null ? (tourSteps[tourIndex]?.stop ?? null) : null;
+
   const domainsInUse = DOMAINS.filter((dom) => d.arcGoals.some((g) => g.color === dom.color) || d.ringHabits.some((h) => h.color === dom.color));
 
   return (
@@ -286,7 +345,30 @@ export const MomentumPage: React.FC<MomentumPageProps> = ({ onNavigate }) => {
             </h1>
             <p className="text-sm text-[var(--hub-muted)]">Plan → act → reflect → learn. Your goals, habits, deep work and reflections as one living system.</p>
           </div>
+          <button type="button" onClick={startTour} className="os-chip px-3.5 py-2 text-sm font-medium cursor-pointer inline-flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-[var(--hub-accent)]" aria-hidden="true" />
+            Take the tour
+          </button>
         </header>
+
+        {showTourOffer && tourIndex === null && (
+          <section className="os-glass px-4 py-3 flex flex-wrap items-center gap-3" aria-label="Tour offer">
+            <p className="text-sm text-[var(--hub-ink)] flex-1 min-w-[12rem]">New here? Take a short guided tour of how to read your constellation.</p>
+            <button type="button" onClick={startTour} className="px-3.5 py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-sm font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer">
+              Start the tour
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                markTourSeen();
+                setShowTourOffer(false);
+              }}
+              className="text-sm font-semibold text-[var(--hub-muted)] hover:text-[var(--hub-ink)] cursor-pointer"
+            >
+              Not now
+            </button>
+          </section>
+        )}
 
         <TimeMachineBar weeksAgo={weeksAgo} maxWeeks={12} label={d.label} score={d.score.score} onChange={setWeeksAgo} />
 
@@ -312,9 +394,27 @@ export const MomentumPage: React.FC<MomentumPageProps> = ({ onNavigate }) => {
                 onSelectProject={selectProject}
                 onSelectMemory={selectMemory}
                 pulse={pulse}
+                focusField={running ? { goalId: running.goalId } : null}
+                tourStop={tourStop}
                 onHover={setHovered}
               />
             </Suspense>
+
+            {running && (
+              <div className="absolute top-3 xl:top-4 left-1/2 -translate-x-1/2 z-10">
+                <button
+                  type="button"
+                  onClick={() => onNavigate('focus')}
+                  className="os-chip px-3 py-1.5 text-xs text-[var(--hub-ink)] cursor-pointer inline-flex items-center gap-2 whitespace-nowrap"
+                  aria-label={`Deep work in progress: ${running.label}. ${running.paused ? 'Paused' : `${Math.ceil(running.remainingMs / 60000)} minutes left`}. Return to the session`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-[var(--hub-accent)] hub-breathe" aria-hidden="true" />
+                  <span aria-hidden="true">
+                    Focus field · {running.paused ? 'paused' : `${formatClock(running.remainingMs)} left`} · Back to session
+                  </span>
+                </button>
+              </div>
+            )}
 
             {/* Wide-screen overlays (below 1280px these panels sit under the scene) */}
             <div className="hidden xl:block absolute top-4 left-4 w-72 os-glass p-4 space-y-3">
@@ -524,6 +624,7 @@ export const MomentumPage: React.FC<MomentumPageProps> = ({ onNavigate }) => {
           ))}
         </section>
       </div>
+      {tourIndex !== null && <TourCard steps={tourSteps} index={tourIndex} onIndex={goToStep} onClose={() => setTourIndex(null)} />}
     </div>
   );
 };

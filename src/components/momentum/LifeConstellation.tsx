@@ -61,7 +61,13 @@ export interface LifeConstellationProps {
   onHover?: (label: string | null) => void;
   /** Fire a check-in light pulse on this habit's satellite (change `key` to re-fire). */
   pulse?: { habitId: string; key: number } | null;
+  /** While a deep-work session runs: a calmer scene and a soft halo on the goal it serves. */
+  focusField?: { goalId?: string } | null;
+  /** Onboarding tour: where the camera should be. Overrides the current selection while set. */
+  tourStop?: TourStop | null;
 }
+
+export type TourStop = { kind: 'home' | 'core' | 'memories' } | { kind: 'goal' | 'project'; id: string };
 
 const ACCENT = '#7dd3fc';
 const NO_PROJECTS: SceneProject[] = [];
@@ -95,7 +101,7 @@ function radialTexture(THREE: typeof import('three'), inner: string, outer = 'rg
  * Purely visual: the page shows every fact in text beside it.
  */
 export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
-  const { score, goals, habits, streams, unlinkedFocusMinutes, memories, selectedGoalId, selectedProjectId, selectedMemoryId, pulse } = props;
+  const { score, goals, habits, streams, unlinkedFocusMinutes, memories, selectedGoalId, selectedProjectId, selectedMemoryId, pulse, focusField, tourStop } = props;
   const projects = props.projects ?? NO_PROJECTS;
   const mountRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'unsupported'>('loading');
@@ -111,6 +117,9 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
   /** Camera kept across rebuilds (e.g. after a habit check-in) so the view doesn't jump. */
   const cameraStateRef = useRef<{ pos: number[]; target: number[] } | null>(null);
   const selectionRef = useRef<{ kind: 'goal' | 'project' | 'memory'; id: string } | null>(null);
+  const focusFieldRef = useRef<{ goalId?: string } | null>(null);
+  const tourRef = useRef<TourStop | null>(null);
+  const tourStopRef = useRef<(stop: TourStop | null) => void>(() => {});
 
   useEffect(() => {
     cbRef.current = { onSelectGoal: props.onSelectGoal, onSelectProject: props.onSelectProject, onSelectMemory: props.onSelectMemory, onHover: props.onHover };
@@ -129,8 +138,17 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
           ? ({ kind: 'memory', id: selectedMemoryId } as const)
           : null;
     selectionRef.current = sel;
-    focusRef.current(sel);
+    if (!tourRef.current) focusRef.current(sel);
   }, [selectedGoalId, selectedProjectId, selectedMemoryId, status]);
+  useEffect(() => {
+    focusFieldRef.current = focusField ?? null;
+    requestRenderRef.current();
+  }, [focusField]);
+  useEffect(() => {
+    tourRef.current = tourStop ?? null;
+    if (tourStop) tourStopRef.current(tourStop);
+    else focusRef.current(selectionRef.current);
+  }, [tourStop, status]);
   useEffect(() => {
     if (!pulse) return;
     pendingPulseRef.current = { habitId: pulse.habitId, at: Date.now() };
@@ -263,6 +281,7 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
       // --- Nebula + stars (behind everything, unaffected by fog) ---
       const disc = radialTexture(THREE, 'rgba(255,255,255,1)', 'rgba(255,255,255,0)', 64);
       const nebulaColors = ['rgba(98,64,214,0.55)', 'rgba(29,78,216,0.5)', 'rgba(14,116,144,0.45)'];
+      const nebulae: import('three').Sprite[] = [];
       nebulaColors.forEach((c, i) => {
         const s = new THREE.Sprite(
           new THREE.SpriteMaterial({ map: radialTexture(THREE, c, 'rgba(0,0,0,0)', 256), transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })
@@ -270,6 +289,7 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
         s.position.set([-40, 35, 5][i], [12, -6, 22][i], -90 - i * 12);
         s.scale.setScalar(110 + i * 20);
         scene.add(s);
+        nebulae.push(s);
       });
       const makeStars = (count: number, rMin: number, rMax: number, size: number, opacity: number) => {
         const pos = new Float32Array(count * 3);
@@ -684,12 +704,12 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
       };
 
       // --- Selection: camera glides to the chosen goal, project or memory; the rest dims ---
-      const focus = { kind: null as null | 'goal' | 'project' | 'memory', id: '', dim: 0, returning: false };
+      const focus = { kind: null as null | 'goal' | 'project' | 'memory' | 'core' | 'memories', id: '', dim: 0, returning: false };
       const tgt = new THREE.Vector3();
       const desiredCam = new THREE.Vector3();
       const reduced = prefersReducedMotion();
-      const objectFor = (kind: 'goal' | 'project' | 'memory', id: string): import('three').Object3D | undefined =>
-        kind === 'goal' ? planetById.get(id)?.anchor : kind === 'project' ? projectById.get(id)?.anchor : memSprites.get(id);
+      const objectFor = (kind: 'goal' | 'project' | 'memory' | 'core' | 'memories', id: string): import('three').Object3D | undefined =>
+        kind === 'goal' ? planetById.get(id)?.anchor : kind === 'project' ? projectById.get(id)?.anchor : kind === 'memory' ? memSprites.get(id) : core;
       focusRef.current = (sel) => {
         if (sel && objectFor(sel.kind, sel.id)) {
           focus.kind = sel.kind;
@@ -702,15 +722,38 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
         memSprites.forEach((sp, id) => sp.scale.setScalar(sel?.kind === 'memory' && sel.id === id ? 1.5 : 0.9));
         requestRender();
       };
+      tourStopRef.current = (stop) => {
+        if (!stop || stop.kind === 'home') {
+          if (focus.kind) focus.returning = true;
+          focus.kind = null;
+        } else if (stop.kind === 'core' || stop.kind === 'memories') {
+          focus.kind = stop.kind;
+          focus.id = '';
+          focus.returning = false;
+        } else if ('id' in stop && objectFor(stop.kind, stop.id)) {
+          focus.kind = stop.kind;
+          focus.id = stop.id;
+          focus.returning = false;
+        }
+        highlightRef.current(stop && 'id' in stop && stop.kind === 'goal' ? stop.id : null);
+        requestRender();
+      };
       const baseFog = (scene.fog as import('three').FogExp2).density;
       const updateFocus = (dt: number): boolean => {
         const k = reduced ? 1 : 1 - Math.exp(-dt * 2.6);
         let moving = false;
-        if (focus.kind) {
+        if (focus.kind === 'memories') {
+          // Tour overview of the journal shell: pull back and up so the whole web is visible.
+          controls.target.lerp(tgt.set(0, 0, 0), k);
+          desiredCam.copy(home).multiplyScalar(1.35);
+          desiredCam.y += memR * 0.35;
+          camera.position.lerp(desiredCam, k);
+          moving = camera.position.distanceTo(desiredCam) > 0.03;
+        } else if (focus.kind) {
           const obj = objectFor(focus.kind, focus.id);
           if (obj) {
             obj.getWorldPosition(tgt);
-            const dist = focus.kind === 'memory' ? 13 : focus.kind === 'project' ? 12 : 15;
+            const dist = focus.kind === 'core' ? coreR * 7 : focus.kind === 'memory' ? 13 : focus.kind === 'project' ? 12 : 15;
             desiredCam.copy(camera.position).sub(controls.target).normalize().multiplyScalar(dist).add(tgt);
             desiredCam.y = Math.max(desiredCam.y, tgt.y + 2.2);
             controls.target.lerp(tgt, k);
@@ -723,16 +766,43 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
           moving = camera.position.distanceTo(home) > 0.03;
           if (!moving) focus.returning = false;
         }
-        const dimTarget = focus.kind ? 1 : 0;
+        const dimTarget = focus.kind && focus.kind !== 'core' && focus.kind !== 'memories' ? 1 : 0;
         const prevDim = focus.dim;
         focus.dim += (dimTarget - focus.dim) * (reduced ? 1 : Math.min(1, dt * 3));
         if (Math.abs(focus.dim - prevDim) > 0.001) {
-          (scene.fog as import('three').FogExp2).density = baseFog + focus.dim * 0.005;
+          (scene.fog as import('three').FogExp2).density = baseFog + focus.dim * 0.005 + ff.level * 0.004;
           orbitMat.opacity = 0.1 * (1 - focus.dim * 0.6);
           memMat.opacity = 0.75 * (focus.kind === 'memory' ? 1 : 1 - focus.dim * 0.55);
           moving = true;
         }
         return moving;
+      };
+
+      // --- Focus field: while deep work runs, the scene quiets and the goal gets a soft halo ---
+      const ff = { level: 0 };
+      const ffHalo = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: radialTexture(THREE, 'rgba(125,211,252,0.6)'), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending })
+      );
+      world.add(ffHalo);
+      const updateFocusField = (dt: number, t: number): boolean => {
+        const target = focusFieldRef.current ? 1 : 0;
+        const prev = ff.level;
+        ff.level += (target - ff.level) * (reduced ? 1 : Math.min(1, dt * 1.2));
+        const active = ff.level > 0.002;
+        if (active) {
+          const goal = focusFieldRef.current?.goalId ? planetById.get(focusFieldRef.current.goalId) : undefined;
+          (goal ? goal.anchor : core).getWorldPosition(ffHalo.position);
+          world.worldToLocal(ffHalo.position);
+          const base = goal ? 4.2 : coreR * 8;
+          ffHalo.scale.setScalar(base * (1 + (reduced ? 0 : Math.sin(t * 0.6) * 0.06)));
+          (ffHalo.material as import('three').SpriteMaterial).opacity = ff.level * 0.55;
+          energyRing.scale.setScalar(1 - ff.level * 0.2);
+          for (const n of nebulae) (n.material as import('three').SpriteMaterial).opacity = 0.32 * (1 - ff.level * 0.55);
+          (scene.fog as import('three').FogExp2).density = baseFog + focus.dim * 0.005 + ff.level * 0.004;
+        } else if (prev > 0) {
+          (ffHalo.material as import('three').SpriteMaterial).opacity = 0;
+        }
+        return Math.abs(ff.level - prev) > 0.001;
       };
 
       // --- Post-processing: gentle bloom ---
@@ -843,7 +913,8 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
         const dt = Math.min(0.05, timer.getDelta());
         if (!visible || document.hidden) return;
         const animate = !pausedRef.current;
-        const focusing = updateFocus(dt);
+        const focusing = updateFocus(dt) || updateFocusField(dt, timer.getElapsed());
+        const calm = 1 - ff.level * 0.75;
         const damping = controls.update();
         if (!animate && !needsRender && !damping && !focusing && !pulses.length) return;
         needsRender = false;
@@ -858,7 +929,7 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
         }
 
         if (animate) {
-          world.rotation.y += 0.012 * dt;
+          world.rotation.y += 0.012 * dt * calm;
           for (const p of planets) {
             p.pivot.rotation.y += p.speed * dt;
             p.mesh.rotation.y += 0.25 * dt;
@@ -867,15 +938,15 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
           }
           ringA.rotation.z += 0.12 * dt;
           ringB.rotation.z -= 0.08 * dt;
-          energyRing.rotation.y += 0.09 * dt;
+          energyRing.rotation.y += 0.09 * dt * (1 - ff.level * 0.4);
           memGroup.rotation.y -= 0.006 * dt;
           for (const ps of projectSystems) {
             ps.pivot.rotation.y += ps.speed * dt;
             ps.spin.rotation.y += 0.3 * dt;
             ps.core.rotation.y += 0.5 * dt;
           }
-          starsNear.rotation.y += 0.004 * dt;
-          starsFar.rotation.y += 0.0015 * dt;
+          starsNear.rotation.y += 0.004 * dt * calm;
+          starsFar.rotation.y += 0.0015 * dt * calm;
           halo.scale.setScalar(coreR * (6.5 + Math.sin(t * 0.8) * 0.35));
           parallax.x += (parallax.tx - parallax.x) * 0.04;
           parallax.y += (parallax.ty - parallax.y) * 0.04;
@@ -928,7 +999,8 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
       setStatus('ready');
       // Re-apply selection and any check-in pulse that arrived while rebuilding.
       highlightRef.current(selectionRef.current?.kind === 'goal' ? selectionRef.current.id : null);
-      focusRef.current(selectionRef.current);
+      if (tourRef.current) tourStopRef.current(tourRef.current);
+      else focusRef.current(selectionRef.current);
       if (pendingPulseRef.current && Date.now() - pendingPulseRef.current.at < 4000) {
         firePulseRef.current(pendingPulseRef.current.habitId);
         pendingPulseRef.current = null;

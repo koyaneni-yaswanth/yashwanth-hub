@@ -130,3 +130,43 @@ export function formatHour(h: number): string {
 export function weekdayLabel(key: string): string {
   return parseDateKey(key).toLocaleDateString('en-US', { weekday: 'short' });
 }
+
+// ---------------------------------------------------------------------------
+// The running session, shared between Deep Work (which owns it) and other pages
+// ---------------------------------------------------------------------------
+
+/** localStorage key for the running Deep Work session (survives reloads). */
+export const FOCUS_RUN_KEY = 'yash_focus_running_v1';
+
+export interface RunningFocusInfo {
+  label: string;
+  goalId?: string;
+  taskId?: string;
+  plannedMs: number;
+  remainingMs: number;
+  /** 0–1 share of the session done. */
+  progress: number;
+  paused: boolean;
+}
+
+/** Summarises a stored running session at `now`; null when none or unreadable. */
+export function describeRunningFocus(raw: string | null, now: number): RunningFocusInfo | null {
+  if (!raw) return null;
+  try {
+    const s = JSON.parse(raw) as { label?: string; goal_id?: string; task_id?: string; timer?: RunningTimer };
+    if (!s.timer || typeof s.timer.startedAt !== 'number' || typeof s.timer.plannedMs !== 'number') return null;
+    const remaining = remainingMs(s.timer, now);
+    if (remaining <= 0) return null;
+    return {
+      label: s.label || 'Focus session',
+      goalId: s.goal_id,
+      taskId: s.task_id,
+      plannedMs: s.timer.plannedMs,
+      remainingMs: remaining,
+      progress: Math.min(1, 1 - remaining / Math.max(1, s.timer.plannedMs)),
+      paused: Boolean(s.timer.pausedAt),
+    };
+  } catch {
+    return null;
+  }
+}

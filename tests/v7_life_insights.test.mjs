@@ -114,3 +114,21 @@ test('rangeBuckets: week, month, quarter and year end today', async () => {
   assert.equal(sums.at(-2), 5);
   assert.equal(sums.reduce((a, b) => a + b, 0), 7, 'out-of-range items are ignored');
 });
+
+test('describeRunningFocus reads a stored session safely', async () => {
+  const { describeRunningFocus } = await import('../src/lib/focus.ts');
+  const now = 1_000_000;
+  const stored = JSON.stringify({ label: 'Blade test report', goal_id: 'g1', timer: { startedAt: now - 10 * 60000, plannedMs: 25 * 60000, pausedMs: 0 } });
+  const r = describeRunningFocus(stored, now);
+  assert.equal(r.label, 'Blade test report');
+  assert.equal(r.goalId, 'g1');
+  assert.equal(r.remainingMs, 15 * 60000);
+  assert.equal(r.progress, 0.4);
+  assert.equal(r.paused, false);
+  assert.equal(describeRunningFocus(null, now), null);
+  assert.equal(describeRunningFocus('{not json', now), null);
+  assert.equal(describeRunningFocus(JSON.stringify({ timer: { startedAt: now - 30 * 60000, plannedMs: 25 * 60000, pausedMs: 0 } }), now), null, 'a finished session is not running');
+  const paused = describeRunningFocus(JSON.stringify({ timer: { startedAt: now - 10 * 60000, plannedMs: 25 * 60000, pausedMs: 0, pausedAt: now - 5 * 60000 } }), now);
+  assert.equal(paused.paused, true);
+  assert.equal(paused.remainingMs, 20 * 60000, 'time while paused does not count');
+});

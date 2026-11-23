@@ -6,8 +6,10 @@ import type { FocusDistraction, FocusPresetId, FocusSession, Goal, Task } from '
 import { generateId, getTodayISO } from '../lib/utils';
 import { TaskService } from '../services/sync/taskService';
 import { takeFocusTask } from '../lib/focusHandoff';
+import { FocusField } from '../components/focus/FocusField';
 import {
   FOCUS_PRESETS,
+  FOCUS_RUN_KEY,
   bestFocusWindow,
   clampMinutes,
   elapsedMs,
@@ -26,7 +28,7 @@ import { ChartCard } from '../components/charts/ChartCard';
 import { ColumnChart, type ColumnDatum } from '../components/charts/ColumnChart';
 
 /** Survives reloads and tab switches, so a running session is never lost. */
-const RUN_KEY = 'yash_focus_running_v1';
+const RUN_KEY = FOCUS_RUN_KEY;
 
 // Stable fallbacks so memoised values don't recompute while queries load.
 const NO_TASKS: Task[] = [];
@@ -448,7 +450,9 @@ export const FocusPage: React.FC = () => {
               Focusing on
             </h2>
             <p className="text-lg font-bold text-[var(--hub-ink)] break-words">{active.label}</p>
-            <div className="relative mx-auto w-64 h-64 sm:w-72 sm:h-72 grid place-items-center">
+            <div className="relative mx-auto my-6 sm:my-8 w-64 h-64 sm:w-72 sm:h-72 grid place-items-center">
+              {/* Focus field: particles gather around the ring as the session progresses. */}
+              <FocusField progress={1 - remaining / Math.max(1, active.timer.plannedMs)} paused={isPaused} />
               {/* Decorative: soft halo that breathes while the clock runs. */}
               {!isPaused && (
                 <div
