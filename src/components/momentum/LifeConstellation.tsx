@@ -186,7 +186,9 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
       // --- Layout maths ---
       const coreR = 1.15 + ((score ?? 35) / 100) * 0.85;
       const orbitR = (i: number) => 5.4 + i * 2.15;
-      const outerR = goals.length ? orbitR(goals.length - 1) + 1.6 : coreR * 3.5;
+      // Frame at least two orbits' worth of space, so an empty or one-goal scene
+      // doesn't zoom in until the core fills the view.
+      const outerR = Math.max(goals.length ? orbitR(goals.length - 1) + 1.6 : 0, orbitR(1) + 1.6);
       const memR = outerR + 4.5;
 
       const camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 400);
