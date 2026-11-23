@@ -397,3 +397,11 @@ function fmtMin(m: number): string {
 export function formatDay(key: string): string {
   return parseDateKey(key).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
+
+/** Momentum score at the end of each of the last `weeks` weeks, oldest first (for the sparkline). */
+export function scoreHistory(input: MomentumInput, weeks = 8): { end: string; score: number | null }[] {
+  return Array.from({ length: weeks }, (_, i) => {
+    const end = addDays(input.today, -(weeks - 1 - i) * 7);
+    return { end, score: momentumScore({ ...input, today: end }).score };
+  });
+}
