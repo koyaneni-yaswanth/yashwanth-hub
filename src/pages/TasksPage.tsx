@@ -24,7 +24,7 @@ import { IntegrationVaultService } from '../services/integrationVaultService';
 import { SubtaskEditor, RepeatPicker, BlockedByPicker } from '../components/tasks/TaskFieldsEditor';
 import { TaskChips } from '../components/tasks/TaskChips';
 import { TaskBoard } from '../components/tasks/TaskBoard';
-import { alignAnchorDay, cleanSubtasks, moveToColumn, normaliseRecurrence, openBlockers, type BoardColumn } from '../lib/taskModel';
+import { alignAnchorDay, cleanSubtasks, moveToColumn, normaliseRecurrence, openBlockers, withPendingSubtask, type BoardColumn } from '../lib/taskModel';
 import { toast } from '../lib/toast';
 import { GoogleAuthService } from '../services/google/googleAuthService';
 import { GoogleTasksService } from '../services/google/googleTasksService';
@@ -76,6 +76,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
   const [formDueDate, setFormDueDate] = useState('');
   const [formNotes, setFormNotes] = useState('');
   const [formSubtasks, setFormSubtasks] = useState<Subtask[]>([]);
+  const [formSubtaskDraft, setFormSubtaskDraft] = useState('');
   const [formRecurrence, setFormRecurrence] = useState<Recurrence | undefined>(undefined);
   const [formBlockedBy, setFormBlockedBy] = useState<string[]>([]);
   const [formStage, setFormStage] = useState<TaskStage>('todo');
@@ -141,6 +142,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
     setFormDueDate(today);
     setFormNotes('');
     setFormSubtasks([]);
+    setFormSubtaskDraft('');
     setFormRecurrence(undefined);
     setFormBlockedBy([]);
     setFormStage('todo');
@@ -156,6 +158,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
     setFormDueDate(task.due_date || '');
     setFormNotes(task.notes || '');
     setFormSubtasks(task.subtasks ?? []);
+    setFormSubtaskDraft('');
     setFormRecurrence(task.recurrence);
     setFormBlockedBy(task.blocked_by ?? []);
     setFormStage(task.stage === 'doing' ? 'doing' : 'todo');
@@ -173,7 +176,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
       priority: formPriority,
       due_date: formDueDate || undefined,
       notes: formNotes.trim() || undefined,
-      subtasks: cleanSubtasks(formSubtasks),
+      subtasks: cleanSubtasks(withPendingSubtask(formSubtasks, formSubtaskDraft)),
       recurrence: alignAnchorDay(normaliseRecurrence(formRecurrence), formDueDate || undefined),
       blocked_by: formBlockedBy.length ? formBlockedBy : undefined,
       stage: formStage,
@@ -679,7 +682,7 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
             </select>
           </div>
 
-          <SubtaskEditor value={formSubtasks} onChange={setFormSubtasks} />
+          <SubtaskEditor value={formSubtasks} onChange={setFormSubtasks} draft={formSubtaskDraft} onDraftChange={setFormSubtaskDraft} />
           <RepeatPicker value={formRecurrence} onChange={setFormRecurrence} dueDate={formDueDate} />
           <BlockedByPicker taskId={editingTask?.id ?? null} value={formBlockedBy} onChange={setFormBlockedBy} tasks={allTasks} />
 

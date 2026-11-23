@@ -9,9 +9,18 @@ const fieldCls =
 const inputCls = `w-full ${fieldCls}`;
 const labelCls = 'flex items-center gap-1.5 text-xs font-bold text-[var(--hub-ink)] uppercase tracking-wider mb-1';
 
-/** Checklist editor: add, rename, tick and remove steps. */
-export const SubtaskEditor: React.FC<{ value: Subtask[]; onChange: (next: Subtask[]) => void }> = ({ value, onChange }) => {
-  const [draft, setDraft] = useState('');
+/**
+ * Checklist editor: add, rename, tick and remove steps. The "add a step" text
+ * is owned by the parent, so a step typed but not yet added is saved with the
+ * task (see withPendingSubtask) instead of being lost.
+ */
+export const SubtaskEditor: React.FC<{
+  value: Subtask[];
+  onChange: (next: Subtask[]) => void;
+  draft: string;
+  onDraftChange: (text: string) => void;
+}> = ({ value, onChange, draft, onDraftChange }) => {
+  const setDraft = onDraftChange;
   const id = useId();
   const add = () => {
     const text = draft.trim();
@@ -66,8 +75,6 @@ export const SubtaskEditor: React.FC<{ value: Subtask[]; onChange: (next: Subtas
               add();
             }
           }}
-          // A step typed but not yet added is kept when focus moves on (e.g. straight to Save).
-          onBlur={add}
           placeholder="Add a step, then press Enter"
           className={`${inputCls} py-1.5`}
         />

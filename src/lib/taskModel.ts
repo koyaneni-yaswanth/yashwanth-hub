@@ -3,7 +3,7 @@
  * stages. Pure functions (no Dexie, no React) so they are unit-tested.
  */
 import type { Recurrence, RecurrenceFreq, Subtask, Task, TaskStage } from '../types';
-import { toDueKey } from './utils.ts';
+import { generateId, toDueKey } from './utils.ts';
 
 // ---------------------------------------------------------------------------
 // Dates (local calendar days as 'YYYY-MM-DD')
@@ -155,6 +155,12 @@ export function buildNextOccurrence(task: Task, today: string, newId: string, no
 export function subtaskProgress(task: Pick<Task, 'subtasks'>): { done: number; total: number } {
   const list = task.subtasks ?? [];
   return { done: list.filter((s) => s.done).length, total: list.length };
+}
+
+/** The checklist to save: includes a step that was typed in "add a step" but not yet added. */
+export function withPendingSubtask(list: Subtask[], draft: string, newId: () => string = generateId): Subtask[] {
+  const text = draft.trim();
+  return text ? [...list, { id: newId(), text, done: false }] : list;
 }
 
 export function cleanSubtasks(list: Subtask[] | undefined): Subtask[] | undefined {
