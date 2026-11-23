@@ -22,7 +22,7 @@ const MOVE_ACTIONS: Record<BoardColumn, { label: string; Icon: typeof Check }> =
 export const TaskBoard: React.FC<{
   tasks: Task[];
   byId: Map<string, Task>;
-  onMove: (task: Task, column: BoardColumn) => void;
+  onMove: (task: Task, column: BoardColumn) => Promise<unknown> | void;
   onOpen: (task: Task) => void;
 }> = ({ tasks, byId, onMove, onOpen }) => {
   const [dragId, setDragId] = useState<string | null>(null);
@@ -41,7 +41,10 @@ export const TaskBoard: React.FC<{
 
   const moveWithButton = (task: Task, col: BoardColumn) => {
     focusAfterMove.current = task.id;
-    onMove(task, col);
+    // If the move fails the card stays put; don't leave a focus jump waiting for a later render.
+    Promise.resolve(onMove(task, col)).catch(() => {
+      if (focusAfterMove.current === task.id) focusAfterMove.current = null;
+    });
   };
 
   const columns = BOARD_COLUMNS.map((c) => {
@@ -52,7 +55,7 @@ export const TaskBoard: React.FC<{
 
   const drop = (col: BoardColumn) => {
     const task = dragId ? byId.get(dragId) : undefined;
-    if (task && boardColumnOf(task) !== col) onMove(task, col);
+    if (task && boardColumnOf(task) !== col) Promise.resolve(onMove(task, col)).catch(() => {});
     setDragId(null);
     setOverCol(null);
   };

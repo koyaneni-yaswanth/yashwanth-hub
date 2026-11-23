@@ -1,8 +1,8 @@
 import React, { useId, useState } from 'react';
 import { Plus, X, Repeat, Link2, ListChecks } from 'lucide-react';
 import type { Recurrence, RecurrenceFreq, Subtask, Task } from '../../types';
-import { MAX_INTERVAL, RECURRENCE_OPTIONS, describeRecurrence, wouldCreateCycle } from '../../lib/taskModel';
-import { generateId } from '../../lib/utils';
+import { MAX_INTERVAL, RECURRENCE_OPTIONS, describeRecurrence, nextDueAfterToday, wouldCreateCycle } from '../../lib/taskModel';
+import { generateId, getTodayISO } from '../../lib/utils';
 
 const fieldCls =
   'min-w-0 px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--hub-accent)]';
@@ -102,7 +102,8 @@ export const RepeatPicker: React.FC<{ value: Recurrence | undefined; onChange: (
   // The interval box may be empty while typing; only whole numbers 1-365 are applied.
   const [intervalText, setIntervalText] = useState<string | null>(null);
   const intervalInvalid = intervalText !== null && !(Number.isInteger(Number(intervalText)) && Number(intervalText) >= 1 && Number(intervalText) <= MAX_INTERVAL);
-  const untilBeforeDue = Boolean(value?.until && dueDate && value.until < dueDate);
+  // True when, with this end date, completing the task would not create another copy.
+  const seriesEnds = Boolean(value?.until) && !!value && nextDueAfterToday(value, dueDate || undefined, getTodayISO()) === null;
   return (
     <div>
       <label htmlFor={`${id}-freq`} className={labelCls}>
@@ -154,25 +155,29 @@ export const RepeatPicker: React.FC<{ value: Recurrence | undefined; onChange: (
               min={dueDate || undefined}
               onChange={(e) => onChange({ ...value, until: e.target.value || undefined })}
               aria-label="Repeat until (optional)"
-              aria-invalid={untilBeforeDue}
+              aria-invalid={seriesEnds}
               className={`${fieldCls} w-40`}
             />
           </label>
         )}
       </div>
-      {value && intervalInvalid && (
-        <p role="alert" className="mt-1.5 text-xs font-semibold text-[var(--hub-red)]">
-          Enter a whole number from 1 to {MAX_INTERVAL}. Keeping every {value.interval}.
-        </p>
-      )}
-      {value && untilBeforeDue && (
-        <p role="alert" className="mt-1.5 text-xs font-semibold text-amber-800 dark:text-amber-300">
-          The end date is before the due date, so completing this task won't create another one.
-        </p>
-      )}
-      {value && !untilBeforeDue && (
-        <p className="mt-1.5 text-xs text-[var(--hub-muted)]">
-          {describeRecurrence(value)}. Completing it creates the next one{dueDate ? ', due on the next date in the series' : ', counting from the day you complete it'}.
+      {value && (
+        // One message line of fixed minimum height, so nothing below (e.g. Save) moves when it changes.
+        <p
+          aria-live="polite"
+          className={`mt-1.5 min-h-[2rem] text-xs ${
+            intervalInvalid
+              ? 'font-semibold text-[var(--hub-red)]'
+              : seriesEnds
+                ? 'font-semibold text-amber-800 dark:text-amber-300'
+                : 'text-[var(--hub-muted)]'
+          }`}
+        >
+          {intervalInvalid
+            ? `Enter a whole number from 1 to ${MAX_INTERVAL}. Keeping every ${value.interval}.`
+            : seriesEnds
+              ? "With this end date, completing the task won't create another one."
+              : `${describeRecurrence(value)}. Completing it creates the next one${dueDate ? ', due on the next date in the series' : ', counting from the day you complete it'}.`}
         </p>
       )}
     </div>

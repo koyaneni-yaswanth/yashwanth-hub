@@ -2,6 +2,7 @@ import { GoogleAuthService } from './googleAuthService';
 import { db } from '../../db';
 import type { EventItem, Meeting } from '../../types';
 import { generateId } from '../../lib/utils';
+import { nextDateKey } from '../../lib/calendarModel';
 
 export class GoogleCalendarService {
   private static BASE_URL = 'https://www.googleapis.com/calendar/v3';
@@ -122,7 +123,8 @@ export class GoogleCalendarService {
     if (!token) throw new Error('Google Workspace is not connected.');
 
     const startDateTime = `${date}T${startTime}:00`;
-    const endDateTime = `${date}T${endTime}:00`;
+    // An end before the start means the meeting runs past midnight: it ends the next day.
+    const endDateTime = `${endTime < startTime ? nextDateKey(date) : date}T${endTime}:00`;
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata';
 
     const payload = {
@@ -168,7 +170,9 @@ export class GoogleCalendarService {
     if (!token) throw new Error('Google Workspace is not connected.');
 
     const startDateTime = event.start_time ? `${event.date}T${event.start_time}:00` : `${event.date}T09:00:00`;
-    const endDateTime = event.end_time ? `${event.date}T${event.end_time}:00` : `${event.date}T10:00:00`;
+    const endDateTime = event.end_time
+      ? `${event.start_time && event.end_time < event.start_time ? nextDateKey(event.date) : event.date}T${event.end_time}:00`
+      : `${event.date}T10:00:00`;
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata';
 
     const payload = {

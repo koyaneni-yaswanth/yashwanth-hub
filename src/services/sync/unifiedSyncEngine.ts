@@ -8,6 +8,7 @@ import { getSupabaseClient, isSupabaseConfigured } from '../../lib/supabase';
 import { db } from '../../db';
 import type { SyncEngineStatus, SyncHistoryRecord, SyncEngineState } from '../../types';
 import { generateId } from '../../lib/utils';
+import { SyncQueueService } from './syncQueueService';
 
 export class UnifiedSyncEngine {
   private static isSyncing = false;
@@ -180,23 +181,12 @@ export class UnifiedSyncEngine {
         try {
           const client = getSupabaseClient();
           if (client) {
-            const queue = await db.sync_queue.toArray();
-            let queueSynced = 0;
-            for (const item of queue) {
-              try {
-                if (item.action === 'INSERT' || item.action === 'UPDATE') {
-                  await (client.from(item.table_name) as any).upsert(item.payload);
-                } else if (item.action === 'DELETE') {
-                  await (client.from(item.table_name) as any).delete().eq('id', item.record_id);
-                }
-                await db.sync_queue.delete(item.id);
-                queueSynced++;
-              } catch (itemErr) {
-                console.warn('Queue item sync error:', itemErr);
-              }
-            }
+            // The one upload path: checks errors, keeps failed changes queued, and applies the
+            // task column rules. (If a flush is already running, it covers these items.)
+            const { processed, failed } = await SyncQueueService.flushQueue();
+            if (failed > 0) errors.push(`Supabase: ${failed} change${failed === 1 ? '' : 's'} couldn't sync yet and will retry`);
             syncedServices.push('Supabase Cloud');
-            await this.logSyncEvent('Supabase', 'Cloud Queue Sync', 'success', queueSynced);
+            await this.logSyncEvent('Supabase', 'Cloud Queue Sync', failed > 0 ? 'warning' : 'success', processed);
           }
         } catch (sbErr: any) {
           errors.push(`Supabase: ${sbErr.message}`);

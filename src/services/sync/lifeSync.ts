@@ -212,6 +212,9 @@ export function startLifeSync(): void {
   const run = (force = false) => {
     if (!force && Date.now() - lastRun < 120_000) return;
     lastRun = Date.now();
+    // Also retry anything left in the upload queue (failed earlier, or from a previous session),
+    // which includes backfilling task fields once the cloud has their columns.
+    SyncQueueService.flushQueue().catch((err) => console.warn('[sync] Queue flush failed:', err));
     reconcileLifeData()
       .then((r) => {
         if (r.status === 'unavailable') console.info(`[lifeSync] Cloud tables not ready (${r.table}): ${r.error}. Data stays local and queued.`);

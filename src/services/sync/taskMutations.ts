@@ -1,6 +1,6 @@
 import type { Task } from '../../types';
 import { getTodayISO, toDueKey } from '../../lib/utils.ts';
-import { buildNextOccurrence } from '../../lib/taskModel.ts';
+import { alignAnchorDay, buildNextOccurrence } from '../../lib/taskModel.ts';
 
 /** Every write stores due dates as plain local days, whatever form the caller used. */
 const normaliseDue = <T extends { due_date?: string }>(x: T): T =>
@@ -94,6 +94,13 @@ export function createTaskMutations(
         let changes = 'due_date' in rawChanges ? normaliseDue(rawChanges) : rawChanges;
         // Decide on the stored row when we can: the caller's copy may be from an older render.
         const current = (store.get ? await store.get(task.id) : undefined) ?? task;
+
+        // Moving a repeating task (e.g. "Move to today") moves its series too, so completing it
+        // afterwards steps from the new date instead of skipping a month.
+        if ('due_date' in changes && !('recurrence' in changes) && current.recurrence && !current.recurred_to) {
+          const aligned = alignAnchorDay(current.recurrence, changes.due_date);
+          if (aligned !== current.recurrence) changes = { ...changes, recurrence: aligned };
+        }
 
         // Completing a repeating task creates the next one and hands the series over to it,
         // so undo + complete again can never create a duplicate.

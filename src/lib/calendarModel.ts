@@ -13,6 +13,8 @@ export interface CalItem {
   start?: string; // HH:mm
   end?: string; // HH:mm
   done?: boolean;
+  /** The after-midnight part of an item that started the day before. */
+  continued?: boolean;
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -93,7 +95,29 @@ export function findClashes(items: CalItem[]): Map<string, CalItem[]> {
   return out;
 }
 
-export const itemKey = (it: Pick<CalItem, 'source' | 'id'>) => `${it.source}:${it.id}`;
+export const itemKey = (it: Pick<CalItem, 'source' | 'id' | 'continued'>) => `${it.source}:${it.id}${it.continued ? ':cont' : ''}`;
+
+/** The next calendar day of a 'YYYY-MM-DD' key. */
+export function nextDateKey(key: string): string {
+  const d = fromDateKey(key);
+  return dateKey(new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1));
+}
+
+/**
+ * Adds the after-midnight part of every overnight item (end before start) as
+ * its own item on the next date, 00:00 to its end, so it is listed there and
+ * clashes with it are found.
+ */
+export function expandOvernight(items: CalItem[]): CalItem[] {
+  const out: CalItem[] = [];
+  for (const it of items) {
+    out.push(it);
+    if (it.source !== 'task' && !it.continued && endsNextDay(it.start, it.end)) {
+      out.push({ ...it, date: nextDateKey(it.date), start: '00:00', end: it.end, continued: true });
+    }
+  }
+  return out;
+}
 
 /** Sorts a day's items: all-day and tasks first, then by start time. */
 export function sortDay(items: CalItem[]): CalItem[] {
@@ -112,7 +136,14 @@ export function rangeFor(view: 'day' | 'week' | 'agenda', anchor: Date): string[
   return Array.from({ length: len }, (_, i) => dateKey(new Date(start.getFullYear(), start.getMonth(), start.getDate() + i)));
 }
 
-export function formatTimeRange(item: Pick<CalItem, 'start' | 'end'>): string {
+/** How a clashing item is named in a warning, e.g. "Lab session" (10:00–11:00). */
+export function describeClash(item: Pick<CalItem, 'title' | 'start' | 'end' | 'continued' | 'source'>): string {
+  const when = item.continued ? `until ${item.end}, from the day before` : formatTimeRange(item);
+  return `“${item.title}” (${when}${item.source === 'meeting' ? ', meeting' : ''})`;
+}
+
+export function formatTimeRange(item: Pick<CalItem, 'start' | 'end' | 'continued'>): string {
+  if (item.continued) return `Until ${item.end} (from the day before)`;
   if (!item.start) return 'All day';
   if (!item.end) return item.start;
   return `${item.start}–${item.end}${endsNextDay(item.start, item.end) ? ' (next day)' : ''}`;

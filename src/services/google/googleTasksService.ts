@@ -1,12 +1,24 @@
 import { GoogleAuthService } from './googleAuthService';
 import { db } from '../../db';
 import type { Task, GoogleTaskItem } from '../../types';
-import { generateId, toDueKey } from '../../lib/utils';
+import { toDueKey } from '../../lib/utils';
 import { TaskService } from '../sync/taskService';
-import { decideStatusSync, matchLocalTask } from '../../lib/googleTaskSync';
+import { decideStatusSync, matchLocalTask, taskIdForGoogleTask } from '../../lib/googleTaskSync';
+
+/** Per linked Google task: the done/open status both sides last agreed on (device-local). */
+const STATUS_KEY = (googleTaskId: string) => `gtask_status:${googleTaskId}`;
 
 export class GoogleTasksService {
   private static BASE_URL = 'https://tasks.googleapis.com/tasks/v1';
+
+  private static async lastSyncedDone(googleTaskId: string): Promise<boolean | undefined> {
+    const row = await db.settings.get(STATUS_KEY(googleTaskId));
+    return typeof row?.value === 'boolean' ? row.value : undefined;
+  }
+
+  private static async recordSyncedDone(googleTaskId: string, done: boolean): Promise<void> {
+    await db.settings.put({ key: STATUS_KEY(googleTaskId), value: done, updated_at: new Date().toISOString() });
+  }
 
   // Retrieve user's primary Google Tasks list
   public static async getPrimaryTaskList(): Promise<string | null> {
@@ -110,9 +122,11 @@ export class GoogleTasksService {
       if (!res.ok) return null;
       const gTask = await res.json();
 
-      // Update local task with google_task_id
-      if (gTask.id && !task.google_task_id) {
-        await db.tasks.update(task.id, { google_task_id: gTask.id, synced: true });
+      if (gTask.id) {
+        await this.recordSyncedDone(gTask.id, task.done);
+        // Save the link through TaskService so it reaches the cloud and other devices.
+        const current = await db.tasks.get(task.id);
+        if (current && !current.google_task_id) await TaskService.update(current, { google_task_id: gTask.id, synced: true });
       }
       return gTask.id;
     } catch (e) {
@@ -134,6 +148,7 @@ export class GoogleTasksService {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(done ? { status: 'completed' } : { status: 'needsAction', completed: null }),
       });
+      if (res.ok) await this.recordSyncedDone(googleTaskId, done);
       return res.ok;
     } catch (e) {
       console.warn('Failed to update Google task status:', e);
@@ -153,27 +168,39 @@ export class GoogleTasksService {
 
     // 1. Process Google Tasks into local Yashwanth Hub
     for (const gt of gTasks) {
-      const match = matchLocalTask(gt, localTasks, matched);
-      if (match) {
-        matched.add(match.id);
-        // Done/open status: whichever side changed it most recently wins. Local changes go
+      const snapshotMatch = matchLocalTask(gt, localTasks, matched);
+      if (snapshotMatch) {
+        matched.add(snapshotMatch.id);
+        // Decide on the stored row: the user may have changed it while this sync was running.
+        const match = (await db.tasks.get(snapshotMatch.id)) ?? snapshotMatch;
+        const googleDone = gt.status === 'completed';
+        // Status: the side that moved away from the last agreed status wins. Local changes go
         // through TaskService so they are queued for the cloud and repeats continue.
-        const decision = decideStatusSync(gt, match);
+        const decision = decideStatusSync(gt, match, await this.lastSyncedDone(gt.id));
         if (decision === 'import') {
-          await TaskService.update(match, { done: gt.status === 'completed', google_task_id: gt.id });
+          await TaskService.update(match, { done: googleDone, google_task_id: gt.id });
+          await this.recordSyncedDone(gt.id, googleDone);
           imported++;
         } else if (decision === 'export') {
           if (await this.setGoogleTaskStatus(gt.id, match.done, listId)) exported++;
           if (!match.google_task_id) await TaskService.update(match, { google_task_id: gt.id });
-        } else if (!match.google_task_id) {
+        } else {
+          await this.recordSyncedDone(gt.id, match.done);
           // Same task matched by title: link it so it isn't exported again as a duplicate.
-          await TaskService.update(match, { google_task_id: gt.id });
+          if (!match.google_task_id) await TaskService.update(match, { google_task_id: gt.id });
         }
       } else {
-        // New task created in Google Tasks -> Import into Yashwanth Hub
-        const now = new Date().toISOString();
-        const newTask: Task = {
-          id: generateId(),
+        // New task created in Google Tasks -> import it. The id is derived from the Google id,
+        // so devices importing the same task create one row, and it is queued for the cloud.
+        const id = await taskIdForGoogleTask(gt.id);
+        const existing = await db.tasks.get(id);
+        if (existing) {
+          // Imported before, but the link was lost on this device: re-link instead of duplicating.
+          if (existing.google_task_id !== gt.id) await TaskService.update(existing, { google_task_id: gt.id });
+          continue;
+        }
+        await TaskService.create({
+          id,
           text: gt.title,
           notes: gt.notes,
           area: 'Personal',
@@ -184,11 +211,9 @@ export class GoogleTasksService {
           starred: false,
           done: gt.status === 'completed',
           google_task_id: gt.id,
-          created_at: now,
-          updated_at: now,
           synced: true,
-        };
-        await db.tasks.add(newTask);
+        });
+        await this.recordSyncedDone(gt.id, gt.status === 'completed');
         imported++;
       }
     }

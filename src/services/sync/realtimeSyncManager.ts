@@ -31,6 +31,8 @@ export class RealtimeSyncManager {
             // Never let a cloud echo overwrite a newer local edit that is still waiting to upload.
             if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
               if (payload.new?.id) {
+                // A whole row with the v3 keys proves the cloud has those columns.
+                SyncQueueService.noteRemoteTaskColumns(payload.new);
                 const [local, pending] = await Promise.all([
                   db.tasks.get(payload.new.id),
                   SyncQueueService.hasPendingChange('tasks', payload.new.id),

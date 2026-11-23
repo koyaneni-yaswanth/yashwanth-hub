@@ -1,6 +1,6 @@
 import { db } from '../../db';
 import { getSupabaseClient, isSupabaseConfigured } from '../../lib/supabase';
-import type { SyncQueueItem } from '../../types';
+import type { SyncQueueItem, Task } from '../../types';
 import { generateId } from '../../lib/utils';
 import {
   TASK_V3_FIELDS,
@@ -12,10 +12,16 @@ import {
 
 type Client = NonNullable<ReturnType<typeof getSupabaseClient>>;
 
-/** Tasks whose subtasks / repeat / blockers / stage never reached the cloud (saved before the columns existed). */
-const V3_UNSYNCED_KEY = 'tasks_v3_unsynced';
+/**
+ * One settings row per task whose subtasks / repeat / blockers / stage never
+ * reached the cloud (saved before the columns existed). One row per task, read
+ * fresh each time, so several open tabs can't overwrite each other's marks.
+ */
+const V3_MARK_PREFIX = 'tasks_v3_unsynced:';
 /** How long a "columns missing" answer is trusted before checking again. */
 const V3_NO_RECHECK_MS = 60_000;
+
+const isEmptyV3 = (v: unknown) => v === undefined || v === null || (Array.isArray(v) && v.length === 0);
 
 export class SyncQueueService {
   private static isFlushing = false;
@@ -25,8 +31,6 @@ export class SyncQueueService {
 
   /** Last definite answer about the cloud tasks table's v3 columns. 'yes' is kept for the session. */
   private static v3Check: { state: 'yes' | 'no'; at: number } | null = null;
-  private static v3BackfillStarted = false;
-  private static v3Unsynced: Promise<Set<string>> | null = null;
 
   /**
    * Initializes offline queue network event listeners.
@@ -55,38 +59,39 @@ export class SyncQueueService {
   }
 
   // ---------------------------------------------------------------------------
-  // Tasks v3 columns: check, local-only tracking and backfill
+  // Tasks v3 columns: check, local-only marks and backfill
   // ---------------------------------------------------------------------------
-
-  private static loadV3Unsynced(): Promise<Set<string>> {
-    if (!this.v3Unsynced) {
-      this.v3Unsynced = db.settings
-        .get(V3_UNSYNCED_KEY)
-        .then((s) => new Set<string>(Array.isArray(s?.value) ? (s!.value as string[]) : []))
-        .catch(() => new Set<string>());
-    }
-    return this.v3Unsynced;
-  }
-
-  private static async saveV3Unsynced(set: Set<string>): Promise<void> {
-    await db.settings.put({ key: V3_UNSYNCED_KEY, value: [...set], updated_at: new Date().toISOString() });
-  }
 
   /** True when this device holds v3 values for the task that the cloud has not received yet. */
   public static async isTaskV3Unsynced(taskId: string): Promise<boolean> {
-    return (await this.loadV3Unsynced()).has(taskId);
+    return Boolean(await db.settings.get(V3_MARK_PREFIX + taskId));
   }
 
   private static async markV3Unsynced(taskId: string): Promise<void> {
-    const set = await this.loadV3Unsynced();
-    if (set.has(taskId)) return;
-    set.add(taskId);
-    await this.saveV3Unsynced(set);
+    await db.settings.put({ key: V3_MARK_PREFIX + taskId, value: true, updated_at: new Date().toISOString() });
   }
 
   private static async clearV3Unsynced(taskId: string): Promise<void> {
-    const set = await this.loadV3Unsynced();
-    if (set.delete(taskId)) await this.saveV3Unsynced(set);
+    await db.settings.delete(V3_MARK_PREFIX + taskId);
+  }
+
+  private static async listV3Unsynced(): Promise<string[]> {
+    const rows = await db.settings.filter((s) => typeof s.key === 'string' && s.key.startsWith(V3_MARK_PREFIX)).toArray();
+    return rows.map((r) => r.key.slice(V3_MARK_PREFIX.length));
+  }
+
+  /**
+   * A task row arriving from the cloud that carries any v3 key proves the
+   * columns exist (realtime sends whole rows). Uploads start sending them at
+   * once, and any local-only values get backfilled.
+   */
+  public static noteRemoteTaskColumns(row: Record<string, unknown> | null | undefined): void {
+    if (!row || this.v3Check?.state === 'yes') return;
+    if (!TASK_V3_FIELDS.some((k) => k in row)) return;
+    this.v3Check = { state: 'yes', at: Date.now() };
+    void this.listV3Unsynced().then((ids) => {
+      if (ids.length) this.flushQueue().catch((err) => console.warn('Flush error:', err));
+    });
   }
 
   /**
@@ -105,21 +110,45 @@ export class SyncQueueService {
       result = 'unknown';
     }
     if (result !== 'unknown') this.v3Check = { state: result, at: Date.now() };
-    if (result === 'yes') await this.backfillTaskV3();
     return result;
   }
 
-  /** Once the columns exist, upload the full row of every task whose v3 values stayed on this device. */
-  private static async backfillTaskV3(): Promise<void> {
-    if (this.v3BackfillStarted) return;
-    this.v3BackfillStarted = true;
-    for (const id of [...(await this.loadV3Unsynced())]) {
-      const task = await db.tasks.get(id);
-      if (!task) {
+  /**
+   * Uploads v3 values that stayed on this device, without touching anything
+   * else: only the v3 columns, only where the cloud row still has them empty
+   * (a value another device wrote after the migration wins), and never by
+   * re-creating a row (a task deleted elsewhere stays deleted).
+   */
+  private static async backfillTaskV3(client: Client, ids: string[]): Promise<void> {
+    for (const id of ids) {
+      try {
+        // A queued upload of this task carries the values itself (and clears the mark).
+        if (await this.hasPendingChange('tasks', id)) continue;
+        const local = (await db.tasks.get(id)) as (Task & Record<string, unknown>) | undefined;
+        if (!local || !hasTaskV3Values(local)) {
+          await this.clearV3Unsynced(id);
+          continue;
+        }
+        const { data, error } = await client.from('tasks').select(TASK_V3_FIELDS.join(',')).eq('id', id).maybeSingle();
+        if (error) continue; // keep the mark; try again on a later flush
+        if (!data) {
+          await this.clearV3Unsynced(id); // deleted elsewhere (or never uploaded and no longer queued)
+          continue;
+        }
+        const cloud = data as unknown as Record<string, unknown>;
+        const patch: Record<string, unknown> = {};
+        for (const k of TASK_V3_FIELDS) if (cloud[k] == null && !isEmptyV3(local[k])) patch[k] = local[k];
+        const fields = Object.keys(patch);
+        if (fields.length) {
+          let query = (client.from('tasks') as any).update(patch).eq('id', id);
+          for (const k of fields) query = query.is(k, null);
+          const { error: upErr } = await query;
+          if (upErr) continue;
+        }
         await this.clearV3Unsynced(id);
-        continue;
+      } catch {
+        // Keep the mark; a later flush retries.
       }
-      await this.enqueueChange('tasks', id, 'UPDATE', task);
     }
   }
 
@@ -174,7 +203,7 @@ export class SyncQueueService {
     this.flushAgain = false;
     let processed = 0;
     let failed = 0;
-    // Checked at most once per flush, and only if a task is being uploaded.
+    // Checked at most once per flush, and only when needed.
     let v3: Promise<V3ColumnCheck> | null = null;
     const v3Columns = () => (v3 ??= this.checkTaskV3Columns(client));
 
@@ -228,6 +257,10 @@ export class SyncQueueService {
             .catch(() => {});
         }
       }
+
+      // Local-only v3 values: upload them as soon as the cloud has the columns.
+      const marked = await this.listV3Unsynced();
+      if (marked.length && (await v3Columns()) === 'yes') await this.backfillTaskV3(client, marked);
     } finally {
       this.isFlushing = false;
       const remainingCount = await db.sync_queue.count();

@@ -26,7 +26,9 @@ import { TaskService } from '../services/sync/taskService';
 import { CalendarDayList } from '../components/calendar/CalendarDayList';
 import {
   clashesWith,
+  describeClash,
   endsNextDay,
+  expandOvernight,
   findClashes,
   sameStartEnd,
   formatTimeRange,
@@ -164,7 +166,8 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
     start: m.start_time,
     end: m.end_time,
   });
-  const calItems: CalItem[] = [
+  // Overnight events/meetings also get their after-midnight part on the next day.
+  const calItems: CalItem[] = expandOvernight([
     ...events.map(eventItem),
     ...activeMeetings.filter((m) => inArea(m.area)).map(meetingItem),
     ...(showTasks
@@ -174,9 +177,9 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
           .filter(({ t, key }) => key && inArea(t.area))
           .map(({ t, key }) => ({ id: t.id, source: 'task' as const, title: t.text, date: key, done: t.done }))
       : []),
-  ];
+  ]);
   // Clashes are checked against your whole schedule, whichever area is being viewed.
-  const scheduleItems: CalItem[] = [...allEvents.map(eventItem), ...activeMeetings.map(meetingItem)];
+  const scheduleItems: CalItem[] = expandOvernight([...allEvents.map(eventItem), ...activeMeetings.map(meetingItem)]);
   const clashes = findClashes(scheduleItems);
 
   // Live checks for the event form. An end before the start means the event ends the next day;
@@ -185,7 +188,19 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
   const formEndInvalid = sameStartEnd(formStartTime, formEndTime) && !formTimesUnchanged;
   const formEndsNextDay = endsNextDay(formStartTime, formEndTime);
   const formClashes = isModalOpen
-    ? clashesWith({ id: editingEvent?.id, source: 'event', date: formDate, start: formStartTime || undefined, end: formEndTime || undefined }, scheduleItems)
+    ? (() => {
+        // Both parts of an overnight event are checked; each clashing item is listed once.
+        const parts = expandOvernight([{ id: editingEvent?.id ?? '__new__', source: 'event', title: '', date: formDate, start: formStartTime || undefined, end: formEndTime || undefined }]);
+        const seen = new Set<string>();
+        return parts
+          .flatMap((part) => clashesWith(part, scheduleItems))
+          .filter((c) => {
+            const key = `${c.source}:${c.id}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+      })()
     : [];
 
   const toggleTaskFromCalendar = async (taskId: string) => {
@@ -347,8 +362,9 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
       isToday: dStr === today,
       dayEvents: events.filter((e) => e.date === dStr),
       dayTasks: showTasks ? calItems.filter((it) => it.source === 'task' && it.date === dStr) : [],
-      dayMeetings: calItems.filter((it) => it.source === 'meeting' && it.date === dStr),
-      hasClash: calItems.some((it) => it.date === dStr && clashes.has(itemKey(it))),
+      // Month cells list items on their start date only.
+      dayMeetings: calItems.filter((it) => it.source === 'meeting' && !it.continued && it.date === dStr),
+      hasClash: calItems.some((it) => it.date === dStr && !it.continued && clashes.has(itemKey(it))),
     });
   }
 
@@ -726,7 +742,7 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
             <div role="status" className="flex items-start gap-2 p-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-xs text-amber-900 dark:text-amber-200">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-px" aria-hidden="true" />
               <span>
-                Overlaps with {formClashes.map((c) => `“${c.title}” (${formatTimeRange(c)}${c.source === 'meeting' ? ', meeting' : ''})`).join(', ')}. You can still save it.
+                Overlaps with {formClashes.map(describeClash).join(', ')}. You can still save it.
               </span>
             </div>
           )}

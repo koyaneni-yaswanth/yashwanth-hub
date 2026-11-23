@@ -1,6 +1,6 @@
 import React from 'react';
 import { AlertTriangle, CalendarDays, CheckSquare, Clock, Plus, Square, Users } from 'lucide-react';
-import { formatTimeRange, fromDateKey, itemKey, sortDay, type CalItem } from '../../lib/calendarModel';
+import { describeClash, formatTimeRange, fromDateKey, itemKey, sortDay, type CalItem } from '../../lib/calendarModel';
 
 /**
  * Day / Week / Agenda list: one section per day with events, meetings and due
@@ -94,7 +94,7 @@ export const CalendarDayList: React.FC<{
                         {hits.length > 0 && (
                           <p className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-amber-800 dark:text-amber-300">
                             <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />
-                            Clashes with {hits.map((h) => `“${h.title}” (${formatTimeRange(h)})`).join(', ')}
+                            Clashes with {hits.map(describeClash).join(', ')}
                           </p>
                         )}
                       </div>

@@ -183,7 +183,14 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
     };
 
     if (editingTask) {
-      // A finished copy of an old series that is given a repeat again starts a new series.
+      // A finished copy of an old series that is given a repeat again starts a new series,
+      // unless the series still continues on its next copy (that would create two series).
+      const successor = editingTask.recurred_to ? tasksById.get(editingTask.recurred_to) : undefined;
+      const seriesContinues = !!successor && !successor.done && !!successor.recurrence;
+      if (fields.recurrence && seriesContinues) {
+        fields.recurrence = undefined;
+        toast(`This task's repeat continues on its next copy (due ${successor!.due_date ? formatShortDate(successor!.due_date) : 'soon'}). Edit that copy to change it.`, 'info');
+      }
       const restartSeries = fields.recurrence && editingTask.recurred_to ? { recurred_to: undefined } : {};
       await TaskService.update(editingTask, { ...fields, ...restartSeries });
     } else {
@@ -236,9 +243,17 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
   };
 
   const handleMoveOnBoard = async (task: Task, column: BoardColumn) => {
-    await completeOrReopen(task, moveToColumn(column));
-    // Completing announces itself; other moves get a short polite confirmation.
+    let res;
+    try {
+      res = await completeOrReopen(task, moveToColumn(column));
+    } catch (err) {
+      toast(`Couldn't move “${task.text}”. Please try again.`, 'error');
+      throw err;
+    }
+    // Every move gets a short polite confirmation (completeOrReopen already announces a
+    // completion that created a next copy or that was still blocked).
     if (column !== 'done') toast(`Moved “${task.text}” to ${column === 'doing' ? 'In progress' : 'To do'}.`, 'info', 3000);
+    else if (!res.next && openBlockers(task, tasksById).length === 0) toast(`Marked “${task.text}” done.`, 'success', 3000);
   };
 
   const toggleSubtask = async (task: Task, subtaskId: string) => {

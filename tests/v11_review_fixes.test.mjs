@@ -12,11 +12,12 @@ import {
   classifyColumnProbeError,
   cleanSubtasks,
   TASK_V3_FIELDS,
+  withPendingSubtask,
 } from '../src/lib/taskModel.ts';
 import { createTaskMutations } from '../src/services/sync/taskMutations.ts';
 import { resolveRemoteUpsert } from '../src/services/sync/conflict.ts';
-import { matchLocalTask, decideStatusSync } from '../src/lib/googleTaskSync.ts';
-import { timeSpan, formatTimeRange, clashesWith } from '../src/lib/calendarModel.ts';
+import { matchLocalTask, decideStatusSync, taskIdForGoogleTask } from '../src/lib/googleTaskSync.ts';
+import { timeSpan, formatTimeRange, clashesWith, expandOvernight, findClashes, itemKey } from '../src/lib/calendarModel.ts';
 
 const T = (id, extra = {}) => ({ id, text: `Task ${id}`, area: 'Personal', priority: 'medium', starred: false, done: false, created_at: '2026-11-01T00:00:00.000Z', updated_at: '2026-11-01T00:00:00.000Z', ...extra });
 
@@ -95,7 +96,11 @@ test('yearly Feb 29 series comes back to Feb 29 in the next leap year', () => {
 });
 
 test('a late or long-overdue completion schedules the next copy in the future', () => {
-  assert.equal(nextDueAfterToday({ freq: 'daily', interval: 1 }, '2026-11-01', '2026-11-24'), '2026-11-25');
+  assert.equal(nextDueAfterToday({ freq: 'daily', interval: 1 }, '2026-11-01', '2026-11-24'), '2026-11-24', 'long overdue daily: a copy for today');
+  assert.equal(nextDueAfterToday({ freq: 'daily', interval: 1 }, '2026-11-23', '2026-11-24'), '2026-11-24', 'one day late: today is still owed');
+  assert.equal(nextDueAfterToday({ freq: 'daily', interval: 1, until: '2026-11-24' }, '2026-11-23', '2026-11-24'), '2026-11-24', 'until today still allows today');
+  assert.equal(nextDueAfterToday({ freq: 'daily', interval: 1 }, '2006-11-24', '2026-11-24'), '2026-11-24', 'no step limit for daily (typo in the year)');
+  assert.equal(nextDueAfterToday({ freq: 'weekly', interval: 1 }, '2026-11-17', '2026-11-24'), '2026-11-24', 'weekly lands on today');
   assert.equal(nextDueAfterToday({ freq: 'weekly', interval: 1 }, '2026-11-02', '2026-11-24'), '2026-11-30', 'keeps the Monday rhythm');
   assert.equal(nextDueAfterToday({ freq: 'monthly', interval: 1 }, '2026-11-01', '2026-11-24'), '2026-12-01', 'one step is already in the future');
   assert.equal(nextDueAfterToday({ freq: 'daily', interval: 1, until: '2026-11-20' }, '2026-11-01', '2026-11-24'), null, 'series already ended');
@@ -222,13 +227,28 @@ test('Google match: linked id first; title fallback skips repeats, finished copi
   assert.equal(matchLocalTask({ id: 'g3', title: 'Buy milk' }, tasks, new Set(['p'])), undefined, 'one local task per Google task');
 });
 
-test('Google status: newest side wins; a finished series copy is never reopened', () => {
-  const at = (iso) => iso;
-  assert.equal(decideStatusSync({ status: 'completed', updated: at('2026-11-24T10:00:00Z') }, { done: true, updated_at: at('2026-11-24T09:00:00Z') }), 'none');
-  assert.equal(decideStatusSync({ status: 'needsAction', updated: at('2026-11-24T09:00:00Z') }, { done: true, updated_at: at('2026-11-24T10:00:00Z') }), 'export', 'hub completed later');
-  assert.equal(decideStatusSync({ status: 'completed', updated: at('2026-11-24T11:00:00Z') }, { done: false, updated_at: at('2026-11-24T10:00:00Z') }), 'import', 'ticked in Google later');
-  assert.equal(decideStatusSync({ status: 'needsAction', updated: at('2026-11-24T12:00:00Z') }, { done: true, updated_at: at('2026-11-24T10:00:00Z'), recurred_to: 'n' }), 'export', 'finished copy stays done');
-  assert.equal(decideStatusSync({ status: 'completed' }, { done: false, updated_at: at('2026-11-24T10:00:00Z') }), 'import', 'no Google time: Google wins as before');
+test('Google status: the side that moved away from the last agreed status wins', () => {
+  assert.equal(decideStatusSync({ status: 'completed' }, { done: true }, false), 'none');
+  // Ticked in Google, then starred in the hub: the star must not undo the Google completion.
+  assert.equal(decideStatusSync({ status: 'completed' }, { done: false }, false), 'import');
+  // Completed on Dashboard (no push), then the due date edited in Google: push the completion.
+  assert.equal(decideStatusSync({ status: 'needsAction' }, { done: true }, false), 'export');
+  assert.equal(decideStatusSync({ status: 'needsAction' }, { done: false }, true), 'none');
+  assert.equal(decideStatusSync({ status: 'needsAction' }, { done: true, recurred_to: 'n' }, undefined), 'export', 'finished series copy stays done');
+  assert.equal(decideStatusSync({ status: 'completed' }, { done: false }, undefined), 'import', 'no record yet: Google wins as before');
+});
+
+test('Google title fallback never links to a completed Google task', () => {
+  const t = T('n', { text: 'Call mom' });
+  assert.equal(matchLocalTask({ id: 'old', title: 'Call mom', status: 'completed' }, [t]), undefined);
+  assert.equal(matchLocalTask({ id: 'new', title: 'Call mom', status: 'needsAction' }, [t]).id, 'n');
+});
+
+test('imported Google tasks get the same id on every device', async () => {
+  const a = await taskIdForGoogleTask('g-123');
+  assert.equal(a, await taskIdForGoogleTask('g-123'));
+  assert.notEqual(a, await taskIdForGoogleTask('g-124'));
+  assert.match(a, /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 });
 
 // ---------------------------------------------------------------------------
@@ -240,4 +260,49 @@ test('overnight events: span to midnight on the start date, labelled "next day",
   assert.equal(formatTimeRange({ start: '23:00', end: '01:00' }), '23:00–01:00 (next day)');
   const items = [{ id: 'late', source: 'meeting', title: 'Late call', date: '2026-11-24', start: '23:30', end: '23:45' }];
   assert.equal(clashesWith({ source: 'event', date: '2026-11-24', start: '23:00', end: '01:00' }, items).length, 1);
+});
+
+// ---------------------------------------------------------------------------
+// Second review round
+// ---------------------------------------------------------------------------
+
+test('unsynced local v3 values fill empty cloud fields, but a value from another device wins', () => {
+  const local = T('a', { subtasks: [{ id: 's1', text: 'mine', done: false }], stage: 'doing' });
+  const remote = { ...T('a'), subtasks: [{ id: 's2', text: 'laptop', done: false }], stage: null, recurrence: null, blocked_by: null, recurred_to: null };
+  const merged = mergeRemoteTask(local, remote, { keepLocalV3: true });
+  assert.deepEqual(merged.subtasks.map((x) => x.id), ['s2'], 'value written by another device after the migration wins');
+  assert.equal(merged.stage, 'doing', 'empty cloud field keeps the local-only value');
+});
+
+test('a cloud row without the Google link does not unlink the task locally', () => {
+  const local = T('a', { google_task_id: 'g1' });
+  assert.equal(mergeRemoteTask(local, T('a', { google_task_id: null, done: true })).google_task_id, 'g1');
+  assert.equal(mergeRemoteTask(local, T('a', { done: true })).google_task_id, 'g1');
+});
+
+test('moving a monthly task to the next month moves the series instead of skipping a month', async () => {
+  const { rows, svc } = harness();
+  rows.set('rent', T('rent', { due_date: '2027-01-31', recurrence: { freq: 'monthly', interval: 1, day: 31 } }));
+  await svc.scheduleFor(rows.get('rent'), '2027-02-01'); // "Move to today" on Feb 1
+  const { next } = await svc.toggleDone(rows.get('rent'));
+  assert.equal(next.due_date, '2027-03-01', 'no February copy lost');
+});
+
+test('a typed but not yet added subtask is saved with the task', () => {
+  let n = 0;
+  const list = withPendingSubtask([{ id: 'a', text: 'x', done: false }], '  Buy screws ', () => `id${++n}`);
+  assert.deepEqual(list.map((x) => x.text), ['x', 'Buy screws']);
+  assert.equal(withPendingSubtask([], '   ').length, 0);
+});
+
+test('overnight events show on the next day and clash there', () => {
+  const night = { id: 'n', source: 'event', title: 'Night shift', date: '2026-11-24', start: '23:00', end: '01:00' };
+  const items = expandOvernight([night, { id: 'm', source: 'meeting', title: 'Early call', date: '2026-11-25', start: '00:15', end: '00:45' }]);
+  const cont = items.find((i) => i.continued);
+  assert.equal(cont.date, '2026-11-25');
+  assert.equal(formatTimeRange(cont), 'Until 01:00 (from the day before)');
+  const clashes = findClashes(items);
+  assert.ok(clashes.has('event:n:cont') && clashes.has('meeting:m'));
+  assert.equal(itemKey(cont), 'event:n:cont');
+  assert.equal(expandOvernight([{ id: 't', source: 'task', title: 'x', date: '2026-11-24', start: '23:00', end: '01:00' }]).length, 1, 'tasks never expand');
 });

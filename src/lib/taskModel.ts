@@ -85,15 +85,33 @@ export function nextDueDate(rec: Recurrence, fromDue: string | undefined, today:
   return key;
 }
 
+const dayNumber = (key: string) => {
+  const [y, m, d] = key.split('-').map(Number);
+  return Math.round(Date.UTC(y, m - 1, d) / 86_400_000);
+};
+
 /**
- * The first date in the series after today. A task finished late (or one
- * left overdue for weeks) gets its next copy in the future, not another
- * overdue copy, while on-time completions keep the normal rhythm.
+ * The next date in the series that isn't already past: at least one step
+ * after the finished copy, and today or later. A task finished late (or left
+ * overdue for weeks) gets a copy for today or the future, not another overdue
+ * one; on-time completions keep the normal rhythm. Returns null when the
+ * series has ended (until).
  */
 export function nextDueAfterToday(rec: Recurrence, fromDue: string | undefined, today: string): string | null {
-  let due = nextDueDate(rec, fromDue, today);
-  for (let guard = 0; due !== null && due <= today && guard < 5000; guard++) due = nextDueDate(rec, due, today);
-  return due !== null && due <= today ? null : due;
+  const r = normaliseRecurrence(rec);
+  if (!r) return null;
+  const base = fromDue || today;
+  // Daily and weekly steps are fixed day counts: jump straight there (no loop, no limit).
+  if ((r.freq === 'daily' || r.freq === 'weekly') && base < today) {
+    const step = r.interval * (r.freq === 'weekly' ? 7 : 1);
+    const steps = Math.max(1, Math.ceil((dayNumber(today) - dayNumber(base)) / step));
+    const b = fromKey(base);
+    const key = toKey(new Date(b.getFullYear(), b.getMonth(), b.getDate() + steps * step));
+    return r.until && key > r.until ? null : key;
+  }
+  let due = nextDueDate(r, fromDue, today);
+  for (let guard = 0; due !== null && due < today && guard < 100_000; guard++) due = nextDueDate(r, due, today);
+  return due !== null && due < today ? null : due;
 }
 
 /**
@@ -248,17 +266,26 @@ export function toCloudTaskPayload<T extends Row>(payload: T, cloudHasV3Columns:
  * Applies a task arriving from the cloud.
  * - A v3 key the cloud row doesn't carry (older schema) keeps the local value.
  * - keepLocalV3: this device holds v3 values the cloud has never received
- *   (saved before the columns existed); they win until they are uploaded.
+ *   (saved before the columns existed); they fill fields the cloud has empty
+ *   until they are uploaded, but a value another device wrote wins.
  * - Otherwise the cloud value applies; null means empty and is stored as absent.
  */
 export function mergeRemoteTask(local: Task | undefined, remote: Task, opts: { keepLocalV3?: boolean } = {}): Task {
   const merged = { ...remote } as Task & Row;
   for (const key of TASK_V3_FIELDS) {
-    const useLocal = !!local && (opts.keepLocalV3 || !(key in remote));
-    const value = useLocal ? local![key] : (remote as Task & Row)[key];
+    const remoteValue = (remote as Task & Row)[key];
+    let value: unknown;
+    if (!local) value = remoteValue;
+    else if (!(key in remote)) value = local[key];
+    // Unsynced local values only fill fields the cloud has empty; another device's value wins.
+    else if (opts.keepLocalV3 && remoteValue == null) value = local[key];
+    else value = remoteValue;
     if (value === undefined || value === null) delete merged[key];
     else merged[key] = value as never;
   }
+  // The Google link is only ever set, never removed; a cloud copy without it (written by a
+  // device that hasn't heard about the link yet) must not unlink the task here.
+  if (local?.google_task_id && !remote.google_task_id) merged.google_task_id = local.google_task_id;
   return merged;
 }
 
