@@ -111,7 +111,7 @@ export const ColumnChart: React.FC<ColumnChartProps> = ({ data, format = (v) => 
         <div className="flex-1 flex justify-around gap-[2px]">
           {data.map((d, i) => {
             // Many columns: label every other one, counting back from the latest, so labels never clip.
-            const step = data.length > 8 ? 2 : 1;
+            const step = Math.max(1, Math.ceil(data.length / 8));
             const show = (data.length - 1 - i) % step === 0;
             return (
               <span

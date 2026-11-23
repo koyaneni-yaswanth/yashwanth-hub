@@ -14,7 +14,8 @@ import { ChartCard } from '../components/charts/ChartCard';
 import { ColumnChart, type ColumnDatum } from '../components/charts/ColumnChart';
 import { RankedBars, type RankedDatum } from '../components/charts/RankedBars';
 import { SegmentedBar, type Segment } from '../components/charts/SegmentedBar';
-import { addDays, parseDateKey, weekStart } from '../lib/habits';
+import { RANGE_META, rangeBuckets, sumByBucket, weeklyTotals, type TimeRange } from '../lib/timeRanges';
+import { HeatmapCalendar } from '../components/charts/HeatmapCalendar';
 
 interface AnalyticsPageProps {
   currentArea: string;
@@ -31,14 +32,17 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
   const currentMonth = today.slice(0, 7);
 
   // Time range for the trend and spending charts (open-task charts are always "right now").
-  const [rangeWeeks, setRangeWeeks] = useState<4 | 8 | 12>(8);
-  const thisWeek = weekStart(today);
-  const rangeStart = addDays(thisWeek, -(rangeWeeks - 1) * 7);
-  const inRange = (date: string) => date >= rangeStart;
+  const [range, setRange] = useState<TimeRange>('quarter');
+  const buckets = rangeBuckets(range, today);
+  const rangeStart = buckets[0].from;
+  const inRange = (date: string) => date >= rangeStart && date <= today;
+  const [heatMetric, setHeatMetric] = useState<'habits' | 'focus'>('habits');
 
   // Queries
   const allTasks = useLiveQuery(() => db.tasks.toArray(), []) || [];
   const allExpenses = useLiveQuery(() => db.expenses.toArray(), []) || [];
+  const habitLogs = useLiveQuery(() => db.habit_logs.toArray(), []) || [];
+  const focusSessions = useLiveQuery(() => db.focus_sessions.toArray(), []) || [];
 
   // Filter based on selected area
   const tasks = currentArea === 'All' ? allTasks : allTasks.filter((t) => t.area === currentArea);
@@ -114,19 +118,16 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
     { key: 'low', label: 'Low', value: priorityCounts.low, color: 'var(--viz-ord-1)', ink: 'var(--viz-ord-1-ink)' },
   ];
   const rangeSpend = Object.values(categoryTotals).reduce((a, b) => a + b, 0);
-  const rangeLabel = `last ${rangeWeeks} weeks`;
-  const weeklyDone: ColumnDatum[] = Array.from({ length: rangeWeeks }, (_, i) => {
-    const wk = addDays(thisWeek, (i - (rangeWeeks - 1)) * 7);
-    const end = addDays(wk, 6);
-    const d = parseDateKey(wk);
-    return {
-      key: wk,
-      label: d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
-      longLabel: `Week of ${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long' })}`,
-      value: tasks.filter((t) => t.done && t.updated_at && t.updated_at.slice(0, 10) >= wk && t.updated_at.slice(0, 10) <= end).length,
-      current: wk === thisWeek,
-    };
-  });
+  const rangeLabel = RANGE_META[range].long;
+  const bucketWord = RANGE_META[range].bucket;
+  const doneCounts = sumByBucket(buckets, tasks.filter((t) => t.done), (t) => t.updated_at?.slice(0, 10));
+  const weeklyDone: ColumnDatum[] = buckets.map((b, i) => ({ key: b.key, label: b.label, longLabel: b.longLabel, value: doneCounts[i], current: b.current }));
+
+  // Heatmap: habit check-ins or focus minutes per day, last 26 weeks.
+  const heatValues = new Map<string, number>();
+  if (heatMetric === 'habits') for (const l of habitLogs) heatValues.set(l.date, (heatValues.get(l.date) ?? 0) + 1);
+  else for (const s of focusSessions) heatValues.set(s.date, (heatValues.get(s.date) ?? 0) + (s.actual_minutes || 0));
+  const heatUnit = heatMetric === 'habits' ? 'check-ins' : 'focus minutes';
 
   return (
     <div className="space-y-6 pb-12">
@@ -172,19 +173,20 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
       {/* One filter row scoping the time-based charts below */}
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Time range for trend and spending charts">
         <span className="text-sm font-semibold text-[var(--hub-ink)] mr-1">Time range</span>
-        {([4, 8, 12] as const).map((w) => (
+        {(['week', 'month', 'quarter', 'year'] as const).map((w) => (
           <button
             key={w}
             type="button"
-            onClick={() => setRangeWeeks(w)}
-            aria-pressed={rangeWeeks === w}
+            onClick={() => setRange(w)}
+            aria-pressed={range === w}
+            aria-label={`${RANGE_META[w].label}: ${RANGE_META[w].long}`}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer ${
-              rangeWeeks === w
+              range === w
                 ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] border-[var(--hub-accent)]'
                 : 'bg-[var(--hub-surface)] text-[var(--hub-ink)] border-[var(--hub-line)] hover:bg-[var(--hub-surface-hover)]'
             }`}
           >
-            Last {w} weeks
+            {RANGE_META[w].label}
           </button>
         ))}
         <span className="text-xs text-[var(--hub-muted)]">Open-task charts always show right now.</span>
@@ -192,13 +194,41 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
 
       {/* Weekly completions */}
       <ChartCard
-        title="Tasks completed per week"
+        title={`Tasks completed per ${bucketWord}`}
         subtitle={`${weeklyDone.reduce((a, w) => a + w.value, 0)} in the ${rangeLabel}, by the date a task was last updated while done`}
-        tableColumns={['Week starting', 'Tasks completed']}
+        tableColumns={[bucketWord === 'day' ? 'Day' : bucketWord === 'week' ? 'Week starting' : 'Month', 'Tasks completed']}
         tableRows={weeklyDone.map((w) => ({ label: w.longLabel ?? w.label, cells: [String(w.value)] }))}
         empty={weeklyDone.every((w) => w.value === 0) ? `No completed tasks in the ${rangeLabel}.` : undefined}
       >
-        <ColumnChart data={weeklyDone} label={`Tasks completed per week, ${rangeLabel}`} format={(v) => `${v}`} />
+        <ColumnChart data={weeklyDone} label={`Tasks completed per ${bucketWord}, ${rangeLabel}`} format={(v) => `${v}`} />
+      </ChartCard>
+
+      {/* Consistency heatmap */}
+      <ChartCard
+        title={heatMetric === 'habits' ? 'Habit check-ins, last 26 weeks' : 'Focus minutes, last 26 weeks'}
+        subtitle="Each square is a day, darker = more. Hover a day for its value."
+        tableColumns={['Week', heatMetric === 'habits' ? 'Check-ins' : 'Focus minutes']}
+        tableRows={weeklyTotals(heatValues, today).map((w) => ({ label: w.label, cells: [String(w.value)] }))}
+        empty={heatValues.size === 0 ? (heatMetric === 'habits' ? 'No habit check-ins yet.' : 'No focus sessions yet.') : undefined}
+      >
+        <div className="flex gap-2 mb-3" role="group" aria-label="What the heatmap shows">
+          {(['habits', 'focus'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setHeatMetric(m)}
+              aria-pressed={heatMetric === m}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer ${
+                heatMetric === m
+                  ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] border-[var(--hub-accent)]'
+                  : 'bg-[var(--hub-surface)] text-[var(--hub-ink)] border-[var(--hub-line)] hover:bg-[var(--hub-surface-hover)]'
+              }`}
+            >
+              {m === 'habits' ? 'Habit check-ins' : 'Focus minutes'}
+            </button>
+          ))}
+        </div>
+        <HeatmapCalendar values={heatValues} end={today} unit={heatUnit} label={heatMetric === 'habits' ? 'Habit check-ins per day' : 'Focus minutes per day'} />
       </ChartCard>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

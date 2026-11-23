@@ -22,6 +22,18 @@ export interface SceneHabit {
   /** 0–1 check-ins vs. target, last 14 days. */
   consistency: number;
   streak: number;
+  /** A long streak: drawn as a visible orbital ring. */
+  streakRing?: boolean;
+}
+
+export interface SceneProject {
+  id: string;
+  title: string;
+  color: string;
+  progress: number;
+  openTasks: number;
+  doneTasks: number;
+  milestones: { done: boolean }[];
 }
 
 export interface SceneMemory {
@@ -39,12 +51,20 @@ export interface LifeConstellationProps {
   /** Focus minutes not linked to a goal: drawn as the core's energy ring. */
   unlinkedFocusMinutes: number;
   memories: SceneMemory[];
+  projects?: SceneProject[];
   selectedGoalId?: string | null;
+  selectedProjectId?: string | null;
+  selectedMemoryId?: string | null;
   onSelectGoal?: (goalId: string) => void;
+  onSelectProject?: (projectId: string) => void;
+  onSelectMemory?: (memoryId: string) => void;
   onHover?: (label: string | null) => void;
+  /** Fire a check-in light pulse on this habit's satellite (change `key` to re-fire). */
+  pulse?: { habitId: string; key: number } | null;
 }
 
 const ACCENT = '#7dd3fc';
+const NO_PROJECTS: SceneProject[] = [];
 
 function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
@@ -75,7 +95,8 @@ function radialTexture(THREE: typeof import('three'), inner: string, outer = 'rg
  * Purely visual: the page shows every fact in text beside it.
  */
 export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
-  const { score, goals, habits, streams, unlinkedFocusMinutes, memories, selectedGoalId } = props;
+  const { score, goals, habits, streams, unlinkedFocusMinutes, memories, selectedGoalId, selectedProjectId, selectedMemoryId, pulse } = props;
+  const projects = props.projects ?? NO_PROJECTS;
   const mountRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'unsupported'>('loading');
   const [paused, setPaused] = useState(() => prefersReducedMotion());
@@ -83,18 +104,38 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
   const resetRef = useRef<() => void>(() => {});
   const highlightRef = useRef<(id: string | null) => void>(() => {});
   const requestRenderRef = useRef<() => void>(() => {});
-  const cbRef = useRef({ onSelectGoal: props.onSelectGoal, onHover: props.onHover });
+  const cbRef = useRef({ onSelectGoal: props.onSelectGoal, onSelectProject: props.onSelectProject, onSelectMemory: props.onSelectMemory, onHover: props.onHover });
+  const focusRef = useRef<(sel: { kind: 'goal' | 'project' | 'memory'; id: string } | null) => void>(() => {});
+  const firePulseRef = useRef<(habitId: string) => void>(() => {});
+  const pendingPulseRef = useRef<{ habitId: string; at: number } | null>(null);
+  /** Camera kept across rebuilds (e.g. after a habit check-in) so the view doesn't jump. */
+  const cameraStateRef = useRef<{ pos: number[]; target: number[] } | null>(null);
+  const selectionRef = useRef<{ kind: 'goal' | 'project' | 'memory'; id: string } | null>(null);
 
   useEffect(() => {
-    cbRef.current = { onSelectGoal: props.onSelectGoal, onHover: props.onHover };
-  }, [props.onSelectGoal, props.onHover]);
+    cbRef.current = { onSelectGoal: props.onSelectGoal, onSelectProject: props.onSelectProject, onSelectMemory: props.onSelectMemory, onHover: props.onHover };
+  }, [props.onSelectGoal, props.onSelectProject, props.onSelectMemory, props.onHover]);
   useEffect(() => {
     pausedRef.current = paused;
     requestRenderRef.current();
   }, [paused]);
   useEffect(() => {
     highlightRef.current(selectedGoalId ?? null);
-  }, [selectedGoalId, status]);
+    const sel = selectedGoalId
+      ? ({ kind: 'goal', id: selectedGoalId } as const)
+      : selectedProjectId
+        ? ({ kind: 'project', id: selectedProjectId } as const)
+        : selectedMemoryId
+          ? ({ kind: 'memory', id: selectedMemoryId } as const)
+          : null;
+    selectionRef.current = sel;
+    focusRef.current(sel);
+  }, [selectedGoalId, selectedProjectId, selectedMemoryId, status]);
+  useEffect(() => {
+    if (!pulse) return;
+    pendingPulseRef.current = { habitId: pulse.habitId, at: Date.now() };
+    firePulseRef.current(pulse.habitId);
+  }, [pulse]);
 
   // Rebuild only when the data meaningfully changes.
   const signature = useMemo(
@@ -106,8 +147,10 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
         st: streams.map((x) => [x.goalId, Math.round(x.minutes / 15)]),
         u: Math.round(unlinkedFocusMinutes / 15),
         m: memories.map((m) => m.id).join(','),
+        p: projects.map((x) => [x.id, x.color, Math.round(x.progress * 20), x.openTasks, x.doneTasks, x.milestones.map((m) => (m.done ? 1 : 0)).join('')]),
+        r: habits.map((h) => (h.streakRing ? 1 : 0)).join(''),
       }),
-    [score, goals, habits, streams, unlinkedFocusMinutes, memories]
+    [score, goals, habits, streams, unlinkedFocusMinutes, memories, projects]
   );
 
   useEffect(() => {
@@ -194,7 +237,9 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
       const camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 400);
       // Portrait frames (phones) need the camera further back so outer planets aren't cut off.
       const portrait = Math.max(1, 1.2 / Math.max(0.45, width / height));
-      const home = new THREE.Vector3(0, (outerR * 0.58 + 3) * portrait, (outerR * 1.72 + 6) * portrait);
+      // Projects orbit outside the goals; include them in the framing when present.
+      const frameR = projects.length ? outerR + 3.6 : outerR;
+      const home = new THREE.Vector3(0, (frameR * 0.58 + 3) * portrait, (frameR * 1.72 + 6) * portrait);
       camera.position.copy(home);
 
       const controls = new mods.OrbitControls(camera, renderer.domElement);
@@ -381,8 +426,8 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
       highlightRef.current = (id) => {
         for (const p of planets) {
           const on = p.id === id;
-          p.mesh.scale.setScalar(on ? 1.3 : 1);
-          (p.mesh.material as import('three').MeshPhysicalMaterial).emissiveIntensity = on ? p.baseEmissive + 0.8 : p.baseEmissive;
+          p.mesh.scale.setScalar(on ? 1.15 : 1);
+          (p.mesh.material as import('three').MeshPhysicalMaterial).emissiveIntensity = on ? p.baseEmissive + 0.3 : p.baseEmissive;
           p.arc.scale.setScalar(on ? 1.12 : 1);
         }
         requestRenderRef.current();
@@ -399,6 +444,7 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
         trail?: { geo: import('three').BufferGeometry; positions: Float32Array; colors: Float32Array; filled: number; color: import('three').Color };
       };
       const sats: Sat[] = [];
+      const satById = new Map<string, Sat>();
       const tmp = new THREE.Vector3();
       habits.forEach((h, i) => {
         const parentPlanet = h.goalId ? planetById.get(h.goalId) : undefined;
@@ -414,6 +460,15 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
           new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: missed ? 0.15 : 0.5 + h.consistency * 1.8 })
         );
         holder.add(mesh);
+        if (h.streakRing) {
+          // A long streak leaves a visible orbit: momentum you can see.
+          const ring = new THREE.Mesh(
+            new THREE.TorusGeometry(radius, 0.012, 6, 160),
+            new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.42, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false })
+          );
+          ring.rotation.x = Math.PI / 2;
+          holder.add(ring);
+        }
         const sat: Sat = {
           holder,
           mesh,
@@ -436,6 +491,7 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
           sat.trail = { geo, positions, colors, filled: 0, color: c.clone().multiplyScalar(0.6 + h.consistency * 0.6) };
         }
         sats.push(sat);
+        satById.set(h.id, sat);
       });
 
       // --- Deep work linked to goals: energy streams from the core ---
@@ -496,6 +552,7 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
       const memGroup = new THREE.Group();
       world.add(memGroup);
       const memPos: import('three').Vector3[] = [];
+      const memSprites = new Map<string, import('three').Sprite>();
       const memMat = new THREE.SpriteMaterial({ map: radialTexture(THREE, 'rgba(200,185,255,0.9)'), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.75 });
       memories.slice(0, 70).forEach((m) => {
         const theta = hash01(m.id) * Math.PI * 2;
@@ -506,7 +563,9 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
         const s = new THREE.Sprite(memMat);
         s.position.copy(v);
         s.scale.setScalar(0.9);
+        s.userData = { memoryId: m.id, title: 'Journal entry' };
         memGroup.add(s);
+        memSprites.set(m.id, s);
       });
       // Threads: each memory links to at most its two nearest neighbours that share a tag
       // (or, untagged, to the next entry in time) — a delicate web, not a tangle.
@@ -535,6 +594,147 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
         memGroup.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x9d8cff, transparent: true, opacity: 0.11, blending: THREE.AdditiveBlending, depthWrite: false })));
       }
 
+      // --- Projects: orbital systems (task satellites, milestone waypoints, progress field) ---
+      type ProjectSys = { id: string; pivot: import('three').Object3D; anchor: import('three').Object3D; spin: import('three').Object3D; core: import('three').Mesh; speed: number };
+      const projectSystems: ProjectSys[] = [];
+      const projR = outerR + 2.3;
+      projects.slice(0, 8).forEach((pr, i) => {
+        const color = new THREE.Color(pr.color);
+        const pivot = new THREE.Object3D();
+        pivot.rotation.y = hash01(pr.id) * Math.PI * 2 + i * 0.7;
+        const tilt = new THREE.Object3D();
+        tilt.rotation.x = -0.12 + (i % 3) * 0.08;
+        world.add(tilt);
+        tilt.add(pivot);
+        const anchor = new THREE.Object3D();
+        anchor.position.x = projR + (i % 2) * 0.8;
+        pivot.add(anchor);
+        const coreMesh = new THREE.Mesh(
+          new THREE.OctahedronGeometry(0.32, 0),
+          new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.35 + pr.progress * 0.8, metalness: 0.6, roughness: 0.25, flatShading: true })
+        );
+        coreMesh.userData = { projectId: pr.id, title: pr.title };
+        anchor.add(coreMesh);
+        // Progress as an energy field that grows as the project advances.
+        const field = new THREE.Mesh(
+          new THREE.SphereGeometry(0.55 + pr.progress * 0.75, 24, 24),
+          new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.05 + pr.progress * 0.1, blending: THREE.AdditiveBlending, depthWrite: false })
+        );
+        anchor.add(field);
+        const spin = new THREE.Object3D();
+        spin.rotation.x = 0.5;
+        anchor.add(spin);
+        // Milestones as waypoints on a thin ring: bright when done.
+        const wayR = 1.25;
+        const ringLine = new THREE.Mesh(new THREE.TorusGeometry(wayR, 0.008, 4, 96), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.22 }));
+        ringLine.rotation.x = Math.PI / 2;
+        spin.add(ringLine);
+        pr.milestones.slice(0, 12).forEach((m, k, arr) => {
+          const a = (k / arr.length) * Math.PI * 2;
+          const wp = new THREE.Mesh(
+            new THREE.OctahedronGeometry(0.08, 0),
+            new THREE.MeshBasicMaterial({ color: m.done ? color : new THREE.Color('#55627e'), toneMapped: !m.done })
+          );
+          wp.position.set(Math.cos(a) * wayR, 0, Math.sin(a) * wayR);
+          spin.add(wp);
+        });
+        // Tasks as small satellites: done ones bright, open ones dim (max 14 drawn).
+        const total = Math.min(14, pr.openTasks + pr.doneTasks);
+        const doneShown = Math.round((pr.doneTasks / Math.max(1, pr.openTasks + pr.doneTasks)) * total);
+        for (let k = 0; k < total; k++) {
+          const a = (k / Math.max(1, total)) * Math.PI * 2 + 0.3;
+          const dot = new THREE.Mesh(
+            new THREE.SphereGeometry(0.045, 8, 8),
+            new THREE.MeshBasicMaterial({ color: k < doneShown ? color : new THREE.Color('#3e4a63'), toneMapped: k >= doneShown })
+          );
+          dot.position.set(Math.cos(a) * 0.8, Math.sin(a * 2) * 0.12, Math.sin(a) * 0.8);
+          spin.add(dot);
+        }
+        projectSystems.push({ id: pr.id, pivot, anchor, spin, core: coreMesh, speed: 0.02 + 0.02 / (i + 1) });
+      });
+      const projectById = new Map(projectSystems.map((x) => [x.id, x]));
+
+      // --- Check-in pulse: an expanding ring of light at a habit's satellite ---
+      const pulseTex = (() => {
+        const c = document.createElement('canvas');
+        c.width = c.height = 128;
+        const g = c.getContext('2d')!;
+        g.strokeStyle = 'rgba(255,255,255,1)';
+        g.lineWidth = 10;
+        g.beginPath();
+        g.arc(64, 64, 52, 0, Math.PI * 2);
+        g.stroke();
+        const t = new THREE.CanvasTexture(c);
+        t.colorSpace = THREE.SRGBColorSpace;
+        return t;
+      })();
+      const pulses: { sprite: import('three').Sprite; age: number }[] = [];
+      firePulseRef.current = (habitId) => {
+        const sat = satById.get(habitId);
+        if (!sat) return;
+        const sp = new THREE.Sprite(
+          new THREE.SpriteMaterial({ map: pulseTex, color: (sat.mesh.material as import('three').MeshStandardMaterial).color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })
+        );
+        sat.mesh.getWorldPosition(sp.position);
+        world.worldToLocal(sp.position);
+        sp.scale.setScalar(0.4);
+        world.add(sp);
+        pulses.push({ sprite: sp, age: 0 });
+        requestRender();
+      };
+
+      // --- Selection: camera glides to the chosen goal, project or memory; the rest dims ---
+      const focus = { kind: null as null | 'goal' | 'project' | 'memory', id: '', dim: 0, returning: false };
+      const tgt = new THREE.Vector3();
+      const desiredCam = new THREE.Vector3();
+      const reduced = prefersReducedMotion();
+      const objectFor = (kind: 'goal' | 'project' | 'memory', id: string): import('three').Object3D | undefined =>
+        kind === 'goal' ? planetById.get(id)?.anchor : kind === 'project' ? projectById.get(id)?.anchor : memSprites.get(id);
+      focusRef.current = (sel) => {
+        if (sel && objectFor(sel.kind, sel.id)) {
+          focus.kind = sel.kind;
+          focus.id = sel.id;
+          focus.returning = false;
+        } else if (focus.kind) {
+          focus.kind = null;
+          focus.returning = true;
+        }
+        memSprites.forEach((sp, id) => sp.scale.setScalar(sel?.kind === 'memory' && sel.id === id ? 1.5 : 0.9));
+        requestRender();
+      };
+      const baseFog = (scene.fog as import('three').FogExp2).density;
+      const updateFocus = (dt: number): boolean => {
+        const k = reduced ? 1 : 1 - Math.exp(-dt * 2.6);
+        let moving = false;
+        if (focus.kind) {
+          const obj = objectFor(focus.kind, focus.id);
+          if (obj) {
+            obj.getWorldPosition(tgt);
+            const dist = focus.kind === 'memory' ? 13 : focus.kind === 'project' ? 12 : 15;
+            desiredCam.copy(camera.position).sub(controls.target).normalize().multiplyScalar(dist).add(tgt);
+            desiredCam.y = Math.max(desiredCam.y, tgt.y + 2.2);
+            controls.target.lerp(tgt, k);
+            camera.position.lerp(desiredCam, k);
+            moving = camera.position.distanceTo(desiredCam) > 0.02 || controls.target.distanceTo(tgt) > 0.02;
+          }
+        } else if (focus.returning) {
+          controls.target.lerp(tgt.set(0, 0, 0), k);
+          camera.position.lerp(home, k);
+          moving = camera.position.distanceTo(home) > 0.03;
+          if (!moving) focus.returning = false;
+        }
+        const dimTarget = focus.kind ? 1 : 0;
+        const prevDim = focus.dim;
+        focus.dim += (dimTarget - focus.dim) * (reduced ? 1 : Math.min(1, dt * 3));
+        if (Math.abs(focus.dim - prevDim) > 0.001) {
+          (scene.fog as import('three').FogExp2).density = baseFog + focus.dim * 0.005;
+          orbitMat.opacity = 0.1 * (1 - focus.dim * 0.6);
+          memMat.opacity = 0.75 * (focus.kind === 'memory' ? 1 : 1 - focus.dim * 0.55);
+          moving = true;
+        }
+        return moving;
+      };
+
       // --- Post-processing: gentle bloom ---
       const composer = new mods.EffectComposer(renderer);
       composer.addPass(new mods.RenderPass(scene, camera));
@@ -547,7 +747,7 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
       const pointer = new THREE.Vector2();
       const parallax = { x: 0, y: 0, tx: 0, ty: 0 };
       let downAt = 0;
-      const pickables = planets.map((p) => p.mesh);
+      const pickables: import('three').Object3D[] = [...planets.map((p) => p.mesh), ...projectSystems.map((x) => x.core), ...memSprites.values()];
       const pick = (e: PointerEvent) => {
         const rect = renderer.domElement.getBoundingClientRect();
         pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
@@ -572,7 +772,10 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
       const onUp = (e: PointerEvent) => {
         if (performance.now() - downAt > 250) return; // a drag, not a click
         const hit = pick(e);
-        if (hit) cbRef.current.onSelectGoal?.(hit.userData.goalId as string);
+        if (!hit) return;
+        if (hit.userData.goalId) cbRef.current.onSelectGoal?.(hit.userData.goalId as string);
+        else if (hit.userData.projectId) cbRef.current.onSelectProject?.(hit.userData.projectId as string);
+        else if (hit.userData.memoryId) cbRef.current.onSelectMemory?.(hit.userData.memoryId as string);
       };
       renderer.domElement.addEventListener('pointermove', onMove);
       renderer.domElement.addEventListener('pointerleave', onLeave);
@@ -583,7 +786,15 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
       const requestRender = () => (needsRender = true);
       requestRenderRef.current = requestRender;
       controls.addEventListener('change', requestRender);
+      // Restore the previous camera after a rebuild (e.g. a habit check-in).
+      if (cameraStateRef.current) {
+        camera.position.fromArray(cameraStateRef.current.pos);
+        controls.target.fromArray(cameraStateRef.current.target);
+        controls.update();
+      }
       resetRef.current = () => {
+        focus.kind = null;
+        focus.returning = false;
         camera.position.copy(home);
         controls.target.set(0, 0, 0);
         controls.update();
@@ -632,8 +843,9 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
         const dt = Math.min(0.05, timer.getDelta());
         if (!visible || document.hidden) return;
         const animate = !pausedRef.current;
+        const focusing = updateFocus(dt);
         const damping = controls.update();
-        if (!animate && !needsRender && !damping) return;
+        if (!animate && !needsRender && !damping && !focusing && !pulses.length) return;
         needsRender = false;
         const t = timer.getElapsed();
         if (animate && !perf.done) {
@@ -657,6 +869,11 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
           ringB.rotation.z -= 0.08 * dt;
           energyRing.rotation.y += 0.09 * dt;
           memGroup.rotation.y -= 0.006 * dt;
+          for (const ps of projectSystems) {
+            ps.pivot.rotation.y += ps.speed * dt;
+            ps.spin.rotation.y += 0.3 * dt;
+            ps.core.rotation.y += 0.5 * dt;
+          }
           starsNear.rotation.y += 0.004 * dt;
           starsFar.rotation.y += 0.0015 * dt;
           halo.scale.setScalar(coreR * (6.5 + Math.sin(t * 0.8) * 0.35));
@@ -689,6 +906,18 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
           }
         }
         updateStreams(animate ? dt : 0);
+        for (let i = pulses.length - 1; i >= 0; i--) {
+          const ps = pulses[i];
+          ps.age += Math.max(dt, 1 / 60);
+          const f = ps.age / 1.4;
+          ps.sprite.scale.setScalar(0.4 + f * 4);
+          (ps.sprite.material as import('three').SpriteMaterial).opacity = Math.max(0, 1 - f);
+          if (f >= 1) {
+            world.remove(ps.sprite);
+            (ps.sprite.material as import('three').SpriteMaterial).dispose();
+            pulses.splice(i, 1);
+          }
+        }
         composer.render();
       };
       // Pre-fill trails so they exist even when motion starts paused.
@@ -697,9 +926,18 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
       }
       tick();
       setStatus('ready');
+      // Re-apply selection and any check-in pulse that arrived while rebuilding.
+      highlightRef.current(selectionRef.current?.kind === 'goal' ? selectionRef.current.id : null);
+      focusRef.current(selectionRef.current);
+      if (pendingPulseRef.current && Date.now() - pendingPulseRef.current.at < 4000) {
+        firePulseRef.current(pendingPulseRef.current.habitId);
+        pendingPulseRef.current = null;
+      }
 
       cleanup = () => {
+        cameraStateRef.current = { pos: camera.position.toArray(), target: controls.target.toArray() };
         cancelAnimationFrame(raf);
+        pulseTex.dispose();
         ro.disconnect();
         io.disconnect();
         controls.dispose();

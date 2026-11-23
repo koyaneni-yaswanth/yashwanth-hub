@@ -2,7 +2,7 @@ import React, { lazy, Suspense, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Sparkles, Target, AlertTriangle, TrendingUp, ArrowRight, Timer, BookOpen, Compass, ChevronDown } from 'lucide-react';
 import { db } from '../db';
-import type { NavigationTab } from '../types';
+import type { NavigationTab, Task } from '../types';
 import { getTodayISO } from '../lib/utils';
 import { addDays, computeHabitStats, parseDateKey } from '../lib/habits';
 import { handOffFocusTask } from '../lib/focusHandoff';
@@ -18,8 +18,12 @@ import {
   type GoalForecast,
   type NextAction,
 } from '../lib/momentum';
-import { DOMAINS, domainBalance, domainById, goalDomain, habitDomain } from '../lib/lifeDomains';
-import type { SceneGoal, SceneHabit, SceneMemory } from '../components/momentum/LifeConstellation';
+import { DOMAINS, domainBalance, domainById, domainOf, goalDomain, habitDomain } from '../lib/lifeDomains';
+import { lifeInsights, projectSystem, snapshotAt, weekLabel } from '../lib/lifeInsights';
+import { bestFocusWindow, formatHour } from '../lib/focus';
+import { TaskService } from '../services/sync/taskService';
+import { CompassPanel, InsightCards, MemoryList, MemoryPanel, ProjectList, ProjectPanel, TimeMachineBar, type CompassHabit } from '../components/momentum/CommandDeck';
+import type { SceneGoal, SceneHabit, SceneMemory, SceneProject } from '../components/momentum/LifeConstellation';
 import { BalanceRadar, GoalArcs, HabitRings, LifeScoreGauge, ScoreSparkline, type ArcGoal, type RingHabit } from '../components/momentum/Hud';
 import { ChartCard } from '../components/charts/ChartCard';
 import { ColumnChart, type ColumnDatum } from '../components/charts/ColumnChart';
@@ -48,9 +52,14 @@ export const MomentumPage: React.FC<MomentumPageProps> = ({ onNavigate }) => {
   const [hour] = useState(() => new Date().getHours());
   const [selectedGoal, setSelectedGoal] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
+  const [selectedProject, setSelectedProject] = useState<string | null>(null);
+  const [selectedMemory, setSelectedMemory] = useState<string | null>(null);
+  // Weekly Time Machine: 0 = now, 1 = last week, ...
+  const [weeksAgo, setWeeksAgo] = useState(0);
+  const [pulse, setPulse] = useState<{ habitId: string; key: number } | null>(null);
 
-  const data = useLiveQuery(async () => {
-    const [habits, logs, goals, milestones, sessions, tasks, notes, plans] = await Promise.all([
+  const raw = useLiveQuery(async () => {
+    const [habits, logs, goals, milestones, sessions, tasks, notes, plans, projects] = await Promise.all([
       db.habits.toArray(),
       db.habit_logs.toArray(),
       db.goals.toArray(),
@@ -59,28 +68,33 @@ export const MomentumPage: React.FC<MomentumPageProps> = ({ onNavigate }) => {
       db.tasks.toArray(),
       db.notes.toArray(),
       db.daily_plans.toArray(),
+      db.projects.toArray(),
     ]);
-    return { habits, logs, goals, milestones, sessions, tasks, notes, plans };
+    return { habits, logs, goals, milestones, sessions, tasks, notes, plans, projects };
   }, []);
 
   const d = useMemo(() => {
-    if (!data) return null;
-    const input = { today, ...data };
+    if (!raw) return null;
+    const realToday = today;
+    // Time machine: everything below is computed as of the end of the chosen week.
+    const viewDay = addDays(realToday, -7 * weeksAgo);
+    const data = weeksAgo ? snapshotAt(raw, viewDay) : raw;
+    const input = { today: viewDay, ...data };
     const score = momentumScore(input);
-    const prev = momentumScore({ ...input, today: addDays(today, -7) });
+    const prev = momentumScore({ ...input, today: addDays(viewDay, -7) });
     const history = scoreHistory(input, 8);
     const goalsById = new Map(data.goals.map((g) => [g.id, g]));
     const forecasts = data.goals
       .filter((g) => g.status !== 'achieved')
-      .map((g) => forecastGoal(g, data.milestones, today))
+      .map((g) => forecastGoal(g, data.milestones, viewDay))
       .sort((a, b) => (a.goal.target_date || '9999').localeCompare(b.goal.target_date || '9999'));
-    const todayPlan = data.plans.find((p) => p.id === today) ?? null;
+    const todayPlan = data.plans.find((p) => p.id === viewDay) ?? null;
     const actions = nextActions({ ...input, hour, todayPlan });
     const signals = weeklySignals(input, forecasts);
     const narrative = weeklyNarrative(input);
 
     // Goals → planets & arcs
-    const soon = addDays(today, 60);
+    const soon = addDays(viewDay, 60);
     const sceneGoals: SceneGoal[] = forecasts.map((f) => {
       const dom = domainById(goalDomain(f.goal));
       return {
@@ -99,24 +113,32 @@ export const MomentumPage: React.FC<MomentumPageProps> = ({ onNavigate }) => {
     });
 
     // Habits → satellites & rings
-    const from14 = addDays(today, -13);
+    const from14 = addDays(viewDay, -13);
     const activeHabits = data.habits.filter((h) => !h.archived);
     const habitInfo = activeHabits.map((h) => {
       const dates = data.logs.filter((l) => l.habit_id === h.id).map((l) => l.date);
-      const s = computeHabitStats(dates, today, h.weekly_target);
-      const recent = dates.filter((x) => x >= from14 && x <= today).length;
+      const s = computeHabitStats(dates, viewDay, h.weekly_target);
+      const recent = dates.filter((x) => x >= from14 && x <= viewDay).length;
       const consistency = Math.min(1, recent / ((h.weekly_target * 14) / 7));
       const dom = domainById(habitDomain(h, goalsById));
       return { h, s, consistency, dom };
     });
-    const sceneHabits: SceneHabit[] = habitInfo.map(({ h, s, consistency, dom }) => ({ id: h.id, title: h.title, goalId: h.goal_id, color: dom.color, consistency, streak: s.current }));
+    const sceneHabits: SceneHabit[] = habitInfo.map(({ h, s, consistency, dom }) => ({
+      id: h.id,
+      title: h.title,
+      goalId: h.goal_id,
+      color: dom.color,
+      consistency,
+      streak: s.current,
+      streakRing: s.unit === 'day' ? s.current >= 7 : s.current >= 3,
+    }));
     const ringHabits: RingHabit[] = habitInfo
       .map(({ h, s, consistency, dom }) => ({ id: h.id, title: h.title, consistency, streak: s.current, unit: s.unit, color: dom.color, domainLabel: dom.label }))
       .sort((a, b) => b.consistency - a.consistency);
 
     // Deep work → streams (goal-linked) and ring (unlinked)
-    const from7 = addDays(today, -6);
-    const week = data.sessions.filter((s) => s.date >= from7 && s.date <= today);
+    const from7 = addDays(viewDay, -6);
+    const week = data.sessions.filter((s) => s.date >= from7 && s.date <= viewDay);
     const byGoal = new Map<string, number>();
     let unlinked = 0;
     for (const s of week) {
@@ -126,14 +148,14 @@ export const MomentumPage: React.FC<MomentumPageProps> = ({ onNavigate }) => {
     const streams = [...byGoal.entries()].map(([goalId, minutes]) => ({ goalId, minutes }));
     const focus7 = week.reduce((a, s) => a + s.actual_minutes, 0);
     const timeline: ColumnDatum[] = Array.from({ length: 14 }, (_, i) => {
-      const day = addDays(today, i - 13);
+      const day = addDays(viewDay, i - 13);
       const dt = parseDateKey(day);
       return {
         key: day,
         label: dt.toLocaleDateString('en-US', { weekday: 'narrow' }),
         longLabel: dt.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }),
         value: data.sessions.filter((s) => s.date === day).reduce((a, s) => a + s.actual_minutes, 0),
-        current: day === today,
+        current: day === viewDay,
       };
     });
 
@@ -149,14 +171,65 @@ export const MomentumPage: React.FC<MomentumPageProps> = ({ onNavigate }) => {
       goalsById
     );
 
-    return { score, prev, history, forecasts, actions, signals, narrative, sceneGoals, arcGoals, sceneHabits, ringHabits, streams, unlinked, focus7, timeline, memories, balance };
-  }, [data, today, hour]);
+    // Projects as outer orbital systems (created by the viewed week).
+    const projSystems = raw.projects
+      .filter((p) => p.status !== 'completed' && p.created_at.slice(0, 10) <= viewDay)
+      .slice(0, 8)
+      .map((p) => ({ ...projectSystem(p, data.tasks), color: domainById(domainOf(`${p.title} ${(p.tags ?? []).join(' ')}`, p.area)).color }));
+    const sceneProjects: SceneProject[] = projSystems.map((p) => ({ id: p.id, title: p.title, color: p.color, progress: p.progress, openTasks: p.openTasks, doneTasks: p.doneTasks, milestones: p.milestones }));
+    const insights = lifeInsights(data, viewDay, forecasts, habitInfo.map((x) => ({ title: x.h.title, consistency: x.consistency })));
+    const notesById = new Map(data.notes.map((n) => [n.id, n]));
+
+    // Today's compass always shows the real today (it's where you act), whatever week is viewed.
+    const planToday = raw.plans.find((p) => p.id === realToday) ?? null;
+    const rawTasksById = new Map(raw.tasks.map((t) => [t.id, t]));
+    const rawGoalsById = new Map(raw.goals.map((g) => [g.id, g]));
+    const compassTop = (planToday?.items ?? []).slice(0, 3).map((i) => rawTasksById.get(i.task_id)).filter((t): t is Task => Boolean(t));
+    const compassHabits: CompassHabit[] = raw.habits
+      .filter((h) => !h.archived)
+      .map((h) => ({ id: h.id, title: h.title, doneToday: raw.logs.some((l) => l.habit_id === h.id && l.date === realToday), color: domainById(habitDomain(h, rawGoalsById)).color }));
+    const nextFocus = compassTop.find((t) => !t.done) ?? null;
+    const win = bestFocusWindow(raw.sessions);
+    const focusHint = win ? `Your best focus window so far is ${formatHour(win.startHour)}–${formatHour(win.endHour)}.` : null;
+
+    return {
+      score, prev, history, forecasts, actions, signals, narrative, sceneGoals, arcGoals, sceneHabits, ringHabits, streams, unlinked, focus7, timeline, memories, balance,
+      projSystems, sceneProjects, insights, notesById,
+      recentNotes: data.notes.filter((n) => JOURNAL_KINDS.includes(n.kind ?? '')).sort((x, y) => y.created_at.localeCompare(x.created_at)), compassTop, hasPlan: Boolean(planToday), compassHabits, nextFocus, focusHint,
+      label: weekLabel(weeksAgo, viewDay),
+    };
+  }, [raw, today, hour, weeksAgo]);
 
   const runAction = (a: NextAction) => {
     if (a.taskId) handOffFocusTask(a.taskId);
     onNavigate(a.tab);
   };
-  const toggleGoal = (id: string) => setSelectedGoal((cur) => (cur === id ? null : id));
+  // One selection at a time: choosing a goal, project or memory clears the others.
+  const toggleGoal = (id: string) => {
+    setSelectedProject(null);
+    setSelectedMemory(null);
+    setSelectedGoal((cur) => (cur === id ? null : id));
+  };
+  const selectProject = (id: string) => {
+    setSelectedGoal(null);
+    setSelectedMemory(null);
+    setSelectedProject((cur) => (cur === id ? null : id));
+  };
+  const selectMemory = (id: string) => {
+    setSelectedGoal(null);
+    setSelectedProject(null);
+    setSelectedMemory((cur) => (cur === id ? null : id));
+  };
+  // Same log ids as Goals & Habits (`habitId:date`), so check-ins show up in both places.
+  const toggleHabitToday = async (h: CompassHabit) => {
+    const id = `${h.id}:${today}`;
+    if (h.doneToday) {
+      await db.habit_logs.delete(id);
+    } else {
+      await db.habit_logs.put({ id, habit_id: h.id, date: today, created_at: new Date().toISOString() });
+      setPulse({ habitId: h.id, key: Date.now() });
+    }
+  };
 
   if (!d) {
     return (
@@ -171,6 +244,34 @@ export const MomentumPage: React.FC<MomentumPageProps> = ({ onNavigate }) => {
 
   const delta = d.score.score !== null && d.prev.score !== null ? d.score.score - d.prev.score : null;
   const [primary, ...alternatives] = d.actions;
+  const actionPanel =
+    weeksAgo === 0 ? (
+      <NextActionPanel primary={primary} alternatives={alternatives} onRun={runAction} />
+    ) : (
+      <section className="os-glass p-4 space-y-2" aria-label="Viewing a past week">
+        <h2 className="text-[11px] uppercase tracking-[0.18em] text-[var(--hub-accent)]">Time machine</h2>
+        <p className="text-base font-semibold text-[var(--hub-ink)]">{d.label}</p>
+        <p className="text-xs text-[var(--hub-muted)]">The scene and panels show this week as it was. Recommendations come back when you return to now.</p>
+        <button type="button" onClick={() => setWeeksAgo(0)} className="text-sm font-semibold text-[var(--hub-accent)] hover:underline cursor-pointer">
+          Back to now
+        </button>
+      </section>
+    );
+  const selectedNote = selectedMemory ? d.notesById.get(selectedMemory) : undefined;
+  const relatedGoals = selectedNote
+    ? d.forecasts
+        .map((f) => f.goal)
+        .filter((g) => {
+          const hay = `${g.title} ${g.why ?? ''}`.toLowerCase();
+          const noteDomain = domainOf(`${selectedNote.title} ${(selectedNote.tags ?? []).join(' ')}`, selectedNote.area);
+          // Match word stems so #testing finds "bench test" and #blades finds "blade".
+          const stem = (w: string) => w.toLowerCase().replace(/(ing|ed|es|s)$/, '');
+          return (selectedNote.tags ?? []).some((t) => stem(t).length >= 3 && hay.includes(stem(t))) || (noteDomain !== 'career' && goalDomain(g) === noteDomain);
+        })
+        .map((g) => g.title)
+        .slice(0, 4)
+    : [];
+  const selectedProjectSys = selectedProject ? d.projSystems.find((p) => p.id === selectedProject) : undefined;
   const domainsInUse = DOMAINS.filter((dom) => d.arcGoals.some((g) => g.color === dom.color) || d.ringHabits.some((h) => h.color === dom.color));
 
   return (
@@ -187,6 +288,8 @@ export const MomentumPage: React.FC<MomentumPageProps> = ({ onNavigate }) => {
           </div>
         </header>
 
+        <TimeMachineBar weeksAgo={weeksAgo} maxWeeks={12} label={d.label} score={d.score.score} onChange={setWeeksAgo} />
+
         {/* ---------------- Hero: the constellation with HUD overlays ---------------- */}
         <section aria-labelledby="constellation-title" className="relative">
           <h2 id="constellation-title" className="sr-only">
@@ -201,8 +304,14 @@ export const MomentumPage: React.FC<MomentumPageProps> = ({ onNavigate }) => {
                 streams={d.streams}
                 unlinkedFocusMinutes={d.unlinked}
                 memories={d.memories}
+                projects={d.sceneProjects}
                 selectedGoalId={selectedGoal}
+                selectedProjectId={selectedProject}
+                selectedMemoryId={selectedMemory}
                 onSelectGoal={toggleGoal}
+                onSelectProject={selectProject}
+                onSelectMemory={selectMemory}
+                pulse={pulse}
                 onHover={setHovered}
               />
             </Suspense>
@@ -213,11 +322,11 @@ export const MomentumPage: React.FC<MomentumPageProps> = ({ onNavigate }) => {
               <ScoreBreakdown components={d.score.components} />
             </div>
             <div className="hidden xl:block absolute top-4 right-4 w-80">
-              <NextActionPanel primary={primary} alternatives={alternatives} onRun={runAction} />
+              {actionPanel}
             </div>
             <div className="absolute left-3 bottom-3 right-28 flex flex-wrap items-center gap-x-3 gap-y-1 pointer-events-none" aria-hidden="true">
               <span className="os-chip px-2.5 py-1 text-[11px] text-[var(--hub-ink)]">
-                {hovered ? <strong className="font-semibold">{hovered}</strong> : 'Drag to orbit · click a planet'}
+                {hovered ? <strong className="font-semibold">{hovered}</strong> : 'Drag to orbit · click a planet, project or memory'}
               </span>
               {domainsInUse.map((dom) => (
                 <span key={dom.id} className="os-chip px-2 py-1 text-[11px] text-[var(--hub-ink)] hidden sm:flex items-center gap-1.5">
@@ -238,7 +347,7 @@ export const MomentumPage: React.FC<MomentumPageProps> = ({ onNavigate }) => {
           </div>
           <p className="mt-2 text-[11px] text-[var(--hub-muted)]">
             Core = Life Score · planets = goals (colour = life area, ring = progress, amber glow = behind pace) · satellites = habits (trails when consistent, drifting when missed) ·
-            streams = deep work on a goal · outer nodes = journal entries linked by shared tags.
+            streams = deep work on a goal · diamonds = projects (tasks as satellites, milestones as waypoints) · outer nodes = journal entries linked by shared tags. Click anything to focus it.
           </p>
         </section>
 
@@ -248,8 +357,31 @@ export const MomentumPage: React.FC<MomentumPageProps> = ({ onNavigate }) => {
             <LifeScoreGauge score={d.score.score} band={d.score.band} delta={delta} />
             <ScoreBreakdown components={d.score.components} />
           </div>
-          <NextActionPanel primary={primary} alternatives={alternatives} onRun={runAction} />
+          {actionPanel}
         </div>
+
+        {selectedNote && (
+          <MemoryPanel note={selectedNote} relatedGoals={relatedGoals} onClose={() => setSelectedMemory(null)} onOpenVault={() => onNavigate('knowledge-memory')} />
+        )}
+        {selectedProjectSys && <ProjectPanel project={selectedProjectSys} onClose={() => setSelectedProject(null)} onOpenProjects={() => onNavigate('projects')} />}
+
+        <CompassPanel
+          top={d.compassTop}
+          hasPlan={d.hasPlan}
+          habits={d.compassHabits}
+          nextFocus={d.nextFocus}
+          focusHint={d.focusHint}
+          readOnly={weeksAgo > 0}
+          onToggleTask={(t) => void TaskService.toggleDone(t)}
+          onToggleHabit={(h) => void toggleHabitToday(h)}
+          onStartFocus={(t) => {
+            if (t) handOffFocusTask(t.id);
+            onNavigate('focus');
+          }}
+          onPlanDay={() => onNavigate('my-day')}
+        />
+
+        <InsightCards insights={d.insights} />
 
         {/* ---------------- HUD deck ---------------- */}
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -276,6 +408,12 @@ export const MomentumPage: React.FC<MomentumPageProps> = ({ onNavigate }) => {
           </div>
           <div className="os-glass p-5">
             <GoalArcs goals={d.arcGoals} selectedId={selectedGoal} onSelect={toggleGoal} hovered={hovered} />
+          </div>
+          <div className="os-glass p-5 md:col-span-2">
+            <ProjectList projects={d.projSystems} selectedId={selectedProject} onSelect={selectProject} />
+          </div>
+          <div className="os-glass p-5 md:col-span-2 xl:col-span-1">
+            <MemoryList notes={d.recentNotes} selectedId={selectedMemory} onSelect={selectMemory} />
           </div>
         </div>
 
