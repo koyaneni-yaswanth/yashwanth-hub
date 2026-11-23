@@ -8,6 +8,7 @@ import {
   resolveAuthenticatedUser,
   supabaseServer,
 } from '../_lib/db.ts';
+import { applyCors, safeError } from '../_lib/http.ts';
 
 export async function getUserIdFromRequest(req: any): Promise<string | null> {
   const auth = await resolveAuthenticatedUser(req);
@@ -79,9 +80,7 @@ export async function getAuthenticatedGoogleOAuthClient(userId: string) {
 }
 
 export default async function handler(req: any, res: any) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  applyCors(req, res, 'GET, POST, PUT, DELETE, OPTIONS');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -367,7 +366,7 @@ export default async function handler(req: any, res: any) {
       message: `Unknown action "${action}". Valid actions: ping, tasklists, list, create, update, sync.`,
     });
   } catch (err: any) {
-    console.error('[GoogleTasks API Error]:', err);
+    console.error('[GoogleTasks API Error]:', safeError(err));
     return res.status(500).json({
       success: false,
       error: 'Google Tasks Integration Error',

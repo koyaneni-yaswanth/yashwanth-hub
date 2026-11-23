@@ -7,12 +7,11 @@
 import { hasServiceRoleKey, isServerSupabaseConfigured, supabaseServer } from '../_lib/db.ts';
 import { processAutomationTick } from '../_lib/queueEngine.ts';
 import { executeAutomationRun } from '../_lib/runner.ts';
+import { applyCors } from '../_lib/http.ts';
 
 export function createCronTriggersHandler(dbClient: any = supabaseServer) {
   return async function handler(req: any, res: any) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    applyCors(req, res, 'GET, POST, OPTIONS');
 
     if (req.method === 'OPTIONS') {
       return res.status(200).end();

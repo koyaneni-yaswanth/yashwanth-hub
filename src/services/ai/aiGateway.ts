@@ -11,7 +11,8 @@ import type {
 } from '../../types';
 import { db } from '../../db';
 import { generateId, getTodayISO } from '../../lib/utils';
-import { SUPPORTED_MODELS, getRecommendedModel } from './aiModels';
+import { SUPPORTED_MODELS, getRecommendedModel, normaliseModelId } from './aiModels';
+import { chooseGeminiModels } from '../../../api/_lib/geminiRanking';
 import { NeoSapienMemoryService } from '../neoSapienMemoryService';
 import { SupabaseAuthService } from '../auth/supabaseAuthService';
 import { SyncQueueService } from '../sync/syncQueueService';
@@ -159,7 +160,7 @@ export class AIGateway {
 
     const selectedModel =
       options.modelId
-        ? SUPPORTED_MODELS.find((m) => m.modelId === options.modelId) || getRecommendedModel(mode, complexity)
+        ? SUPPORTED_MODELS.find((m) => m.modelId === normaliseModelId(options.modelId)) || getRecommendedModel(mode, complexity)
         : getRecommendedModel(mode, complexity);
 
     const provider = options.provider || selectedModel.provider;
@@ -481,7 +482,7 @@ export class AIGateway {
     modelIds: string[]
   ): Promise<AIComparisonResult[]> {
     const tasks = modelIds.map(async (modelId) => {
-      const model = SUPPORTED_MODELS.find((m) => m.modelId === modelId);
+      const model = SUPPORTED_MODELS.find((m) => m.modelId === normaliseModelId(modelId));
       if (!model) return null;
       const resp = await this.executePrompt(userPrompt, {
         provider: model.provider,
@@ -512,8 +513,23 @@ export class AIGateway {
 Open high tasks: ${JSON.stringify(snapshot.tasks.filter((t) => !t.done).slice(0, 12).map((t) => ({ text: t.text, area: t.area, due: t.due_date, priority: t.priority })))}
 Projects: ${JSON.stringify(snapshot.projects.map((p) => ({ title: p.title, area: p.area, progress: p.progress, blockers: p.blockers || [], risks: p.risks || [], verification_note: p.verification_note })))}`;
 
+    // Resolve the alias against the models this key can call (same ranking as the server).
+    let available: string[] | null = null;
+    try {
+      const list = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000', {
+        headers: { 'x-goog-api-key': apiKey },
+      });
+      if (list.ok) {
+        const data = (await list.json()) as { models?: { name: string; supportedGenerationMethods?: string[] }[] };
+        available = (data.models ?? []).filter((m) => (m.supportedGenerationMethods ?? []).includes('generateContent')).map((m) => m.name);
+      }
+    } catch {
+      available = null;
+    }
+    const resolvedModel = chooseGeminiModels(available, modelId).primary;
+
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelId)}:generateContent`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(resolvedModel)}:generateContent`,
       {
         method: 'POST',
         headers: {

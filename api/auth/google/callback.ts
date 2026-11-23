@@ -3,6 +3,7 @@
 // Exchanges code cleanly if invoked via server redirect and forwards safe status query params.
 
 import { google } from 'googleapis';
+import { safeError } from '../../_lib/http.ts';
 
 export default async function handler(req: any, res: any) {
   const code = req.query?.code;
@@ -47,7 +48,7 @@ export default async function handler(req: any, res: any) {
 
     return res.redirect(`/?tab=integrations#${hashParams.toString()}`);
   } catch (err: any) {
-    console.error('[Google Callback] Token exchange failed:', err);
+    console.error('[Google Callback] Token exchange failed:', safeError(err));
     return res.redirect(
       `/?tab=integrations&google_error=token_exchange_failed&google_error_desc=${encodeURIComponent(err.message || 'Exchange error')}`
     );

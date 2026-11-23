@@ -19,6 +19,7 @@ import {
   BookOpen,
 } from 'lucide-react';
 import { TurbineLogo } from '../components/common/TurbineLogo';
+import { toast } from '../lib/toast';
 
 interface PhaseWeek {
   t: string;
@@ -709,7 +710,7 @@ export const WindPlanPage: React.FC = () => {
                   <button
                     onClick={() => {
                       // Proof upload isn't built yet: say so honestly instead of claiming a verification.
-                      alert(`Proof upload isn't connected yet, so nothing was uploaded or verified for ${task.id}. Attach photos or CSVs in Files & Docs for now.`);
+                      toast(`Proof upload isn't connected yet, so nothing was uploaded or verified for ${task.id}. Attach photos or CSVs in Files & Docs for now.`, 'info');
                     }}
                     className="text-xs text-teal-700 dark:text-teal-400 hover:underline font-semibold"
                   >

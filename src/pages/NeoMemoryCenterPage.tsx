@@ -31,6 +31,7 @@ import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { generateId, getTodayISO } from '../lib/utils';
 import { Neo1DeviceCard } from '../components/neo/Neo1DeviceCard';
+import { toast } from '../lib/toast';
 
 interface NeoMemoryCenterPageProps {
   currentArea: string;
@@ -144,7 +145,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
       await NeoSapienMemoryService.approveAndCreateTask(memoryId, actionItemId, undefined, syncToGoogle);
       await refreshReconciliation();
     } catch (err: any) {
-      alert(`Approval error: ${err.message}`);
+      toast(`Approval error: ${err.message}`, 'error');
     }
   };
 
@@ -194,7 +195,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
     setIsSyncing(true);
     try {
       const res = await NeoSapienMemoryService.autoAssociateCalendarEvents();
-      alert(`Associated ${res.linkedCount} memory records with Google Calendar events.`);
+      toast(`Associated ${res.linkedCount} memory records with Google Calendar events.`, 'success');
     } finally {
       setIsSyncing(false);
     }

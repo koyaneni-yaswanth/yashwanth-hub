@@ -195,7 +195,7 @@ export function rankUniversalSearchCorpus(
         entityType: 'document',
         title: d.title || d.file_name,
         subtitle: `Document • ${d.area || 'General'}`,
-        targetTab: 'files',
+        targetTab: 'documents',
         area: d.area,
         score,
       });
@@ -216,7 +216,7 @@ export function rankUniversalSearchCorpus(
           entityType: 'memory',
           title: m.title,
           subtitle: `Neo Memory • ${(m.capturedAt || '').slice(0, 10)} • ${m.associatedArea || 'Personal'}`,
-          targetTab: 'neo-memory',
+          targetTab: 'knowledge-memory',
           area: m.associatedArea,
           score: score + (m.isImportant ? 2 : 0),
         });

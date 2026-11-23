@@ -34,7 +34,7 @@ import type {
   AIProposedAction,
 } from '../types';
 import { generateId } from '../lib/utils';
-import { SUPPORTED_MODELS } from '../services/ai/aiModels';
+import { SUPPORTED_MODELS, normaliseModelId } from '../services/ai/aiModels';
 import { AIGateway } from '../services/ai/aiGateway';
 import { Badge } from '../components/common/Badge';
 import type { AIToolSpec } from '../../api/_lib/aiTools';
@@ -97,7 +97,7 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
     return (localStorage.getItem('yash_ai_provider') as AIProvider) || 'gemini';
   });
   const [selectedModelId, setSelectedModelId] = useState<string>(() => {
-    return localStorage.getItem('yash_ai_model') || 'gemini-2.0-flash';
+    return normaliseModelId(localStorage.getItem('yash_ai_model'));
   });
   const [selectedMode, setSelectedMode] = useState<AIMode>('personal');
   const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
@@ -336,7 +336,7 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
     setIsComparing(true);
     setComparisonResults([]);
     try {
-      const modelsToCompare = ['gemini-2.0-flash', 'gpt-4o-mini', 'claude-3-5-haiku-20241022'];
+      const modelsToCompare = ['gemini-auto', 'gpt-4o-mini', 'claude-haiku-5-5'];
       const results = await AIGateway.compareModels(comparePrompt.trim(), modelsToCompare);
       setComparisonResults(results);
     } finally {

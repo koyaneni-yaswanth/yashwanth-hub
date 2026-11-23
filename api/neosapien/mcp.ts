@@ -7,6 +7,7 @@
 
 import crypto from 'node:crypto';
 import { isServerSupabaseConfigured, supabaseServer } from '../_lib/db.ts';
+import { applyCors } from '../_lib/http.ts';
 
 const NEOSAPIEN_BASE_URL = 'https://api.neosapien.xyz';
 const MCP_ENDPOINT = `${NEOSAPIEN_BASE_URL}/mcp`;
@@ -48,9 +49,7 @@ export function verifyNeoSapienWebhookSignature(
 }
 
 export default async function handler(req: any, res: any) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-NeoSapien-Signature, X-NeoSapien-Timestamp, X-NeoSapien-Event, X-NeoSapien-Delivery');
+  applyCors(req, res, 'GET, POST, OPTIONS', 'Content-Type, Authorization, X-NeoSapien-Signature, X-NeoSapien-Timestamp, X-NeoSapien-Event, X-NeoSapien-Delivery');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();

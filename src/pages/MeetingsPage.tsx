@@ -23,6 +23,7 @@ import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { MeetingIntelligenceService, type MeetingBrief } from '../services/meetingIntelligenceService';
+import { toast } from '../lib/toast';
 
 interface MeetingsPageProps {
   currentArea: string;
@@ -169,10 +170,10 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({ currentArea, areas }
         followUpMeeting.attendees,
         followUpMeeting.area
       );
-      alert('Next follow-up meeting scheduled successfully!');
+      toast('Next follow-up meeting scheduled successfully!', 'success');
       setIsFollowUpModalOpen(false);
     } catch (e: any) {
-      alert(`Failed to schedule meeting: ${e.message}`);
+      toast(`Failed to schedule meeting: ${e.message}`, 'error');
     } finally {
       setIsSchedulingNext(false);
     }
@@ -654,7 +655,7 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({ currentArea, areas }
                   navigator.clipboard.writeText(
                     `Meeting Brief: ${selectedBrief.meetingTitle}\n\nContext:\n${selectedBrief.relevantContextSnippet}\n\nAgenda:\n${selectedBrief.suggestedAgendaTopics.join('\n')}`
                   );
-                  alert('Meeting brief copied to clipboard!');
+                  toast('Meeting brief copied to clipboard!', 'success');
                 }}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] hover:bg-[var(--hub-bg)] cursor-pointer"
               >
@@ -716,7 +717,7 @@ export const MeetingsPage: React.FC<MeetingsPageProps> = ({ currentArea, areas }
               type="button"
               onClick={() => {
                 navigator.clipboard.writeText(draftEmailText);
-                alert('Draft email copied to clipboard!');
+                toast('Draft email copied to clipboard!', 'success');
               }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] hover:bg-[var(--hub-bg)] cursor-pointer"
             >

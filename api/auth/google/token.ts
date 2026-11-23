@@ -10,11 +10,10 @@ import {
   isServerSupabaseConfigured,
   resolveAuthenticatedUser,
 } from '../../_lib/db.ts';
+import { applyCors, safeError } from '../../_lib/http.ts';
 
 export default async function handler(req: any, res: any) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  applyCors(req, res, 'GET, POST, DELETE, OPTIONS');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -300,7 +299,9 @@ export default async function handler(req: any, res: any) {
       expires_at: expiresAt,
     });
   } catch (error: any) {
-    console.error('[Google Auth Token] Exchange error:', error);
+    // Log only the code and message: the full client error echoes the request
+    // (authorization code and PKCE verifier).
+    console.error('[Google Auth Token] Exchange error:', safeError(error));
     return res.status(500).json({
       success: false,
       error: 'Token Exchange Failed',

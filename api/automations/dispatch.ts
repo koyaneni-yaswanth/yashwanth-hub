@@ -12,15 +12,14 @@ import {
 } from '../_lib/db.ts';
 import { processDueQueueJobs } from '../_lib/queueEngine.ts';
 import { executeAutomationRun } from '../_lib/runner.ts';
+import { applyCors } from '../_lib/http.ts';
 
 export function createDispatchHandler(
   dbClient: any = supabaseServer,
   authResolver: typeof resolveAuthenticatedUser = resolveAuthenticatedUser
 ) {
   return async function handler(req: any, res: any) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Idempotency-Key');
+    applyCors(req, res, 'GET, POST, PATCH, OPTIONS', 'Content-Type, Authorization, Idempotency-Key');
 
     if (req.method === 'OPTIONS') {
       return res.status(200).end();

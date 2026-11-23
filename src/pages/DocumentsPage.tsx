@@ -18,6 +18,7 @@ import { formatFileSize, formatShortDate, generateId } from '../lib/utils';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
+import { toast } from '../lib/toast';
 
 interface DocumentsPageProps {
   currentArea: string;
@@ -115,7 +116,7 @@ export const DocumentsPage: React.FC<DocumentsPageProps> = ({ currentArea, areas
 
   const handleDownload = (doc: DocumentItem) => {
     if (!doc.data_blob) {
-      alert('File content is not available locally.');
+      toast('File content is not available locally.', 'error');
       return;
     }
     const url = URL.createObjectURL(doc.data_blob);

@@ -14,6 +14,13 @@ import {
   type WorkspaceSnapshot,
 } from '../_lib/aiTools.ts';
 import { isServerSupabaseConfigured, resolveAuthenticatedUser, supabaseServer } from '../_lib/db.ts';
+import { listGeminiModels, resolveGeminiModel } from '../_lib/geminiModels.ts';
+import { chooseGeminiModels, GEMINI_AUTO, GEMINI_AUTO_PRO } from '../_lib/geminiRanking.ts';
+import { applyCors } from '../_lib/http.ts';
+
+/** Non-Gemini defaults are configurable in Vercel so no dated id is baked in for good. */
+const OPENAI_DEFAULT_MODEL = () => (process.env.OPENAI_MODEL || 'gpt-4o-mini').trim();
+const ANTHROPIC_DEFAULT_MODEL = () => (process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5').trim();
 
 function toOpenAiTools() {
   return AI_TOOL_DEFINITIONS.map((t) => ({
@@ -267,10 +274,10 @@ async function runGeminiWithTools(
   userPrompt: string,
   history: Array<{ role: string; content: string }>,
   systemPrompt: string,
-  snapshot: WorkspaceSnapshot
+  snapshot: WorkspaceSnapshot,
+  fallbackModel: string | null = null
 ) {
   let activeModel = modelId;
-  const fallbackModel = 'gemini-1.5-flash';
 
   const contents: any[] = [];
   for (const msg of history.slice(-6)) {
@@ -315,7 +322,7 @@ async function runGeminiWithTools(
     }
 
     // Automatic fallback if primary model is unavailable or spikes (404/503/400)
-    if (!resp.ok && activeModel !== fallbackModel && (resp.status === 404 || resp.status === 503 || resp.status === 400)) {
+    if (!resp.ok && fallbackModel && activeModel !== fallbackModel && (resp.status === 404 || resp.status === 503 || resp.status === 400)) {
       activeModel = fallbackModel;
       resp = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(activeModel)}:generateContent`,
@@ -553,9 +560,7 @@ async function runAnthropicWithTools(
 
 export function createAiChatHandler(dbClient: any = supabaseServer) {
   return async function handler(req: any, res: any) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    applyCors(req, res, 'GET, POST, OPTIONS');
 
     if (req.method === 'OPTIONS') {
       return res.status(200).end();
@@ -568,19 +573,23 @@ export function createAiChatHandler(dbClient: any = supabaseServer) {
     };
 
     if (req.method === 'GET') {
-      const defaultGeminiModel = (process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim();
+      const geminiKeyForList = (process.env.GEMINI_API_KEY || '').trim();
+      const available = geminiKeyForList ? await listGeminiModels(geminiKeyForList) : null;
+      const flash = chooseGeminiModels(available, (process.env.GEMINI_MODEL || GEMINI_AUTO).trim());
+      const pro = chooseGeminiModels(available, GEMINI_AUTO_PRO);
+      const defaultGeminiModel = flash.primary;
       return res.status(200).json({
         success: true,
         tools: AI_TOOL_DEFINITIONS,
         configuredProviders: envProviders,
         defaultGeminiModel,
         supportedModels: [
-          { provider: 'gemini', modelId: 'gemini-2.0-flash', displayName: 'Gemini 2.0 Flash', isDefault: true },
-          { provider: 'gemini', modelId: 'gemini-1.5-pro', displayName: 'Gemini 1.5 Pro' },
-          { provider: 'gemini', modelId: 'gemini-1.5-flash', displayName: 'Gemini 1.5 Flash' },
-          { provider: 'openai', modelId: 'gpt-4o-mini', displayName: 'GPT-4o Mini' },
-          { provider: 'anthropic', modelId: 'claude-3-5-haiku-20241022', displayName: 'Claude 3.5 Haiku' },
+          { provider: 'gemini', modelId: GEMINI_AUTO, resolvesTo: flash.primary, displayName: 'Gemini Flash (best available)', isDefault: true },
+          { provider: 'gemini', modelId: GEMINI_AUTO_PRO, resolvesTo: pro.primary, displayName: 'Gemini Pro (best available)' },
+          { provider: 'openai', modelId: OPENAI_DEFAULT_MODEL(), displayName: 'OpenAI (OPENAI_MODEL)' },
+          { provider: 'anthropic', modelId: ANTHROPIC_DEFAULT_MODEL(), displayName: 'Claude (ANTHROPIC_MODEL)' },
         ],
+        availableGeminiModels: available,
         timestamp: new Date().toISOString(),
       });
     }
@@ -616,27 +625,21 @@ export function createAiChatHandler(dbClient: any = supabaseServer) {
       const geminiKey = (process.env.GEMINI_API_KEY || '').trim();
       const openaiKey = (process.env.OPENAI_API_KEY || '').trim();
       const anthropicKey = (process.env.ANTHROPIC_API_KEY || '').trim();
-      const defaultGeminiModel = (process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim();
+      // Gemini: GEMINI_MODEL (if set and usable) else the best model this key can call.
+      const defaultGeminiModel = (process.env.GEMINI_MODEL || GEMINI_AUTO).trim();
 
       let chosenProvider: 'gemini' | 'openai' | 'anthropic' | null = null;
       let apiKey = '';
       let modelId = requestedModel;
 
-      // Sanitize modelId
-      if (modelId === 'gemini-3.8-flash' || modelId === 'gemini-2.5-flash') {
-        modelId = defaultGeminiModel;
-      } else if (modelId === 'gemini-2.5-pro') {
-        modelId = 'gemini-1.5-pro';
-      }
-
       if (requestedProvider === 'openai' && openaiKey) {
         chosenProvider = 'openai';
         apiKey = openaiKey;
-        if (!modelId) modelId = 'gpt-4o-mini';
+        if (!modelId) modelId = OPENAI_DEFAULT_MODEL();
       } else if (requestedProvider === 'anthropic' && anthropicKey) {
         chosenProvider = 'anthropic';
         apiKey = anthropicKey;
-        if (!modelId) modelId = 'claude-3-5-haiku-20241022';
+        if (!modelId) modelId = ANTHROPIC_DEFAULT_MODEL();
       } else if (requestedProvider === 'gemini' && geminiKey) {
         chosenProvider = 'gemini';
         apiKey = geminiKey;
@@ -649,19 +652,27 @@ export function createAiChatHandler(dbClient: any = supabaseServer) {
         } else if (openaiKey) {
           chosenProvider = 'openai';
           apiKey = openaiKey;
-          modelId = 'gpt-4o-mini';
+          modelId = OPENAI_DEFAULT_MODEL();
         } else if (anthropicKey) {
           chosenProvider = 'anthropic';
           apiKey = anthropicKey;
-          modelId = 'claude-3-5-haiku-20241022';
+          modelId = ANTHROPIC_DEFAULT_MODEL();
         }
+      }
+
+      let geminiFallback: string | null = null;
+      if (chosenProvider === 'gemini') {
+        // Old saved ids (retired 1.5 models, invented ones) resolve to what the key can use.
+        const resolved = await resolveGeminiModel(apiKey, modelId);
+        modelId = resolved.primary;
+        geminiFallback = resolved.fallback;
       }
 
       if (chosenProvider && apiKey) {
         try {
           const llmResult =
             chosenProvider === 'gemini'
-              ? await runGeminiWithTools(apiKey, modelId, prompt, history, systemPrompt, snapshot)
+              ? await runGeminiWithTools(apiKey, modelId, prompt, history, systemPrompt, snapshot, geminiFallback)
               : chosenProvider === 'openai'
               ? await runOpenAiWithTools(apiKey, modelId, prompt, history, systemPrompt, snapshot)
               : await runAnthropicWithTools(apiKey, modelId, prompt, history, systemPrompt, snapshot);

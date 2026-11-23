@@ -46,6 +46,7 @@ import { generateId } from '../lib/utils';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
+import { toast } from '../lib/toast';
 
 interface SettingsPageProps {
   areas: Area[];
@@ -169,12 +170,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
   const handleConnectRedirectFallback = async () => {
     const user = SupabaseAuthService.getState().user;
     if (!user) {
-      alert('Authentication Required: Please sign in to Yashwanth Hub before connecting Google Workspace so your tokens can be securely vaulted.');
+      toast('Authentication Required: Please sign in to Yashwanth Hub before connecting Google Workspace so your tokens can be securely vaulted.', 'error');
       return;
     }
     const cleaned = GoogleAuthService.cleanClientId(googleClientId);
     if (!cleaned || !GoogleAuthService.isValidClientId(cleaned)) {
-      alert('Valid Google Web Client ID is required. Format: [id].apps.googleusercontent.com');
+      toast('Valid Google Web Client ID is required. Format: [id].apps.googleusercontent.com', 'error');
       return;
     }
     GoogleAuthService.saveClientId(cleaned);
@@ -185,16 +186,16 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
   const handleConnectGoogle = async () => {
     const user = SupabaseAuthService.getState().user;
     if (!user) {
-      alert('Authentication Required: Please sign in to Yashwanth Hub before connecting Google Workspace so your tokens can be securely vaulted.');
+      toast('Authentication Required: Please sign in to Yashwanth Hub before connecting Google Workspace so your tokens can be securely vaulted.', 'error');
       return;
     }
     const cleaned = GoogleAuthService.cleanClientId(googleClientId);
     if (!cleaned) {
-      alert('Please enter your Google OAuth 2.0 Web Client ID from Google Cloud Console.');
+      toast('Please enter your Google OAuth 2.0 Web Client ID from Google Cloud Console.', 'error');
       return;
     }
     if (!GoogleAuthService.isValidClientId(cleaned)) {
-      alert('Invalid Client ID format. Must end with ".apps.googleusercontent.com" from a Web application client.');
+      toast('Invalid Client ID format. Must end with ".apps.googleusercontent.com" from a Web application client.', 'error');
       return;
     }
     GoogleAuthService.saveClientId(cleaned);

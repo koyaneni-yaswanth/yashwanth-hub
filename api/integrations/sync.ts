@@ -6,11 +6,10 @@ import { isServerSupabaseConfigured, supabaseServer } from '../_lib/db.ts';
 import { getUserIdFromRequest, getAuthenticatedGoogleOAuthClient } from './google-tasks.ts';
 import { getNeoSapienToken, executeMcpJsonRpc } from './neosapien.ts';
 import { google } from 'googleapis';
+import { applyCors } from '../_lib/http.ts';
 
 export default async function handler(req: any, res: any) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  applyCors(req, res, 'GET, POST, OPTIONS');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();

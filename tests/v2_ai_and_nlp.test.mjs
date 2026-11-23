@@ -104,9 +104,12 @@ test('Phase 3 AI Tools: exposes structured tool schemas & /api/ai/chat GET ?acti
   assert.equal(code, 200);
   assert.equal(body.success, true);
   assert.ok(Array.isArray(body.tools) && body.tools.length >= 6);
-  assert.equal(body.defaultGeminiModel, 'gemini-2.0-flash');
+  // No key in tests, so the model list can't be fetched: the auto alias falls back to a sane default.
+  assert.equal(typeof body.defaultGeminiModel, 'string');
+  assert.ok(body.defaultGeminiModel.startsWith('gemini-'));
   assert.ok(Array.isArray(body.supportedModels));
-  assert.ok(body.supportedModels.some((m) => m.modelId === 'gemini-2.0-flash' && m.isDefault));
+  assert.ok(body.supportedModels.some((m) => m.modelId === 'gemini-auto' && m.isDefault));
+  assert.ok(!body.supportedModels.some((m) => /gemini-1\.5/.test(m.modelId)), 'no retired 1.5 models offered');
 });
 
 test('Phase 3 AI Grounding: answers realistic Chief of Staff queries without fabricating claims', () => {

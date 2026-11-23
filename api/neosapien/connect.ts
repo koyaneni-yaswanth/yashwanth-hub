@@ -2,13 +2,12 @@
 // Endpoint: /api/neosapien/connect
 
 import crypto from 'crypto';
+import { applyCors } from '../_lib/http.ts';
 
 const NEOSAPIEN_BASE_URL = 'https://api.neosapien.xyz';
 
 export default async function handler(req: any, res: any) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  applyCors(req, res, 'GET, POST, OPTIONS');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();

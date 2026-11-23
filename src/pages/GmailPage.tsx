@@ -16,6 +16,7 @@ import { GmailService } from '../services/google/gmailService';
 import { GoogleAuthService } from '../services/google/googleAuthService';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
+import { toast } from '../lib/toast';
 
 interface GmailPageProps {
   onNavigateToTasks?: () => void;
@@ -56,7 +57,7 @@ export const GmailPage: React.FC<GmailPageProps> = ({ onNavigateToTasks }) => {
     if (onNavigateToTasks) {
       onNavigateToTasks();
     } else {
-      alert(`Created task: "Follow up: ${item.subject}" in Tasks.`);
+      toast(`Created task: "Follow up: ${item.subject}" in Tasks.`, 'success');
     }
   };
 

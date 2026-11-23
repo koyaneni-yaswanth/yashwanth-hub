@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, initializeDatabase } from './db';
 import type { NavigationTab } from './types';
@@ -21,7 +21,8 @@ import { QuickCaptureModal } from './components/common/QuickCaptureModal';
 import { PageErrorBoundary } from './components/common/PageErrorBoundary';
 import { repairTaskDueDates } from './services/sync/dueDateRepair';
 import { PageSkeleton } from './components/common/PageSkeleton';
-import { TAB_TITLES, buildTabUrl, documentTitleFor, readTabFromSearch } from './lib/navigation';
+import { TAB_TITLES, buildTabUrl, canonicalTab, documentTitleFor, readTabFromSearch } from './lib/navigation';
+import { Toaster } from './components/common/Toaster';
 
 // Pages are code-split: each one downloads only when first opened (or prefetched while idle).
 const pageLoaders = {
@@ -85,9 +86,11 @@ const MomentumPage = lazy(() => pageLoaders.MomentumPage().then((m) => ({ defaul
 function HubMain() {
   const { isDark } = useTheme();
   // The active tab lives in the URL (?tab=...), so refresh, Back/Forward and shared links all work.
-  const [currentTab, setCurrentTab] = useState<NavigationTab>(
+  const [currentTab, setCurrentTabRaw] = useState<NavigationTab>(
     () => (typeof window !== 'undefined' && readTabFromSearch(window.location.search)) || 'dashboard'
   );
+  // Duplicate routes (e.g. 'wind-plan') always resolve to their canonical tab.
+  const setCurrentTab = useCallback((tab: NavigationTab) => setCurrentTabRaw(canonicalTab(tab)), []);
   const [currentArea, setCurrentArea] = useState<string>('All');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
@@ -122,7 +125,7 @@ function HubMain() {
 
   // Browser Back / Forward.
   useEffect(() => {
-    const onPopState = () => setCurrentTab(readTabFromSearch(window.location.search) || 'dashboard');
+    const onPopState = () => setCurrentTabRaw(readTabFromSearch(window.location.search) || 'dashboard');
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
@@ -164,7 +167,7 @@ function HubMain() {
 
     CapacitorService.init().catch(() => {});
     CapacitorService.setOAuthCallbackHandler(() => {
-      setCurrentTab('integrations');
+      setCurrentTabRaw('integrations');
     });
 
     const unsubscribeAuth = SupabaseAuthService.subscribe((authState) => {
@@ -202,7 +205,7 @@ function HubMain() {
 
       const requestedTab = readTabFromSearch(search);
       if (requestedTab) {
-        setCurrentTab(requestedTab);
+        setCurrentTabRaw(requestedTab);
       }
 
       const googleServerErr = searchParams.get('google_error');
@@ -219,11 +222,11 @@ function HubMain() {
           message: googleServerDesc || parsedErr.errorMessage || `Google OAuth error: ${googleServerErr}`,
           hint: parsedErr.resolutionHint,
         });
-        setCurrentTab('integrations');
+        setCurrentTabRaw('integrations');
         window.history.replaceState(null, '', window.location.pathname);
       } else if (searchParams.get('google_connected') === 'true') {
         await IntegrationVaultService.initSessionRestoration(true);
-        setCurrentTab('integrations');
+        setCurrentTabRaw('integrations');
         window.history.replaceState(null, '', window.location.pathname);
       } else if (searchParams.has('code') && !searchParams.has('neo_code') && hasGooglePkceContext) {
         const parsed = GoogleAuthService.parseOAuthCallback(
@@ -240,13 +243,13 @@ function HubMain() {
           } else {
             IntegrationVaultService.initSessionRestoration(true).catch(() => {});
           }
-          setCurrentTab('integrations');
+          setCurrentTabRaw('integrations');
         } else {
           setOauthError({
             message: parsed.errorMessage || 'Google OAuth code callback invalid.',
             hint: parsed.resolutionHint,
           });
-          setCurrentTab('integrations');
+          setCurrentTabRaw('integrations');
         }
         window.history.replaceState(null, '', window.location.pathname);
       } else if (isGoogleImplicitHash || hashParams.has('error') || (searchParams.has('error') && hasGooglePkceContext)) {
@@ -276,17 +279,17 @@ function HubMain() {
             });
           }
           await GoogleAuthService.syncTokenToServer(res.token, expiresAt, profile?.email).catch(() => {});
-          setCurrentTab('integrations');
+          setCurrentTabRaw('integrations');
         } else if (!res.success && res.error) {
           setOauthError({
             message: res.errorMessage || 'Google OAuth Error',
             hint: res.resolutionHint,
           });
-          setCurrentTab('integrations');
+          setCurrentTabRaw('integrations');
         }
         window.history.replaceState(null, '', window.location.pathname);
       } else if (searchParams.has('neo_code')) {
-        setCurrentTab('integrations');
+        setCurrentTabRaw('integrations');
       }
     };
     initApp()
@@ -332,7 +335,7 @@ function HubMain() {
         setIsQuickCaptureOpen(false);
       },
       currentTab,
-      navigateTab: (tab) => setCurrentTab(tab as NavigationTab),
+      navigateTab: (tab) => setCurrentTabRaw(canonicalTab(tab as NavigationTab)),
     });
   }, [isCommandPaletteOpen, isMobileMenuOpen, oauthError, isQuickCaptureOpen, currentTab]);
 
@@ -400,17 +403,14 @@ function HubMain() {
       case 'notes':
         return <NotesPage currentArea={currentArea} areas={areas} />;
       case 'documents':
-      case 'files':
         return <FilesAndPhotosPage currentArea={currentArea} areas={areas} />;
       case 'gmail':
         return <GmailPage onNavigateToTasks={() => setCurrentTab('tasks')} />;
       case 'finance':
-      case 'expenses':
         return <FinancePage currentArea={currentArea} areas={areas} />;
       case 'contacts':
         return <ContactsPage currentArea={currentArea} areas={areas} />;
       case 'startup-command':
-      case 'wind-plan':
         return <StartupCommandPage />;
       case 'robotics-lab':
         return <RoboticsLabPage />;
@@ -425,7 +425,6 @@ function HubMain() {
           />
         );
       case 'knowledge-memory':
-      case 'neo-memory':
         return (
           <KnowledgeMemoryPage
             currentArea={currentArea}
@@ -441,7 +440,7 @@ function HubMain() {
         return (
           <SystemHealthSyncCenterPage
             onNavigateToIntegrations={() => setCurrentTab('integrations')}
-            onNavigateToNeoMemory={() => setCurrentTab('neo-memory')}
+            onNavigateToNeoMemory={() => setCurrentTab('knowledge-memory')}
           />
         );
       case 'notifications':
@@ -534,6 +533,9 @@ function HubMain() {
         onOpenMore={() => setIsMobileMenuOpen(true)}
         onOpenQuickCapture={() => setIsQuickCaptureOpen(true)}
       />
+
+      {/* App-wide non-blocking messages (replaces alert()) */}
+      <Toaster />
 
       {/* Global Command Palette (Ctrl+K) */}
       <CommandPalette

@@ -859,7 +859,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 value={monthExpenses === 0 ? '₹0' : formatINR(monthExpenses)}
                 subtext={monthExpenses === 0 ? 'Manually logged only' : `Cycle ${today.slice(0, 7)}`}
                 icon={<IndianRupee className="w-5 h-5 text-amber-800 dark:text-amber-300" />}
-                onClick={() => onNavigate('expenses')}
+                onClick={() => onNavigate('finance')}
               />
               <StatCard
                 label="Schedule (7 Days)"

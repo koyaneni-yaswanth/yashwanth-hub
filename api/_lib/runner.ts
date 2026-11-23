@@ -4,6 +4,8 @@
 
 import { google } from 'googleapis';
 import { supabaseServer } from './db.ts';
+import { resolveGeminiModel } from './geminiModels.ts';
+import { GEMINI_AUTO } from './geminiRanking.ts';
 
 export interface AutomationJobInput {
   run_id: string;
@@ -392,11 +394,11 @@ async function executeAIGatewayAction(
   const urgentTasks = tasks.filter((t: any) => t.priority === 'high' || t.priority === 'urgent');
 
   const geminiKey = (process.env.GEMINI_API_KEY || '').trim();
-  const geminiModel = (process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim();
   let aiSummary = `Executive Morning Briefing for ${todayStr}:\n- ${meetings.length} meeting(s) today.\n- ${urgentTasks.length} urgent task(s) requiring immediate attention.\n- Total open tasks: ${tasks.length}.`;
 
   if (geminiKey) {
     try {
+      const geminiModel = (await resolveGeminiModel(geminiKey, (process.env.GEMINI_MODEL || GEMINI_AUTO).trim())).primary;
       const prompt = `Synthesize a concise executive daily brief for Yaswanth based strictly on these verified records. Do not invent facts or milestones.
 Date: ${todayStr}
 Focus Filter: ${config?.focus || 'General'}

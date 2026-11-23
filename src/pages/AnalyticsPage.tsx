@@ -166,7 +166,7 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
           value={`${planRate}%`}
           subtext={`${planCompleted} of ${planTasks.length} milestones`}
           icon={<Wind className="w-5 h-5 text-teal-700 dark:text-teal-300" />}
-          onClick={() => onNavigate('wind-plan')}
+          onClick={() => onNavigate('startup-command')}
         />
       </div>
 
