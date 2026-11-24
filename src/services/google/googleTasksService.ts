@@ -193,10 +193,13 @@ export class GoogleTasksService {
     const stillDeleting = new Set<string>();
     for (const gid of deletedGoogleIds) {
       // The task came back in the hub (undo, or another device's edit won): keep its Google copy.
-      if ((await db.tasks.filter((t) => t.google_task_id === gid).count()) > 0) {
+      // Checked and cleared in one transaction with the task table (see the realtime delete path).
+      const back = await db.transaction('rw', db.tasks, db.settings, async () => {
+        if ((await db.tasks.filter((t) => t.google_task_id === gid).count()) === 0) return false;
         await db.settings.delete(GOOGLE_DELETED_PREFIX + gid);
-        continue;
-      }
+        return true;
+      });
+      if (back) continue;
       if (await this.deleteGoogleTask(gid, listId)) {
         await db.settings.delete(GOOGLE_DELETED_PREFIX + gid);
         await db.settings.delete(googleStatusKey(gid));

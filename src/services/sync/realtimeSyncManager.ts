@@ -66,12 +66,16 @@ export class RealtimeSyncManager {
                 const pending = await SyncQueueService.hasPendingChange('tasks', payload.old.id);
                 if (resolveRemoteDelete(pending) === 'apply') {
                   // Deleted on another device: if it was linked to Google, delete it there too at
-                  // this device's next Google sync, so it isn't imported back.
-                  const local = await db.tasks.get(payload.old.id);
-                  if (local?.google_task_id) {
-                    await db.settings.put({ key: googleDeletedKey(local.google_task_id), value: true, updated_at: new Date().toISOString() });
-                  }
-                  await db.tasks.delete(payload.old.id);
+                  // this device's next Google sync, so it isn't imported back. One transaction, so a
+                  // Google sync can never see the marker while the task still looks present.
+                  const id = payload.old.id;
+                  await db.transaction('rw', db.tasks, db.settings, async () => {
+                    const local = await db.tasks.get(id);
+                    await db.tasks.delete(id);
+                    if (local?.google_task_id) {
+                      await db.settings.put({ key: googleDeletedKey(local.google_task_id), value: true, updated_at: new Date().toISOString() });
+                    }
+                  });
                 }
               }
             }
