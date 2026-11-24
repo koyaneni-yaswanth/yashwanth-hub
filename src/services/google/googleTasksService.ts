@@ -3,21 +3,51 @@ import { db } from '../../db';
 import type { Task, GoogleTaskItem } from '../../types';
 import { toDueKey } from '../../lib/utils';
 import { TaskService } from '../sync/taskService';
-import { decideStatusSync, matchLocalTask, taskIdForGoogleTask } from '../../lib/googleTaskSync';
-
-/** Per linked Google task: the done/open status both sides last agreed on (device-local). */
-const STATUS_KEY = (googleTaskId: string) => `gtask_status:${googleTaskId}`;
+import { SyncQueueService } from '../sync/syncQueueService';
+import {
+  GOOGLE_DELETED_PREFIX,
+  decideStatusSync,
+  googleStatusKey,
+  matchLocalTask,
+  taskIdForGoogleTask,
+} from '../../lib/googleTaskSync';
 
 export class GoogleTasksService {
   private static BASE_URL = 'https://tasks.googleapis.com/tasks/v1';
 
+  /** The done/open status both sides last agreed on, as recorded on this device. */
   private static async lastSyncedDone(googleTaskId: string): Promise<boolean | undefined> {
-    const row = await db.settings.get(STATUS_KEY(googleTaskId));
+    const row = await db.settings.get(googleStatusKey(googleTaskId));
     return typeof row?.value === 'boolean' ? row.value : undefined;
   }
 
   private static async recordSyncedDone(googleTaskId: string, done: boolean): Promise<void> {
-    await db.settings.put({ key: STATUS_KEY(googleTaskId), value: done, updated_at: new Date().toISOString() });
+    await db.settings.put({ key: googleStatusKey(googleTaskId), value: done, updated_at: new Date().toISOString() });
+  }
+
+  /**
+   * Links a local task to its Google task. The link is written locally, and the
+   * cloud gets a column-only update (never the device's whole row, which may be
+   * out of date, and never re-creating a task deleted elsewhere).
+   */
+  private static async linkTask(taskId: string, googleTaskId: string): Promise<void> {
+    await db.tasks.update(taskId, { google_task_id: googleTaskId, synced: true });
+    await SyncQueueService.enqueueChange('tasks', taskId, 'PATCH', { google_task_id: googleTaskId });
+  }
+
+  /** Deletes a Google task (used when its linked hub task was deleted). Gone already counts as done. */
+  private static async deleteGoogleTask(googleTaskId: string, listId: string): Promise<boolean> {
+    const token = GoogleAuthService.getAccessToken();
+    if (!token) return false;
+    try {
+      const res = await fetch(`${this.BASE_URL}/lists/${listId}/tasks/${googleTaskId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return res.ok || res.status === 404 || res.status === 410;
+    } catch {
+      return false;
+    }
   }
 
   // Retrieve user's primary Google Tasks list
@@ -124,9 +154,8 @@ export class GoogleTasksService {
 
       if (gTask.id) {
         await this.recordSyncedDone(gTask.id, task.done);
-        // Save the link through TaskService so it reaches the cloud and other devices.
         const current = await db.tasks.get(task.id);
-        if (current && !current.google_task_id) await TaskService.update(current, { google_task_id: gTask.id, synced: true });
+        if (current && !current.google_task_id) await this.linkTask(task.id, gTask.id);
       }
       return gTask.id;
     } catch (e) {
@@ -159,8 +188,29 @@ export class GoogleTasksService {
   // Bi-directional Two-Way Synchronization with conflict resolution
   public static async syncTwoWay(): Promise<{ imported: number; exported: number }> {
     const listId = (await this.getPrimaryTaskList()) || '@default';
-    const gTasks = await this.fetchGoogleTasks(listId);
+
+    // 0. Hub tasks linked to Google that were deleted here: delete them in Google too, so the
+    //    next sync (on any device) doesn't import them back. Failed deletes are retried next time.
+    const deletedGoogleIds = (await db.settings.filter((r) => typeof r.key === 'string' && r.key.startsWith(GOOGLE_DELETED_PREFIX)).toArray()).map((r) =>
+      r.key.slice(GOOGLE_DELETED_PREFIX.length)
+    );
+    const stillDeleting = new Set<string>();
+    for (const gid of deletedGoogleIds) {
+      if (await this.deleteGoogleTask(gid, listId)) {
+        await db.settings.delete(GOOGLE_DELETED_PREFIX + gid);
+        await db.settings.delete(googleStatusKey(gid));
+      } else {
+        stillDeleting.add(gid);
+      }
+    }
+
+    // A Google task whose delete failed is skipped (not imported back) until the delete succeeds.
+    const gTasks = (await this.fetchGoogleTasks(listId)).filter((gt) => !stillDeleting.has(gt.id));
     const localTasks = await db.tasks.toArray();
+    // Status records as they were when Google's list was fetched (a push during the sync must
+    // not make the fetched, older Google status look like a change made in Google).
+    const records = new Map<string, boolean | undefined>();
+    for (const gt of gTasks) records.set(gt.id, await this.lastSyncedDone(gt.id));
 
     let imported = 0;
     let exported = 0;
@@ -176,18 +226,19 @@ export class GoogleTasksService {
         const googleDone = gt.status === 'completed';
         // Status: the side that moved away from the last agreed status wins. Local changes go
         // through TaskService so they are queued for the cloud and repeats continue.
-        const decision = decideStatusSync(gt, match, await this.lastSyncedDone(gt.id));
+        const decision = decideStatusSync(gt, match, records.get(gt.id));
         if (decision === 'import') {
           await TaskService.update(match, { done: googleDone, google_task_id: gt.id });
           await this.recordSyncedDone(gt.id, googleDone);
           imported++;
         } else if (decision === 'export') {
           if (await this.setGoogleTaskStatus(gt.id, match.done, listId)) exported++;
-          if (!match.google_task_id) await TaskService.update(match, { google_task_id: gt.id });
+          if (!match.google_task_id) await this.linkTask(match.id, gt.id);
         } else {
-          await this.recordSyncedDone(gt.id, match.done);
+          // Record only when both sides really agree (a finished repeat copy can differ on purpose).
+          if (googleDone === match.done) await this.recordSyncedDone(gt.id, match.done);
           // Same task matched by title: link it so it isn't exported again as a duplicate.
-          if (!match.google_task_id) await TaskService.update(match, { google_task_id: gt.id });
+          if (!match.google_task_id) await this.linkTask(match.id, gt.id);
         }
       } else {
         // New task created in Google Tasks -> import it. The id is derived from the Google id,
@@ -196,7 +247,7 @@ export class GoogleTasksService {
         const existing = await db.tasks.get(id);
         if (existing) {
           // Imported before, but the link was lost on this device: re-link instead of duplicating.
-          if (existing.google_task_id !== gt.id) await TaskService.update(existing, { google_task_id: gt.id });
+          if (existing.google_task_id !== gt.id) await this.linkTask(existing.id, gt.id);
           continue;
         }
         await TaskService.create({

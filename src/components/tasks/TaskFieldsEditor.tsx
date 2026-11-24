@@ -1,7 +1,7 @@
 import React, { useId, useState } from 'react';
 import { Plus, X, Repeat, Link2, ListChecks } from 'lucide-react';
 import type { Recurrence, RecurrenceFreq, Subtask, Task } from '../../types';
-import { MAX_INTERVAL, RECURRENCE_OPTIONS, describeRecurrence, nextDueAfterToday, wouldCreateCycle } from '../../lib/taskModel';
+import { MAX_INTERVAL, RECURRENCE_OPTIONS, alignAnchorDay, describeRecurrence, nextDueAfterToday, normaliseRecurrence, wouldCreateCycle } from '../../lib/taskModel';
 import { generateId, getTodayISO } from '../../lib/utils';
 
 const fieldCls =
@@ -103,7 +103,9 @@ export const RepeatPicker: React.FC<{ value: Recurrence | undefined; onChange: (
   const [intervalText, setIntervalText] = useState<string | null>(null);
   const intervalInvalid = intervalText !== null && !(Number.isInteger(Number(intervalText)) && Number(intervalText) >= 1 && Number(intervalText) <= MAX_INTERVAL);
   // True when, with this end date, completing the task would not create another copy.
-  const seriesEnds = Boolean(value?.until) && !!value && nextDueAfterToday(value, dueDate || undefined, getTodayISO()) === null;
+  // (Uses the series as it will be saved: the day of month follows the due date chosen here.)
+  const savedSeries = value ? alignAnchorDay(normaliseRecurrence(value), dueDate || undefined) : undefined;
+  const seriesEnds = Boolean(value?.until) && !!savedSeries && nextDueAfterToday(savedSeries, dueDate || undefined, getTodayISO()) === null;
   return (
     <div>
       <label htmlFor={`${id}-freq`} className={labelCls}>
@@ -165,7 +167,7 @@ export const RepeatPicker: React.FC<{ value: Recurrence | undefined; onChange: (
         // One message line of fixed minimum height, so nothing below (e.g. Save) moves when it changes.
         <p
           aria-live="polite"
-          className={`mt-1.5 min-h-[2rem] text-xs ${
+          className={`mt-1.5 min-h-[3rem] text-xs ${
             intervalInvalid
               ? 'font-semibold text-[var(--hub-red)]'
               : seriesEnds

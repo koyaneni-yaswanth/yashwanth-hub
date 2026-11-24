@@ -46,7 +46,16 @@ export type NewTaskInput = Omit<Task, 'id' | 'created_at' | 'updated_at'> & { id
 export function createTaskMutations(
   store: TaskStore,
   queue: ChangeQueue,
-  options: { now?: () => string; newId?: () => string; today?: () => string; onQueueError?: (err: unknown) => void } = {}
+  options: {
+    now?: () => string;
+    newId?: () => string;
+    today?: () => string;
+    onQueueError?: (err: unknown) => void;
+    /** Called after a task is deleted locally (e.g. to stop a linked Google task being imported back). */
+    onRemove?: (task: Task) => unknown;
+    /** Called after a locally-deleted task is put back (undo). */
+    onRestore?: (task: Task) => unknown;
+  } = {}
 ) {
   const now = options.now ?? (() => new Date().toISOString());
   const today = options.today ?? getTodayISO;
@@ -140,12 +149,14 @@ export function createTaskMutations(
     /** Deletes locally and in the cloud immediately. */
     async remove(task: Task): Promise<TaskMutationResult> {
       await store.delete(task.id);
+      await options.onRemove?.(task);
       return { task, sync: await enqueue(task.id, 'DELETE', { id: task.id }) };
     },
 
     /** Deletes locally only — pair with commitRemove / restore to offer undo. */
     async removeLocally(task: Task): Promise<void> {
       await store.delete(task.id);
+      await options.onRemove?.(task);
     },
 
     /** Sends a held delete to the cloud once the undo window closes. */
@@ -156,10 +167,12 @@ export function createTaskMutations(
     /** Puts a locally-removed task back (its delete was never queued, so nothing to sync). */
     async restore(task: Task): Promise<void> {
       await store.put(task);
+      await options.onRestore?.(task);
     },
 
     async removeMany(tasks: Task[]): Promise<SyncOutcome[]> {
       await store.bulkDelete(tasks.map((t) => t.id));
+      for (const t of tasks) await options.onRemove?.(t);
       const outcomes: SyncOutcome[] = [];
       for (const t of tasks) outcomes.push(await enqueue(t.id, 'DELETE', { id: t.id }));
       return outcomes;

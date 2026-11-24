@@ -277,7 +277,8 @@ export interface SyncQueueItem {
   id: string;
   table_name: string;
   record_id: string;
-  action: 'INSERT' | 'UPDATE' | 'DELETE';
+  /** PATCH updates only the columns in payload on an existing row (never inserts). */
+  action: 'INSERT' | 'UPDATE' | 'DELETE' | 'PATCH';
   payload: any;
   created_at: string;
   attempts: number;

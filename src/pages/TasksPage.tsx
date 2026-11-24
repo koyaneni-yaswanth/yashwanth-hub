@@ -185,7 +185,13 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
     if (editingTask) {
       // A finished copy of an old series that is given a repeat again starts a new series,
       // unless the series still continues on its next copy (that would create two series).
-      const successor = editingTask.recurred_to ? tasksById.get(editingTask.recurred_to) : undefined;
+      // Follow the series to its latest copy (it may have moved on more than once).
+      let successor = editingTask.recurred_to ? tasksById.get(editingTask.recurred_to) : undefined;
+      for (let hops = 0; successor?.recurred_to && hops < 1000; hops++) {
+        const next = tasksById.get(successor.recurred_to);
+        if (!next) break;
+        successor = next;
+      }
       const seriesContinues = !!successor && !successor.done && !!successor.recurrence;
       if (fields.recurrence && seriesContinues) {
         fields.recurrence = undefined;

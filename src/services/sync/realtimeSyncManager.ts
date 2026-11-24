@@ -5,6 +5,7 @@ import { resolveRemoteUpsert, resolveRemoteDelete } from './conflict';
 import { applyLifeRealtime } from './lifeSync';
 import { LIFE_TABLES } from './lifeSyncCore';
 import { mergeRemoteTask } from '../../lib/taskModel';
+import { googleDeletedKey, googleStatusKey } from '../../lib/googleTaskSync';
 
 export class RealtimeSyncManager {
   private static channels: any[] = [];
@@ -38,6 +39,12 @@ export class RealtimeSyncManager {
                   SyncQueueService.hasPendingChange('tasks', payload.new.id),
                 ]);
                 if (resolveRemoteUpsert(local, payload.new, pending) === 'apply') {
+                  // Another device changed a Google-linked task's done/open status: this device's
+                  // record of the last agreed status is out of date, so drop it (the next Google
+                  // sync then decides by edit times instead of undoing that change).
+                  if (local?.google_task_id && typeof payload.new.done === 'boolean' && payload.new.done !== local.done) {
+                    await db.settings.delete(googleStatusKey(local.google_task_id));
+                  }
                   // Keep subtasks / repeat / blockers the cloud doesn't carry yet, or that this
                   // device saved before the cloud had the columns (they win until uploaded).
                   const keepLocalV3 = await SyncQueueService.isTaskV3Unsynced(payload.new.id);
@@ -48,6 +55,12 @@ export class RealtimeSyncManager {
               if (payload.old?.id) {
                 const pending = await SyncQueueService.hasPendingChange('tasks', payload.old.id);
                 if (resolveRemoteDelete(pending) === 'apply') {
+                  // Deleted on another device: if it was linked to Google, delete it there too at
+                  // this device's next Google sync, so it isn't imported back.
+                  const local = await db.tasks.get(payload.old.id);
+                  if (local?.google_task_id) {
+                    await db.settings.put({ key: googleDeletedKey(local.google_task_id), value: true, updated_at: new Date().toISOString() });
+                  }
                   await db.tasks.delete(payload.old.id);
                 }
               }

@@ -27,8 +27,8 @@ import { CalendarDayList } from '../components/calendar/CalendarDayList';
 import {
   clashesWith,
   describeClash,
-  endsNextDay,
   expandOvernight,
+  runsPastMidnight,
   findClashes,
   sameStartEnd,
   formatTimeRange,
@@ -186,7 +186,7 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({ currentArea, areas }
   // only a zero-length time range is refused (and never for an event saved that way before).
   const formTimesUnchanged = !!editingEvent && formStartTime === (editingEvent.start_time || '') && formEndTime === (editingEvent.end_time || '');
   const formEndInvalid = sameStartEnd(formStartTime, formEndTime) && !formTimesUnchanged;
-  const formEndsNextDay = endsNextDay(formStartTime, formEndTime);
+  const formEndsNextDay = runsPastMidnight(formStartTime, formEndTime);
   const formClashes = isModalOpen
     ? (() => {
         // Both parts of an overnight event are checked; each clashing item is listed once.

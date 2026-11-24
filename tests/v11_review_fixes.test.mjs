@@ -13,11 +13,12 @@ import {
   cleanSubtasks,
   TASK_V3_FIELDS,
   withPendingSubtask,
+  unionV3List,
 } from '../src/lib/taskModel.ts';
 import { createTaskMutations } from '../src/services/sync/taskMutations.ts';
 import { resolveRemoteUpsert } from '../src/services/sync/conflict.ts';
-import { matchLocalTask, decideStatusSync, taskIdForGoogleTask } from '../src/lib/googleTaskSync.ts';
-import { timeSpan, formatTimeRange, clashesWith, expandOvernight, findClashes, itemKey } from '../src/lib/calendarModel.ts';
+import { matchLocalTask, decideStatusSync, taskIdForGoogleTask, googleStatusKey, googleDeletedKey } from '../src/lib/googleTaskSync.ts';
+import { timeSpan, formatTimeRange, clashesWith, expandOvernight, findClashes, itemKey, runsPastMidnight } from '../src/lib/calendarModel.ts';
 
 const T = (id, extra = {}) => ({ id, text: `Task ${id}`, area: 'Personal', priority: 'medium', starred: false, done: false, created_at: '2026-11-01T00:00:00.000Z', updated_at: '2026-11-01T00:00:00.000Z', ...extra });
 
@@ -235,7 +236,10 @@ test('Google status: the side that moved away from the last agreed status wins',
   assert.equal(decideStatusSync({ status: 'needsAction' }, { done: true }, false), 'export');
   assert.equal(decideStatusSync({ status: 'needsAction' }, { done: false }, true), 'none');
   assert.equal(decideStatusSync({ status: 'needsAction' }, { done: true, recurred_to: 'n' }, undefined), 'export', 'finished series copy stays done');
-  assert.equal(decideStatusSync({ status: 'completed' }, { done: false }, undefined), 'import', 'no record yet: Google wins as before');
+  assert.equal(decideStatusSync({ status: 'completed' }, { done: false }, undefined), 'import', 'no record and no times: Google wins');
+  // No record (linked before this build, or on another device): the side edited most recently wins.
+  assert.equal(decideStatusSync({ status: 'needsAction', updated: '2026-11-23T10:00:00Z' }, { done: true, updated_at: '2026-11-24T09:00:00Z' }, undefined), 'export', 'hub completion (newer) is pushed');
+  assert.equal(decideStatusSync({ status: 'completed', updated: '2026-11-24T11:00:00Z' }, { done: false, updated_at: '2026-11-24T09:00:00Z' }, undefined), 'import', 'Google completion (newer) is applied');
 });
 
 test('Google title fallback never links to a completed Google task', () => {
@@ -266,12 +270,15 @@ test('overnight events: span to midnight on the start date, labelled "next day",
 // Second review round
 // ---------------------------------------------------------------------------
 
-test('unsynced local v3 values fill empty cloud fields, but a value from another device wins', () => {
-  const local = T('a', { subtasks: [{ id: 's1', text: 'mine', done: false }], stage: 'doing' });
-  const remote = { ...T('a'), subtasks: [{ id: 's2', text: 'laptop', done: false }], stage: null, recurrence: null, blocked_by: null, recurred_to: null };
+test('unsynced local v3 values: fill empty cloud fields, add to cloud lists, lose to single values', () => {
+  const local = T('a', { subtasks: [{ id: 's1', text: 'mine', done: false }], stage: 'doing', recurrence: { freq: 'weekly', interval: 1 } });
+  const remote = { ...T('a'), subtasks: [{ id: 's2', text: 'laptop', done: false }], stage: null, recurrence: { freq: 'daily', interval: 1 }, blocked_by: null, recurred_to: null };
   const merged = mergeRemoteTask(local, remote, { keepLocalV3: true });
-  assert.deepEqual(merged.subtasks.map((x) => x.id), ['s2'], 'value written by another device after the migration wins');
+  assert.deepEqual(merged.subtasks.map((x) => x.id), ['s2', 's1'], 'list items from both devices are kept');
   assert.equal(merged.stage, 'doing', 'empty cloud field keeps the local-only value');
+  assert.equal(merged.recurrence.freq, 'daily', 'a single value written by another device wins');
+  const plain = mergeRemoteTask(local, remote);
+  assert.deepEqual(plain.subtasks.map((x) => x.id), ['s2'], 'without local-only data the cloud list simply applies');
 });
 
 test('a cloud row without the Google link does not unlink the task locally', () => {
@@ -305,4 +312,50 @@ test('overnight events show on the next day and clash there', () => {
   assert.ok(clashes.has('event:n:cont') && clashes.has('meeting:m'));
   assert.equal(itemKey(cont), 'event:n:cont');
   assert.equal(expandOvernight([{ id: 't', source: 'task', title: 'x', date: '2026-11-24', start: '23:00', end: '01:00' }]).length, 1, 'tasks never expand');
+});
+
+// ---------------------------------------------------------------------------
+// Third review round
+// ---------------------------------------------------------------------------
+
+test('list union keeps the cloud order and adds only missing local items', () => {
+  assert.deepEqual(unionV3List('subtasks', [{ id: 'a' }, { id: 'b' }], [{ id: 'b' }, { id: 'c' }]).map((x) => x.id), ['a', 'b', 'c']);
+  assert.deepEqual(unionV3List('blocked_by', ['x', 'y'], ['y', 'z']), ['x', 'y', 'z']);
+  assert.deepEqual(unionV3List('blocked_by', ['x'], ['x']), ['x']);
+});
+
+test('an event ending exactly at midnight has no part on the next day', () => {
+  assert.ok(!runsPastMidnight('21:00', '00:00'));
+  assert.ok(runsPastMidnight('23:00', '00:30'));
+  assert.equal(formatTimeRange({ start: '21:00', end: '00:00' }), '21:00–00:00');
+  const items = expandOvernight([
+    { id: 'movie', source: 'event', title: 'Movie', date: '2026-11-24', start: '21:00', end: '00:00' },
+    { id: 'call', source: 'meeting', title: 'Late call', date: '2026-11-25', start: '00:15', end: '00:45' },
+  ]);
+  assert.equal(items.length, 2, 'no phantom continuation');
+  assert.equal(findClashes(items).size, 0);
+  assert.deepEqual(timeSpan({ source: 'event', start: '21:00', end: '00:00' }), [1260, 1440], 'still runs to the end of its own day');
+});
+
+test('deleting tasks reports them (for Google delete markers) and undo reports the restore', async () => {
+  const removed = [];
+  const restored = [];
+  const rows = new Map([['a', T('a', { google_task_id: 'g1' })], ['b', T('b')]]);
+  const store = {
+    add: async (t) => rows.set(t.id, t),
+    update: async () => 1,
+    put: async (t) => rows.set(t.id, t),
+    delete: async (id) => rows.delete(id),
+    bulkDelete: async (ids) => ids.forEach((i) => rows.delete(i)),
+  };
+  const svc = createTaskMutations(store, { enqueueChange: async () => {} }, { onRemove: (t) => removed.push(t.id), onRestore: (t) => restored.push(t.id) });
+  const a = rows.get('a');
+  await svc.removeLocally(a);
+  await svc.restore(a);
+  await svc.remove(rows.get('a'));
+  await svc.removeMany([rows.get('b')]);
+  assert.deepEqual(removed, ['a', 'a', 'b']);
+  assert.deepEqual(restored, ['a']);
+  assert.equal(googleStatusKey('g1'), 'gtask_status:g1');
+  assert.equal(googleDeletedKey('g1'), 'gtask_deleted:g1');
 });

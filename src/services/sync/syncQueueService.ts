@@ -7,6 +7,7 @@ import {
   classifyColumnProbeError,
   hasTaskV3Values,
   toCloudTaskPayload,
+  unionV3List,
   type V3ColumnCheck,
 } from '../../lib/taskModel';
 
@@ -115,37 +116,67 @@ export class SyncQueueService {
 
   /**
    * Uploads v3 values that stayed on this device, without touching anything
-   * else: only the v3 columns, only where the cloud row still has them empty
-   * (a value another device wrote after the migration wins), and never by
-   * re-creating a row (a task deleted elsewhere stays deleted).
+   * else: only the v3 columns, never by re-creating a row (a task deleted
+   * elsewhere stays deleted), filling fields the cloud has empty and adding
+   * local-only list items (subtasks, blockers) to the cloud's. Each write is
+   * guarded by the cloud value it was based on, and the local row is re-read
+   * after the round trip, so changes made meanwhile (another tab, another
+   * device) are never overwritten. Only runs with a signed-in session (see
+   * flushQueue), so "no row" really means the task is gone.
    */
   private static async backfillTaskV3(client: Client, ids: string[]): Promise<void> {
     for (const id of ids) {
       try {
         // A queued upload of this task carries the values itself (and clears the mark).
         if (await this.hasPendingChange('tasks', id)) continue;
-        const local = (await db.tasks.get(id)) as (Task & Record<string, unknown>) | undefined;
-        if (!local || !hasTaskV3Values(local)) {
+        const before = await db.tasks.get(id);
+        if (!before || !hasTaskV3Values(before as unknown as Record<string, unknown>)) {
           await this.clearV3Unsynced(id);
           continue;
         }
         const { data, error } = await client.from('tasks').select(TASK_V3_FIELDS.join(',')).eq('id', id).maybeSingle();
         if (error) continue; // keep the mark; try again on a later flush
         if (!data) {
-          await this.clearV3Unsynced(id); // deleted elsewhere (or never uploaded and no longer queued)
+          await this.clearV3Unsynced(id); // deleted elsewhere
+          continue;
+        }
+        // Re-check after the round trip: another tab may have uploaded or changed this task meanwhile.
+        if (!(await this.isTaskV3Unsynced(id)) || (await this.hasPendingChange('tasks', id))) continue;
+        const local = (await db.tasks.get(id)) as (Task & Record<string, unknown>) | undefined;
+        if (!local) {
+          await this.clearV3Unsynced(id);
           continue;
         }
         const cloud = data as unknown as Record<string, unknown>;
-        const patch: Record<string, unknown> = {};
-        for (const k of TASK_V3_FIELDS) if (cloud[k] == null && !isEmptyV3(local[k])) patch[k] = local[k];
-        const fields = Object.keys(patch);
-        if (fields.length) {
-          let query = (client.from('tasks') as any).update(patch).eq('id', id);
-          for (const k of fields) query = query.is(k, null);
-          const { error: upErr } = await query;
-          if (upErr) continue;
+        let settled = true;
+
+        // 1. Fields the cloud has empty: fill them, only if still empty when the write lands.
+        const fill: Record<string, unknown> = {};
+        for (const k of TASK_V3_FIELDS) if (cloud[k] == null && !isEmptyV3(local[k])) fill[k] = local[k];
+        if (Object.keys(fill).length) {
+          let query = (client.from('tasks') as any).update(fill).eq('id', id);
+          for (const k of Object.keys(fill)) query = query.is(k, null);
+          const { error: fillErr } = await query;
+          if (fillErr) settled = false;
         }
-        await this.clearV3Unsynced(id);
+
+        // 2. Lists the cloud already has: add the local-only items, only if the cloud list is
+        //    still the one read above (otherwise retry on a later flush with a fresh read).
+        for (const k of ['subtasks', 'blocked_by'] as const) {
+          const c = cloud[k];
+          const l = local[k];
+          if (!Array.isArray(c) || !c.length || !Array.isArray(l) || !l.length) continue;
+          const merged = unionV3List(k, c, l);
+          if (merged.length === c.length) continue;
+          const { data: rows, error: listErr } = await (client.from('tasks') as any)
+            .update({ [k]: merged })
+            .eq('id', id)
+            .eq(k, JSON.stringify(c))
+            .select('id');
+          if (listErr || !Array.isArray(rows) || rows.length === 0) settled = false;
+        }
+
+        if (settled) await this.clearV3Unsynced(id);
       } catch {
         // Keep the mark; a later flush retries.
       }
@@ -162,7 +193,7 @@ export class SyncQueueService {
   public static async enqueueChange(
     tableName: string,
     recordId: string,
-    action: 'INSERT' | 'UPDATE' | 'DELETE',
+    action: 'INSERT' | 'UPDATE' | 'DELETE' | 'PATCH',
     payload: any
   ): Promise<void> {
     const item: SyncQueueItem = {
@@ -199,6 +230,15 @@ export class SyncQueueService {
     const client = getSupabaseClient();
     if (!client) return { processed: 0, failed: 0 };
 
+    // Every cloud table is per-user (row level security): without a signed-in session writes
+    // fail and reads see nothing, which must not be mistaken for "deleted". Changes stay queued.
+    try {
+      const { data } = await client.auth.getSession();
+      if (!data?.session) return { processed: 0, failed: 0 };
+    } catch {
+      return { processed: 0, failed: 0 };
+    }
+
     this.isFlushing = true;
     this.flushAgain = false;
     let processed = 0;
@@ -230,6 +270,10 @@ export class SyncQueueService {
             const { error } = await (client.from(item.table_name) as any).upsert(payload);
             if (error) throw error;
             if (uploadedV3) await this.clearV3Unsynced(item.record_id);
+          } else if (item.action === 'PATCH') {
+            // Only the given columns, only on an existing row: never re-creates or overwrites a task.
+            const { error } = await (client.from(item.table_name) as any).update(item.payload).eq('id', item.record_id);
+            if (error) throw error;
           } else if (item.action === 'DELETE') {
             const { error } = await (client.from(item.table_name) as any)
               .delete()

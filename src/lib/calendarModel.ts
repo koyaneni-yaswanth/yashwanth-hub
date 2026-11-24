@@ -58,11 +58,16 @@ export function sameStartEnd(start: string | undefined, end: string | undefined)
   return s !== null && e !== null && e === s;
 }
 
-/** True when the end time is earlier than the start time, i.e. the event ends the next day. */
+/** True when the end time is earlier than the start time, i.e. the event ends the next day (00:00 included). */
 export function endsNextDay(start: string | undefined, end: string | undefined): boolean {
   const s = toMinutes(start);
   const e = toMinutes(end);
   return s !== null && e !== null && e < s;
+}
+
+/** True when part of the event falls after midnight (an end of exactly 00:00 is just midnight). */
+export function runsPastMidnight(start: string | undefined, end: string | undefined): boolean {
+  return endsNextDay(start, end) && (toMinutes(end) ?? 0) > 0;
 }
 
 /** Timed items on the same day that overlap `candidate` (touching end-to-start is fine). */
@@ -112,7 +117,7 @@ export function expandOvernight(items: CalItem[]): CalItem[] {
   const out: CalItem[] = [];
   for (const it of items) {
     out.push(it);
-    if (it.source !== 'task' && !it.continued && endsNextDay(it.start, it.end)) {
+    if (it.source !== 'task' && !it.continued && runsPastMidnight(it.start, it.end)) {
       out.push({ ...it, date: nextDateKey(it.date), start: '00:00', end: it.end, continued: true });
     }
   }
@@ -146,5 +151,5 @@ export function formatTimeRange(item: Pick<CalItem, 'start' | 'end' | 'continued
   if (item.continued) return `Until ${item.end} (from the day before)`;
   if (!item.start) return 'All day';
   if (!item.end) return item.start;
-  return `${item.start}–${item.end}${endsNextDay(item.start, item.end) ? ' (next day)' : ''}`;
+  return `${item.start}–${item.end}${runsPastMidnight(item.start, item.end) ? ' (next day)' : ''}`;
 }

@@ -270,6 +270,18 @@ export function toCloudTaskPayload<T extends Row>(payload: T, cloudHasV3Columns:
  *   until they are uploaded, but a value another device wrote wins.
  * - Otherwise the cloud value applies; null means empty and is stored as absent.
  */
+/**
+ * Union of two versions of a list field (subtasks by id, blocked_by by value):
+ * the cloud's items in its order, then local items the cloud doesn't have.
+ * Used for values saved on one device before the cloud could store them, which
+ * are additions next to another device's, not competing edits.
+ */
+export function unionV3List(field: 'subtasks' | 'blocked_by', remote: unknown[], local: unknown[]): unknown[] {
+  const keyOf = (item: unknown) => (field === 'subtasks' ? String((item as Subtask)?.id) : String(item));
+  const seen = new Set(remote.map(keyOf));
+  return [...remote, ...local.filter((item) => !seen.has(keyOf(item)))];
+}
+
 export function mergeRemoteTask(local: Task | undefined, remote: Task, opts: { keepLocalV3?: boolean } = {}): Task {
   const merged = { ...remote } as Task & Row;
   for (const key of TASK_V3_FIELDS) {
@@ -277,8 +289,11 @@ export function mergeRemoteTask(local: Task | undefined, remote: Task, opts: { k
     let value: unknown;
     if (!local) value = remoteValue;
     else if (!(key in remote)) value = local[key];
-    // Unsynced local values only fill fields the cloud has empty; another device's value wins.
+    // Unsynced local values fill fields the cloud has empty; for lists they are added to
+    // another device's items; for single values another device's value wins.
     else if (opts.keepLocalV3 && remoteValue == null) value = local[key];
+    else if (opts.keepLocalV3 && (key === 'subtasks' || key === 'blocked_by') && Array.isArray(remoteValue) && Array.isArray(local[key]))
+      value = unionV3List(key, remoteValue, local[key] as unknown[]);
     else value = remoteValue;
     if (value === undefined || value === null) delete merged[key];
     else merged[key] = value as never;

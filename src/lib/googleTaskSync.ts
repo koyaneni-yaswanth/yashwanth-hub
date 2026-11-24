@@ -5,6 +5,11 @@ import type { GoogleTaskItem, Task } from '../types';
 
 const norm = (s: string | undefined) => String(s ?? '').trim().toLowerCase();
 
+/** Device-local settings keys: the last agreed done/open status, and linked tasks deleted in the hub. */
+export const googleStatusKey = (googleTaskId: string) => `gtask_status:${googleTaskId}`;
+export const googleDeletedKey = (googleTaskId: string) => `gtask_deleted:${googleTaskId}`;
+export const GOOGLE_DELETED_PREFIX = 'gtask_deleted:';
+
 /**
  * The local task a Google task belongs to.
  * 1. The task already linked to it (google_task_id).
@@ -38,24 +43,29 @@ export type StatusSync = 'none' | 'import' | 'export';
 
 /**
  * Which side's done/open status wins when they differ.
- * - lastSyncedDone is the status both sides last agreed on (recorded after
- *   every sync and every status push). Whichever side moved away from it wins:
- *   Google changed -> 'import', the hub changed -> 'export'. Unrelated edits
- *   (a star, a note, a due date) don't count, and device clocks don't matter.
- * - With no record yet, Google wins (the behaviour before this rule existed).
+ * - lastSyncedDone is the status both sides last agreed on (recorded on this
+ *   device after every sync and status push). Whichever side moved away from
+ *   it wins: Google changed -> 'import', the hub changed -> 'export'. Unrelated
+ *   edits (a star, a note, a due date) don't count.
+ * - With no record (a task linked before this rule, or by another device, or
+ *   whose status another device changed), the side edited most recently wins;
+ *   if either time is unknown, Google wins.
  * - A finished copy of a repeating series is never reopened from Google (its
  *   next copy already exists); its "done" is pushed to Google instead.
  */
 export function decideStatusSync(
-  gt: Pick<GoogleTaskItem, 'status'>,
-  local: Pick<Task, 'done' | 'recurred_to'>,
+  gt: Pick<GoogleTaskItem, 'status' | 'updated'>,
+  local: Pick<Task, 'done' | 'recurred_to'> & { updated_at?: string },
   lastSyncedDone?: boolean
 ): StatusSync {
   const googleDone = gt.status === 'completed';
   if (googleDone === local.done) return 'none';
   if (local.recurred_to) return local.done ? 'export' : 'none';
-  if (lastSyncedDone === undefined) return 'import';
-  return googleDone !== lastSyncedDone ? 'import' : 'export';
+  if (lastSyncedDone !== undefined) return googleDone !== lastSyncedDone ? 'import' : 'export';
+  const googleAt = Date.parse(String(gt.updated ?? ''));
+  const localAt = Date.parse(String(local.updated_at ?? ''));
+  if (Number.isNaN(googleAt) || Number.isNaN(localAt)) return 'import';
+  return localAt > googleAt ? 'export' : 'import';
 }
 
 /**
