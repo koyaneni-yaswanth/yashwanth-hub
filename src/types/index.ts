@@ -357,6 +357,8 @@ export interface GoogleTaskItem {
   updated?: string;
   listId?: string;
   hubTaskId?: string;
+  /** Completed task cleared from the list in Google Tasks (not shown there any more). */
+  hidden?: boolean;
 }
 
 export interface GooglePhotoItem {

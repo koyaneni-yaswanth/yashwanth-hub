@@ -740,7 +740,11 @@ export const TasksPage: React.FC<TasksPageProps> = ({ currentArea, areas }) => {
         onClose={() => setIsClearDoneConfirmOpen(false)}
         onConfirm={handleClearDone}
         title="Clear All Completed Tasks"
-        message="Are you sure you want to delete all completed tasks across the workspace?"
+        message={
+          allTasks.some((t) => t.done && t.google_task_id)
+            ? 'Are you sure you want to delete all completed tasks across the workspace? Completed tasks linked to Google Tasks are deleted there too at the next Google sync.'
+            : 'Are you sure you want to delete all completed tasks across the workspace?'
+        }
       />
     </div>
   );

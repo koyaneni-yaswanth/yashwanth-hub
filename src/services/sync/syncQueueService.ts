@@ -230,17 +230,24 @@ export class SyncQueueService {
     const client = getSupabaseClient();
     if (!client) return { processed: 0, failed: 0 };
 
+    // Claim the flush before any await, so calls in the same moment can't run two flushes at once.
+    this.isFlushing = true;
+    this.flushAgain = false;
+
     // Every cloud table is per-user (row level security): without a signed-in session writes
     // fail and reads see nothing, which must not be mistaken for "deleted". Changes stay queued.
+    let signedIn = false;
     try {
       const { data } = await client.auth.getSession();
-      if (!data?.session) return { processed: 0, failed: 0 };
+      signedIn = Boolean(data?.session);
     } catch {
+      signedIn = false;
+    }
+    if (!signedIn) {
+      this.isFlushing = false;
       return { processed: 0, failed: 0 };
     }
 
-    this.isFlushing = true;
-    this.flushAgain = false;
     let processed = 0;
     let failed = 0;
     // Checked at most once per flush, and only when needed.
@@ -272,8 +279,16 @@ export class SyncQueueService {
             if (uploadedV3) await this.clearV3Unsynced(item.record_id);
           } else if (item.action === 'PATCH') {
             // Only the given columns, only on an existing row: never re-creates or overwrites a task.
-            const { error } = await (client.from(item.table_name) as any).update(item.payload).eq('id', item.record_id);
+            const { data: rows, error } = await (client.from(item.table_name) as any)
+              .update(item.payload)
+              .eq('id', item.record_id)
+              .select('id');
             if (error) throw error;
+            // No row yet but its upload is still queued (e.g. it failed earlier in this flush):
+            // keep the patch for the next flush instead of losing it.
+            if ((!Array.isArray(rows) || rows.length === 0) && (await this.hasPendingChange(item.table_name, item.record_id))) {
+              throw new Error('The row this change belongs to has not been uploaded yet; will retry.');
+            }
           } else if (item.action === 'DELETE') {
             const { error } = await (client.from(item.table_name) as any)
               .delete()
@@ -320,12 +335,16 @@ export class SyncQueueService {
     return { processed, failed };
   }
 
-  /** True when this record has a local INSERT/UPDATE that hasn't reached the cloud yet. */
+  /**
+   * True when this record has a local INSERT/UPDATE that hasn't reached the cloud yet (a whole
+   * row that will be uploaded). A PATCH doesn't count: it can't re-create a row, so it must not
+   * make this device ignore another device's delete or update.
+   */
   public static async hasPendingChange(tableName: string, recordId: string): Promise<boolean> {
     const count = await db.sync_queue
       .where('record_id')
       .equals(recordId)
-      .filter((i) => i.table_name === tableName && i.action !== 'DELETE')
+      .filter((i) => i.table_name === tableName && (i.action === 'INSERT' || i.action === 'UPDATE'))
       .count();
     return count > 0;
   }

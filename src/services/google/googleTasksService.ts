@@ -6,6 +6,7 @@ import { TaskService } from '../sync/taskService';
 import { SyncQueueService } from '../sync/syncQueueService';
 import {
   GOOGLE_DELETED_PREFIX,
+  GOOGLE_STATUS_PREFIX,
   decideStatusSync,
   googleStatusKey,
   matchLocalTask,
@@ -14,12 +15,6 @@ import {
 
 export class GoogleTasksService {
   private static BASE_URL = 'https://tasks.googleapis.com/tasks/v1';
-
-  /** The done/open status both sides last agreed on, as recorded on this device. */
-  private static async lastSyncedDone(googleTaskId: string): Promise<boolean | undefined> {
-    const row = await db.settings.get(googleStatusKey(googleTaskId));
-    return typeof row?.value === 'boolean' ? row.value : undefined;
-  }
 
   private static async recordSyncedDone(googleTaskId: string, done: boolean): Promise<void> {
     await db.settings.put({ key: googleStatusKey(googleTaskId), value: done, updated_at: new Date().toISOString() });
@@ -90,6 +85,7 @@ export class GoogleTasksService {
         status: t.status === 'completed' ? 'completed' : 'needsAction',
         due: t.due ? t.due.slice(0, 10) : undefined,
         updated: t.updated,
+        hidden: Boolean(t.hidden),
         listId,
       })) as GoogleTaskItem[];
 
@@ -196,6 +192,11 @@ export class GoogleTasksService {
     );
     const stillDeleting = new Set<string>();
     for (const gid of deletedGoogleIds) {
+      // The task came back in the hub (undo, or another device's edit won): keep its Google copy.
+      if ((await db.tasks.filter((t) => t.google_task_id === gid).count()) > 0) {
+        await db.settings.delete(GOOGLE_DELETED_PREFIX + gid);
+        continue;
+      }
       if (await this.deleteGoogleTask(gid, listId)) {
         await db.settings.delete(GOOGLE_DELETED_PREFIX + gid);
         await db.settings.delete(googleStatusKey(gid));
@@ -204,13 +205,15 @@ export class GoogleTasksService {
       }
     }
 
+    // Status records as they were before Google's list was fetched: a status push made while the
+    // sync runs must not make the fetched (older) Google status look like a change made in Google.
+    const records = new Map<string, boolean>();
+    for (const row of await db.settings.filter((r) => typeof r.key === 'string' && r.key.startsWith(GOOGLE_STATUS_PREFIX)).toArray()) {
+      if (typeof row.value === 'boolean') records.set(row.key.slice(GOOGLE_STATUS_PREFIX.length), row.value);
+    }
     // A Google task whose delete failed is skipped (not imported back) until the delete succeeds.
     const gTasks = (await this.fetchGoogleTasks(listId)).filter((gt) => !stillDeleting.has(gt.id));
     const localTasks = await db.tasks.toArray();
-    // Status records as they were when Google's list was fetched (a push during the sync must
-    // not make the fetched, older Google status look like a change made in Google).
-    const records = new Map<string, boolean | undefined>();
-    for (const gt of gTasks) records.set(gt.id, await this.lastSyncedDone(gt.id));
 
     let imported = 0;
     let exported = 0;
@@ -241,6 +244,8 @@ export class GoogleTasksService {
           if (!match.google_task_id) await this.linkTask(match.id, gt.id);
         }
       } else {
+        // A completed task that was cleared from the list in Google isn't brought into the hub.
+        if (gt.status === 'completed' && gt.hidden) continue;
         // New task created in Google Tasks -> import it. The id is derived from the Google id,
         // so devices importing the same task create one row, and it is queued for the cloud.
         const id = await taskIdForGoogleTask(gt.id);

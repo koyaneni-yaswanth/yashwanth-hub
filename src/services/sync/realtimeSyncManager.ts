@@ -43,8 +43,18 @@ export class RealtimeSyncManager {
                   // record of the last agreed status is out of date, so drop it (the next Google
                   // sync then decides by edit times instead of undoing that change).
                   if (local?.google_task_id && typeof payload.new.done === 'boolean' && payload.new.done !== local.done) {
-                    await db.settings.delete(googleStatusKey(local.google_task_id));
+                    const gid = local.google_task_id;
+                    const done = payload.new.done;
+                    // Bring Google in line now if this device can (the push records the new agreed
+                    // status); otherwise drop the out-of-date record so the next sync decides by edit times.
+                    void import('../google/googleTasksService')
+                      .then(({ GoogleTasksService }) => GoogleTasksService.setGoogleTaskStatus(gid, done))
+                      .then((pushed) => (pushed ? undefined : db.settings.delete(googleStatusKey(gid))))
+                      .catch(() => db.settings.delete(googleStatusKey(gid)));
                   }
+                  // A linked task that is back (e.g. another device's edit won over a delete) keeps
+                  // its Google copy: cancel any pending Google delete for it.
+                  if (payload.new.google_task_id) await db.settings.delete(googleDeletedKey(payload.new.google_task_id));
                   // Keep subtasks / repeat / blockers the cloud doesn't carry yet, or that this
                   // device saved before the cloud had the columns (they win until uploaded).
                   const keepLocalV3 = await SyncQueueService.isTaskV3Unsynced(payload.new.id);

@@ -6,7 +6,8 @@ import type { GoogleTaskItem, Task } from '../types';
 const norm = (s: string | undefined) => String(s ?? '').trim().toLowerCase();
 
 /** Device-local settings keys: the last agreed done/open status, and linked tasks deleted in the hub. */
-export const googleStatusKey = (googleTaskId: string) => `gtask_status:${googleTaskId}`;
+export const GOOGLE_STATUS_PREFIX = 'gtask_status:';
+export const googleStatusKey = (googleTaskId: string) => `${GOOGLE_STATUS_PREFIX}${googleTaskId}`;
 export const googleDeletedKey = (googleTaskId: string) => `gtask_deleted:${googleTaskId}`;
 export const GOOGLE_DELETED_PREFIX = 'gtask_deleted:';
 
