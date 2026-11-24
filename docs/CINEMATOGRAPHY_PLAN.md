@@ -114,7 +114,29 @@ visitors see honest empty states and the owner sees "Add your first film" prompt
 4. **Content:** name, designation, bio, showreel and films must come from you. Nothing is invented.
 5. **Inquiry alerts:** an in-app notification (recommended, needs no keys), plus email later if wanted.
 
-## 7. Owner actions this work will need
+## 7. Corrections from the independent review (finished after this plan was first written)
+
+The adversarial re-check and completeness critic completed late. Changes to the plan above:
+
+- **Inquiry alerts:** the hub never reads cloud `notifications`, so a database trigger alone would alert no one.
+  Instead, the Studio gets an **Inbox** that reads `cine_inquiries` directly (owner-only), with an unread badge.
+- **Film projects:** don't identify them by `area = 'Cinematography'`. Areas are user-editable, and ProjectsPage links tasks/notes/docs by area,
+  so every film would show every other film's items. Link each production by `project_id` and mark it with a dedicated field or tag.
+- **Contact anti-spam:** no anon-callable RPC that takes the IP as a parameter, because callers would pick their own. Inserts go only
+  through `api/cinema.ts`, which hashes the IP itself (salted) and rate-limits per IP plus a soft global cap, so one spammer can't block real inquiries.
+- **Public reads:** anon reads go through column-limited views only (no `user_id`, no `production_id`). Media follows its parent's publish state.
+  Unpublishing deletes or moves the public derivatives, and edge caching uses a short stale window.
+- **SQL hygiene:** every `SECURITY DEFINER` function gets `set search_path = ''`, `REVOKE EXECUTE FROM PUBLIC` and narrow grants.
+  The same migration revokes anon execution of the existing seed RPCs and drops the stale `or auth.uid() is null` policy text from `master_schema.sql`.
+- **Storage:** limit allowed MIME types per bucket and never allow SVG (script risk on the public URL). Only the owner may update or delete.
+- **Owner-authored text:** HTML-escape it in any server-rendered page (`og`), escape `<` in JSON-LD, and accept only http/https for every stored URL.
+  Inquiry fields render as plain text, never auto-linked.
+- **Missing brief items to keep in scope:** script and storyboard uploads, synced editing notes, category management, and EXIF capture at upload.
+- **Existing AI bug to fix in Phase 5:** the Gemini tool-schema converter keeps array/object properties but drops `items`,
+  which yields an invalid schema. A shot-list tool will need proper nested schemas.
+- **Pawan Shakti seed:** gate it before the public site is promoted (Phase 2 entry split).
+
+## 8. Owner actions this work will need
 - Run the Phase 6 migration in the Supabase SQL editor (plus the two still-pending Phase 2/3 migrations).
 - Optional but recommended: `SUPABASE_SERVICE_ROLE_KEY` in Vercel (stronger contact-form path).
 - Upload real stills, a portrait and video links once the CMS exists.
