@@ -19,7 +19,8 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return saved;
       }
     }
-    return 'system';
+    // Dark is the default look of Jarvis OS v3 (matches the pre-paint script in index.html).
+    return 'dark';
   });
 
   const [isDark, setIsDark] = useState<boolean>(() => {

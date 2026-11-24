@@ -270,7 +270,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Minimal Settings shortcut in Footer */}
       <div className="pt-3 mt-auto border-t border-[var(--hub-line)] flex items-center justify-between px-2">
         <span className="text-[11px] font-medium text-[var(--hub-muted)]">
-          Jarvis OS v2.5
+          Jarvis OS v3.0
         </span>
         <button
           onClick={() => handleNavClick('settings')}
