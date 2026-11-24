@@ -1,6 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Pause, Play, RotateCcw } from 'lucide-react';
 import { hash01 } from '../../lib/lifeDomains';
+import { CINEMA, settleFactor, tierSettings, type QualityTier } from './cinema/cinemaConfig';
+import { CinematicCameraRig } from './cinema/CinematicCameraRig';
+import { LightingDirector } from './cinema/LightingDirector';
+import { Atmosphere } from './cinema/Atmosphere';
+import { PostFX } from './cinema/PostFX';
+import { PerformanceManager } from './cinema/PerformanceManager';
 
 export interface SceneGoal {
   id: string;
@@ -69,7 +75,8 @@ export interface LifeConstellationProps {
 
 export type TourStop = { kind: 'home' | 'core' | 'memories' } | { kind: 'goal' | 'project'; id: string };
 
-const ACCENT = '#7dd3fc';
+/** Brand gold: core, energy ring, streams and the focus halo. */
+const ACCENT = CINEMA.palette.accent;
 const NO_PROJECTS: SceneProject[] = [];
 
 function prefersReducedMotion(): boolean {
@@ -186,16 +193,18 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
         UnrealBloomPass: typeof import('three/examples/jsm/postprocessing/UnrealBloomPass.js').UnrealBloomPass;
         OutputPass: typeof import('three/examples/jsm/postprocessing/OutputPass.js').OutputPass;
         RoomEnvironment: typeof import('three/examples/jsm/environments/RoomEnvironment.js').RoomEnvironment;
+        ShaderPass: typeof import('three/examples/jsm/postprocessing/ShaderPass.js').ShaderPass;
       };
       try {
         THREE = await import('three');
-        const [oc, ec, rp, ub, op, re] = await Promise.all([
+        const [oc, ec, rp, ub, op, re, sp] = await Promise.all([
           import('three/examples/jsm/controls/OrbitControls.js'),
           import('three/examples/jsm/postprocessing/EffectComposer.js'),
           import('three/examples/jsm/postprocessing/RenderPass.js'),
           import('three/examples/jsm/postprocessing/UnrealBloomPass.js'),
           import('three/examples/jsm/postprocessing/OutputPass.js'),
           import('three/examples/jsm/environments/RoomEnvironment.js'),
+          import('three/examples/jsm/postprocessing/ShaderPass.js'),
         ]);
         mods = {
           OrbitControls: oc.OrbitControls,
@@ -204,6 +213,7 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
           UnrealBloomPass: ub.UnrealBloomPass,
           OutputPass: op.OutputPass,
           RoomEnvironment: re.RoomEnvironment,
+          ShaderPass: sp.ShaderPass,
         };
       } catch {
         if (!disposed) setStatus('unsupported');
@@ -221,12 +231,16 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
 
       let width = mount.clientWidth || 800;
       let height = mount.clientHeight || 500;
-      const small = width < 640;
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, small ? 1.5 : 1.75));
+      const reducedMotion = prefersReducedMotion();
+      // Quality tier: device hints now, measured fps later (PerformanceManager steps down only).
+      const perfMgr = new PerformanceManager(PerformanceManager.readDevice(width, reducedMotion), (tier, set) => applyTier(tier, set));
+      const tierSet = perfMgr.settings;
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, tierSet.pixelRatioCap));
       renderer.setSize(width, height);
-      renderer.setClearColor(0x04060d, 1);
+      renderer.setClearColor(CINEMA.palette.background, 1);
+      // Colour management: linear lighting, ACES filmic tone mapping, sRGB output.
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.05;
+      renderer.toneMappingExposure = CINEMA.renderer.exposure;
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.domElement.setAttribute('aria-hidden', 'true');
       renderer.domElement.style.display = 'block';
@@ -234,11 +248,7 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
       mount.appendChild(renderer.domElement);
 
       const scene = new THREE.Scene();
-      scene.fog = new THREE.FogExp2(0x050914, 0.011);
-      const pmrem = new THREE.PMREMGenerator(renderer);
-      const envTex = pmrem.fromScene(new mods.RoomEnvironment(), 0.04).texture;
-      scene.environment = envTex;
-      scene.environmentIntensity = 0.35;
+      const lighting = new LightingDirector(THREE, renderer, scene, mods.RoomEnvironment);
 
       const accent = new THREE.Color(ACCENT);
       const world = new THREE.Group();
@@ -252,7 +262,7 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
       const outerR = Math.max(goals.length ? orbitR(goals.length - 1) + 1.6 : 0, orbitR(1) + 1.6);
       const memR = outerR + 4.5;
 
-      const camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 400);
+      const camera = new THREE.PerspectiveCamera(CINEMA.camera.fov, width / height, 0.1, 400);
       // Portrait frames (phones) need the camera further back so outer planets aren't cut off.
       const portrait = Math.max(1, 1.2 / Math.max(0.45, width / height));
       // Projects orbit outside the goals; include them in the framing when present.
@@ -267,49 +277,16 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
       controls.minPolarAngle = 0.35;
       controls.maxPolarAngle = 1.75;
 
-      // --- Lights ---
-      scene.add(new THREE.AmbientLight(0x6f86b8, 0.25));
-      const coreLight = new THREE.PointLight(ACCENT, 60, 0, 1.6);
-      world.add(coreLight);
-      const rim = new THREE.DirectionalLight(0x9fb8ff, 1.4);
-      rim.position.set(-12, 9, -14);
-      scene.add(rim);
-      const key = new THREE.DirectionalLight(0xffffff, 0.6);
-      key.position.set(10, 6, 12);
-      scene.add(key);
+      // --- Lights: warm key, cool rim, low hemispheric fill, the core as a practical light ---
+      world.add(lighting.coreLight);
 
-      // --- Nebula + stars (behind everything, unaffected by fog) ---
+      // --- Atmosphere: fog, brand-tinted nebulae, star layers, midground dust ---
       const disc = radialTexture(THREE, 'rgba(255,255,255,1)', 'rgba(255,255,255,0)', 64);
-      const nebulaColors = ['rgba(98,64,214,0.55)', 'rgba(29,78,216,0.5)', 'rgba(14,116,144,0.45)'];
-      const nebulae: import('three').Sprite[] = [];
-      nebulaColors.forEach((c, i) => {
-        const s = new THREE.Sprite(
-          new THREE.SpriteMaterial({ map: radialTexture(THREE, c, 'rgba(0,0,0,0)', 256), transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })
-        );
-        s.position.set([-40, 35, 5][i], [12, -6, 22][i], -90 - i * 12);
-        s.scale.setScalar(110 + i * 20);
-        scene.add(s);
-        nebulae.push(s);
+      const atmosphere = new Atmosphere(THREE, scene, disc, (inner, outer, size) => radialTexture(THREE, inner, outer, size), {
+        starsFar: tierSet.starsFar,
+        starsNear: tierSet.starsNear,
+        dust: tierSet.dust,
       });
-      const makeStars = (count: number, rMin: number, rMax: number, size: number, opacity: number) => {
-        const pos = new Float32Array(count * 3);
-        for (let i = 0; i < count; i++) {
-          const r = rMin + Math.random() * (rMax - rMin);
-          const t = Math.random() * Math.PI * 2;
-          const p = Math.acos(2 * Math.random() - 1);
-          pos.set([r * Math.sin(p) * Math.cos(t), r * Math.cos(p) * 0.7, r * Math.sin(p) * Math.sin(t)], i * 3);
-        }
-        const geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-        const pts = new THREE.Points(
-          geo,
-          new THREE.PointsMaterial({ map: disc, size, sizeAttenuation: true, color: 0xdfe8ff, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })
-        );
-        scene.add(pts);
-        return pts;
-      };
-      const starsFar = makeStars(small ? 700 : 1400, 90, 160, 0.9, 0.7);
-      const starsNear = makeStars(small ? 160 : 320, 40, 80, 0.55, 0.55);
 
       // --- Core: momentum (glass shell, luminous heart, metal rings) ---
       const core = new THREE.Group();
@@ -336,7 +313,7 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
         })
       );
       core.add(glass);
-      const metal = new THREE.MeshStandardMaterial({ color: 0xc9d4e8, metalness: 1, roughness: 0.22, envMapIntensity: 1.4 });
+      const metal = new THREE.MeshStandardMaterial({ color: CINEMA.palette.metal, metalness: 1, roughness: 0.24, envMapIntensity: 1.3 });
       const ringA = new THREE.Mesh(new THREE.TorusGeometry(coreR * 1.42, 0.04, 16, 180), metal);
       ringA.rotation.x = Math.PI / 2.15;
       core.add(ringA);
@@ -344,7 +321,7 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
       ringB.rotation.set(Math.PI / 2.6, 0.5, 0);
       core.add(ringB);
       const halo = new THREE.Sprite(
-        new THREE.SpriteMaterial({ map: radialTexture(THREE, 'rgba(125,211,252,0.38)'), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })
+        new THREE.SpriteMaterial({ map: radialTexture(THREE, 'rgba(198,164,107,0.3)'), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })
       );
       halo.scale.setScalar(coreR * 6.5);
       core.add(halo);
@@ -378,7 +355,7 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
         color: import('three').Color;
       };
       const planets: Planet[] = [];
-      const orbitMat = new THREE.LineBasicMaterial({ color: 0x8fb4ff, transparent: true, opacity: 0.1 });
+      const orbitMat = new THREE.LineBasicMaterial({ color: CINEMA.palette.steel, transparent: true, opacity: 0.1 });
       goals.forEach((g, i) => {
         const r = orbitR(i);
         const tilt = new THREE.Object3D();
@@ -573,7 +550,7 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
       world.add(memGroup);
       const memPos: import('three').Vector3[] = [];
       const memSprites = new Map<string, import('three').Sprite>();
-      const memMat = new THREE.SpriteMaterial({ map: radialTexture(THREE, 'rgba(200,185,255,0.9)'), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.75 });
+      const memMat = new THREE.SpriteMaterial({ map: radialTexture(THREE, 'rgba(214,224,238,0.85)'), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.75 });
       memories.slice(0, 70).forEach((m) => {
         const theta = hash01(m.id) * Math.PI * 2;
         const phi = Math.acos(2 * hash01(m.id + 'p') - 1);
@@ -611,7 +588,7 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
       if (segs.length) {
         const g = new THREE.BufferGeometry();
         g.setAttribute('position', new THREE.Float32BufferAttribute(segs, 3));
-        memGroup.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x9d8cff, transparent: true, opacity: 0.11, blending: THREE.AdditiveBlending, depthWrite: false })));
+        memGroup.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: CINEMA.palette.steel, transparent: true, opacity: 0.11, blending: THREE.AdditiveBlending, depthWrite: false })));
       }
 
       // --- Projects: orbital systems (task satellites, milestone waypoints, progress field) ---
@@ -740,7 +717,8 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
       };
       const baseFog = (scene.fog as import('three').FogExp2).density;
       const updateFocus = (dt: number): boolean => {
-        const k = reduced ? 1 : 1 - Math.exp(-dt * 2.6);
+        // Exponential settle (no linear motion): ~95% of the way in about 1 s.
+        const k = reduced ? 1 : settleFactor(CINEMA.camera.focusRate, dt);
         let moving = false;
         if (focus.kind === 'memories') {
           // Tour overview of the journal shell: pull back and up so the whole web is visible.
@@ -781,7 +759,7 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
       // --- Focus field: while deep work runs, the scene quiets and the goal gets a soft halo ---
       const ff = { level: 0 };
       const ffHalo = new THREE.Sprite(
-        new THREE.SpriteMaterial({ map: radialTexture(THREE, 'rgba(125,211,252,0.6)'), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending })
+        new THREE.SpriteMaterial({ map: radialTexture(THREE, 'rgba(198,164,107,0.5)'), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending })
       );
       world.add(ffHalo);
       const updateFocusField = (dt: number, t: number): boolean => {
@@ -797,7 +775,7 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
           ffHalo.scale.setScalar(base * (1 + (reduced ? 0 : Math.sin(t * 0.6) * 0.06)));
           (ffHalo.material as import('three').SpriteMaterial).opacity = ff.level * 0.55;
           energyRing.scale.setScalar(1 - ff.level * 0.2);
-          for (const n of nebulae) (n.material as import('three').SpriteMaterial).opacity = 0.32 * (1 - ff.level * 0.55);
+          atmosphere.setNebulaLevel(1 - ff.level * 0.55);
           (scene.fog as import('three').FogExp2).density = baseFog + focus.dim * 0.005 + ff.level * 0.004;
         } else if (prev > 0) {
           (ffHalo.material as import('three').SpriteMaterial).opacity = 0;
@@ -805,17 +783,18 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
         return Math.abs(ff.level - prev) > 0.001;
       };
 
-      // --- Post-processing: gentle bloom ---
-      const composer = new mods.EffectComposer(renderer);
-      composer.addPass(new mods.RenderPass(scene, camera));
-      const bloom = new mods.UnrealBloomPass(new THREE.Vector2(width, height), small ? 0.42 : 0.5, 0.5, 0.22);
-      composer.addPass(bloom);
-      composer.addPass(new mods.OutputPass());
+      // --- Post-processing: bloom on true highlights, ACES output, mild vignette + faint grain ---
+      const postFX = new PostFX(THREE, mods, renderer, scene, camera, { width, height }, { bloom: tierSet.bloom, grain: tierSet.grain });
+      // --- Cinematic camera: reveal (first open only), scroll path, micro-parallax, idle breath ---
+      const rig = new CinematicCameraRig(THREE, mount, {
+        motion: !reducedMotion,
+        intro: !cameraStateRef.current,
+        onChange: () => requestRenderRef.current(),
+      });
 
       // --- Interaction: picking, parallax, reset ---
       const raycaster = new THREE.Raycaster();
       const pointer = new THREE.Vector2();
-      const parallax = { x: 0, y: 0, tx: 0, ty: 0 };
       let downAt = 0;
       const pickables: import('three').Object3D[] = [...planets.map((p) => p.mesh), ...projectSystems.map((x) => x.core), ...memSprites.values()];
       const pick = (e: PointerEvent) => {
@@ -825,20 +804,18 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
         return raycaster.intersectObjects(pickables, false)[0]?.object;
       };
       const onMove = (e: PointerEvent) => {
-        const rect = renderer.domElement.getBoundingClientRect();
-        parallax.tx = ((e.clientX - rect.left) / rect.width - 0.5) * 0.16;
-        parallax.ty = ((e.clientY - rect.top) / rect.height - 0.5) * 0.08;
         const hit = pick(e);
         renderer.domElement.style.cursor = hit ? 'pointer' : 'grab';
         cbRef.current.onHover?.(hit ? (hit.userData.title as string) : null);
         requestRender();
       };
       const onLeave = () => {
-        parallax.tx = 0;
-        parallax.ty = 0;
         cbRef.current.onHover?.(null);
       };
-      const onDown = () => (downAt = performance.now());
+      const onDown = () => {
+        downAt = performance.now();
+        rig.skipIntro(); // the user takes the camera: don't keep gliding
+      };
       const onUp = (e: PointerEvent) => {
         if (performance.now() - downAt > 250) return; // a drag, not a click
         const hit = pick(e);
@@ -877,7 +854,7 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
         height = mount.clientHeight;
         if (!width || !height) return;
         renderer.setSize(width, height);
-        composer.setSize(width, height);
+        postFX.setSize(width, height);
         camera.aspect = width / height;
         camera.updateProjectionMatrix();
         requestRender();
@@ -893,40 +870,44 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
       io.observe(mount);
       const timer = new THREE.Timer();
       let raf = 0;
-      // Adaptive quality: if the first few animated seconds run below ~28 fps, step down
-      // once — lower resolution and swap glass refraction (an extra render pass) for shine.
-      const perf = { frames: 0, time: 0, done: false };
-      const stepDown = () => {
-        perf.done = true;
-        renderer.setPixelRatio(1);
-        composer.setPixelRatio(1);
-        composer.setSize(width, height);
+      // Adaptive quality: PerformanceManager measures fps in 2 s windows and steps the tier down.
+      function applyTier(tier: QualityTier, set: ReturnType<typeof tierSettings>) {
+        const ratio = Math.min(window.devicePixelRatio, set.pixelRatioCap);
+        renderer.setPixelRatio(ratio);
+        postFX.setPixelRatio(ratio);
+        postFX.setSize(width, height);
+        postFX.setQuality({ bloom: set.bloom, grain: set.grain });
+        if (!set.glassTransmission) switchGlassToSheen();
+        if (atmosphere.dust && tier === 'low') atmosphere.dust.visible = false;
+        requestRender();
+      }
+      // Glass refraction costs an extra scene render: below "high" it becomes a cheap sheen.
+      function switchGlassToSheen() {
         const gm = glass.material as import('three').MeshPhysicalMaterial;
+        if (gm.transmission === 0) return;
         gm.transmission = 0;
         gm.transparent = true;
         gm.opacity = 0.28;
         gm.needsUpdate = true;
-      };
+      }
+      if (!tierSet.glassTransmission) switchGlassToSheen();
       const tick = () => {
         raf = requestAnimationFrame(tick);
         timer.update();
         const dt = Math.min(0.05, timer.getDelta());
-        if (!visible || document.hidden) return;
+        if (!visible || document.hidden) {
+          perfMgr.resetWindow();
+          return;
+        }
         const animate = !pausedRef.current;
         const focusing = updateFocus(dt) || updateFocusField(dt, timer.getElapsed());
         const calm = 1 - ff.level * 0.75;
         const damping = controls.update();
-        if (!animate && !needsRender && !damping && !focusing && !pulses.length) return;
+        if (!animate && !needsRender && !damping && !focusing && !pulses.length && !rig.revealing) return;
         needsRender = false;
         const t = timer.getElapsed();
-        if (animate && !perf.done) {
-          perf.frames++;
-          perf.time += dt;
-          if (perf.time >= 3) {
-            if (perf.frames / perf.time < 28) stepDown();
-            else perf.done = true;
-          }
-        }
+        if (animate) perfMgr.sample(dt);
+        else perfMgr.resetWindow();
 
         if (animate) {
           world.rotation.y += 0.012 * dt * calm;
@@ -945,13 +926,10 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
             ps.spin.rotation.y += 0.3 * dt;
             ps.core.rotation.y += 0.5 * dt;
           }
-          starsNear.rotation.y += 0.004 * dt * calm;
-          starsFar.rotation.y += 0.0015 * dt * calm;
-          halo.scale.setScalar(coreR * (6.5 + Math.sin(t * 0.8) * 0.35));
-          parallax.x += (parallax.tx - parallax.x) * 0.04;
-          parallax.y += (parallax.ty - parallax.y) * 0.04;
-          scene.rotation.y = parallax.x;
-          scene.rotation.x = parallax.y;
+          atmosphere.update(dt, t, calm);
+          // Slow "breathing" on the hero: the core's glow swells very slightly.
+          halo.scale.setScalar(coreR * (6.5 + Math.sin(t * 0.7) * 0.3));
+          heart.scale.setScalar(1 + Math.sin(t * 0.7) * 0.015);
         }
         for (const s of sats) {
           if (animate) s.angle += s.speed * dt;
@@ -989,7 +967,10 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
             pulses.splice(i, 1);
           }
         }
-        composer.render();
+        // Cinematic offset is added for this frame only, so OrbitControls never sees it.
+        rig.apply(camera, controls.target, t, dt);
+        postFX.render(t);
+        rig.restore(camera, controls.target);
       };
       // Pre-fill trails so they exist even when motion starts paused.
       for (let k = 0; k < 46; k++) {
@@ -1013,9 +994,9 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
         ro.disconnect();
         io.disconnect();
         controls.dispose();
-        composer.dispose();
-        pmrem.dispose();
-        envTex.dispose();
+        rig.dispose();
+        postFX.dispose();
+        lighting.dispose();
         scene.traverse((o) => {
           const m = o as import('three').Mesh;
           m.geometry?.dispose?.();
@@ -1028,6 +1009,7 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
           if (Array.isArray(mat)) mat.forEach(disposeMat);
           else if (mat) disposeMat(mat);
         });
+        atmosphere.dispose();
         renderer.dispose();
         renderer.domElement.remove();
       };
