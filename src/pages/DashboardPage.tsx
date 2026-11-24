@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { JarvisCommandCenter } from '../components/jarvis/JarvisCommandCenter';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   CheckCircle2,
@@ -60,6 +61,8 @@ interface DashboardPageProps {
   onNavigate: (tab: any) => void;
   onOpenQuickCapture?: () => void;
   onTurbineSpeedChange?: (duration: number) => void;
+  /** Sets the global area filter (used by area nodes in the command centre). */
+  onSelectArea?: (area: string) => void;
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
@@ -67,6 +70,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   areas,
   onNavigate,
   onOpenQuickCapture,
+  onSelectArea,
 }) => {
   const today = getTodayISO();
   const nextWeek = React.useMemo(
@@ -428,6 +432,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </button>
         </div>
       </div>
+
+      <JarvisCommandCenter areas={areas} onNavigate={onNavigate} onSelectArea={onSelectArea} />
 
       <TodayProgress tasks={tasks} today={today} currentArea={currentArea} onNavigate={onNavigate} />
 

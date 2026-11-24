@@ -371,6 +371,7 @@ function HubMain() {
             areas={areas}
             onNavigate={(tab) => setCurrentTab(tab)}
             onOpenQuickCapture={() => setIsQuickCaptureOpen(true)}
+            onSelectArea={setCurrentArea}
           />
         );
       case 'my-day':
@@ -469,6 +470,7 @@ function HubMain() {
             areas={areas}
             onNavigate={(tab) => setCurrentTab(tab)}
             onOpenQuickCapture={() => setIsQuickCaptureOpen(true)}
+            onSelectArea={setCurrentArea}
           />
         );
     }
