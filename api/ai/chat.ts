@@ -608,6 +608,13 @@ export function createAiChatHandler(dbClient: any = supabaseServer) {
       }
 
       const auth = await resolveAuthenticatedUser(req, dbClient);
+      // The model calls spend the owner's provider keys: signed-in users (or the cron secret) only.
+      if (!auth.authenticated) {
+        return res.status(401).json({
+          error: 'Sign in to use the AI assistant.',
+          code: 'auth_required',
+        });
+      }
       const history = Array.isArray(body.history) ? body.history : [];
       const projectId = body.projectId ? String(body.projectId) : undefined;
       const mode = String(body.mode || 'personal');

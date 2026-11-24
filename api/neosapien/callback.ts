@@ -1,8 +1,32 @@
 // Vercel Serverless Function: NeoSapien OAuth Callback Handler
 // Endpoint: /api/neosapien/callback
 
+/** Escapes text for an HTML body (query values are attacker-controlled). */
+export function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** JSON for an inline <script>: "<" is escaped so a value can't close the script tag. */
+export function scriptJson(value: unknown): string {
+  return JSON.stringify(String(value ?? ''))
+    .replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
+const firstValue = (v: unknown) => (Array.isArray(v) ? v[0] : v);
+
 export default async function handler(req: any, res: any) {
-  const { code, state, error, error_description } = req.query;
+  const query = req.query || {};
+  const code = firstValue(query.code);
+  const state = firstValue(query.state);
+  const error = firstValue(query.error);
+  const error_description = firstValue(query.error_description);
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
 
@@ -24,7 +48,7 @@ export default async function handler(req: any, res: any) {
       <body>
         <div class="card">
           <h2>Authorization Failed</h2>
-          <p>${error_description || error || 'Unknown OAuth error received from NeoSapien.'}</p>
+          <p>${escapeHtml(error_description || error || 'Unknown OAuth error received from NeoSapien.')}</p>
           <a class="btn" href="/?tab=integrations">Return to Yashwanth Hub</a>
         </div>
       </body>
@@ -57,8 +81,8 @@ export default async function handler(req: any, res: any) {
       <script>
         const authData = {
           type: 'NEOSAPIEN_AUTH_CODE',
-          code: ${JSON.stringify(code || '')},
-          state: ${JSON.stringify(state || '')}
+          code: ${scriptJson(code)},
+          state: ${scriptJson(state)}
         };
 
         // Notify parent window if opened in a popup

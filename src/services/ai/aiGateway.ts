@@ -167,6 +167,7 @@ export class AIGateway {
     const workspaceSnapshot = await this.buildWorkspaceSnapshot(provider, options.projectId);
 
     // 1. Primary path: Server-side /api/ai/chat (keeps keys off client & executes tool calling)
+    let signInNotice: string | undefined;
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       const jwt = await SupabaseAuthService.getAccessToken();
@@ -188,6 +189,10 @@ export class AIGateway {
       });
 
       const contentType = resp.headers.get('content-type') || '';
+      if (resp.status === 401) {
+        signInNotice =
+          'Sign in (Integrations & Sync) to use the AI model. This answer comes from local reasoning over your workspace.';
+      }
       if (resp.ok && contentType.includes('application/json')) {
         const data = await resp.json();
         const tokensIn = Number(data.tokensInput || 0);
@@ -293,6 +298,7 @@ export class AIGateway {
       modelId: 'grounded-chief-of-staff-v2',
       providerMode: 'grounded_deterministic',
       providerNotice:
+        signInNotice ||
         'Using local grounded Chief of Staff reasoning over verified workspace records (server LLM API keys not active).',
       latencyMs: Math.round(performance.now() - startTime),
       tokensInput: 0,
