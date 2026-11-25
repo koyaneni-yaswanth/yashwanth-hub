@@ -87,7 +87,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       title: 'Daily & Notes',
       items: [
-        { id: 'my-day', label: 'Daily Compass', icon: Compass },
+        { id: 'my-day', label: 'My Day', icon: Compass },
         { id: 'focus', label: 'Deep Work', icon: Timer },
         { id: 'notes', label: 'Notes', icon: FileText },
         { id: 'documents', label: 'Files & Docs', icon: FolderArchive },

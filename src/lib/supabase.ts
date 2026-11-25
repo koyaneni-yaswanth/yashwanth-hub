@@ -12,7 +12,7 @@ let currentConfig = {
 };
 
 export function getSupabaseConfig() {
-  if (typeof window !== 'undefined') {
+  if (typeof window !== 'undefined' && import.meta.env?.DEV) {
     const savedUrl = localStorage.getItem('yash_supabase_url');
     const savedKey = localStorage.getItem('yash_supabase_key');
     if (savedUrl && savedKey) {
@@ -23,10 +23,10 @@ export function getSupabaseConfig() {
 }
 
 export function saveSupabaseConfig(url: string, anonKey: string) {
-  if (typeof window !== 'undefined') {
+  if (typeof window !== 'undefined' && import.meta.env?.DEV) {
     localStorage.setItem('yash_supabase_url', url);
     localStorage.setItem('yash_supabase_key', anonKey);
-    cachedClient = null; // Reset cached client to reload
+    cachedClient = null;
   }
 }
 

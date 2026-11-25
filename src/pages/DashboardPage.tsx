@@ -710,7 +710,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <h3 className="font-heading font-bold text-base sm:text-lg text-[var(--hub-ink)] flex items-center gap-2">
               <span>Upcoming</span>
               {scheduleCount > 0 && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-700 dark:text-blue-400 font-bold">
+                <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--hub-accent-2)]/10 text-[var(--hub-accent-2)] font-bold">
                   {scheduleCount}
                 </span>
               )}
@@ -726,9 +726,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl divide-y divide-[var(--hub-line)] overflow-hidden shadow-xs">
             {scheduleCount === 0 ? (
               <div className="p-8 text-center text-sm text-[var(--hub-muted)]">
-                <Calendar className="w-7 h-7 mx-auto text-blue-700 dark:text-blue-300 mb-2 opacity-80" />
-                <p className="font-semibold text-[var(--hub-ink)]">Clear schedule this week</p>
-                <p className="text-xs mt-1">Great window for deep engineering work.</p>
+                <Calendar className="w-7 h-7 mx-auto text-[var(--hub-accent-2)] mb-2 opacity-80" />
+                <p className="font-semibold text-[var(--hub-ink)]">No events in the next 7 days</p>
+                <p className="text-xs mt-1">A good window for focused work.</p>
               </div>
             ) : (
               <>
@@ -736,7 +736,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   <div key={m.id} className="p-3.5 hover:bg-[var(--hub-bg)]/50 transition-colors">
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <span className="text-[11px] font-semibold text-blue-700 dark:text-blue-400">
+                        <span className="text-[11px] font-semibold text-[var(--hub-accent-2)]">
                           {formatShortDate(m.date)} • {m.start_time}
                         </span>
                         <h4 className="text-sm font-semibold text-[var(--hub-ink)] mt-0.5">
@@ -778,46 +778,46 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
       </div>
 
-      {/* 6. Simple Shortcut Pills Row */}
+      {/* 6. Shortcut pills */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
         <button
           type="button"
           onClick={() => onNavigate('ai-assistant')}
-          className="flex items-center gap-2.5 px-3.5 py-3 rounded-2xl bg-[var(--hub-surface)] border border-[var(--hub-line)] hover:border-teal-500/50 text-xs font-semibold text-[var(--hub-ink)] transition-all cursor-pointer"
+          className="flex items-center gap-2.5 px-3.5 py-3 rounded-2xl bg-[var(--hub-surface)] border border-[var(--hub-line)] hover:border-[var(--hub-accent)]/50 text-xs font-semibold text-[var(--hub-ink)] transition-all cursor-pointer"
         >
-          <Sparkles className="w-4 h-4 text-teal-700 dark:text-teal-300 shrink-0" />
+          <Sparkles className="w-4 h-4 text-[var(--hub-accent)] shrink-0" />
           <span>Ask AI</span>
         </button>
         <button
           type="button"
           onClick={() => onNavigate('projects')}
-          className="flex items-center gap-2.5 px-3.5 py-3 rounded-2xl bg-[var(--hub-surface)] border border-[var(--hub-line)] hover:border-indigo-500/50 text-xs font-semibold text-[var(--hub-ink)] transition-all cursor-pointer"
+          className="flex items-center gap-2.5 px-3.5 py-3 rounded-2xl bg-[var(--hub-surface)] border border-[var(--hub-line)] hover:border-[var(--hub-accent)]/50 text-xs font-semibold text-[var(--hub-ink)] transition-all cursor-pointer"
         >
-          <FolderKanban className="w-4 h-4 text-indigo-700 dark:text-indigo-300 shrink-0" />
+          <FolderKanban className="w-4 h-4 text-[var(--hub-accent-2)] shrink-0" />
           <span>Projects</span>
         </button>
         <button
           type="button"
           onClick={() => onNavigate('my-day')}
-          className="flex items-center gap-2.5 px-3.5 py-3 rounded-2xl bg-[var(--hub-surface)] border border-[var(--hub-line)] hover:border-amber-500/50 text-xs font-semibold text-[var(--hub-ink)] transition-all cursor-pointer"
+          className="flex items-center gap-2.5 px-3.5 py-3 rounded-2xl bg-[var(--hub-surface)] border border-[var(--hub-line)] hover:border-[var(--hub-accent)]/50 text-xs font-semibold text-[var(--hub-ink)] transition-all cursor-pointer"
         >
-          <Sun className="w-4 h-4 text-amber-800 dark:text-amber-300 shrink-0" />
+          <Sun className="w-4 h-4 text-[var(--hub-accent)] shrink-0" />
           <span>My Day</span>
         </button>
         <button
           type="button"
           onClick={() => onNavigate('knowledge-memory')}
-          className="flex items-center gap-2.5 px-3.5 py-3 rounded-2xl bg-[var(--hub-surface)] border border-[var(--hub-line)] hover:border-rose-500/50 text-xs font-semibold text-[var(--hub-ink)] transition-all cursor-pointer"
+          className="flex items-center gap-2.5 px-3.5 py-3 rounded-2xl bg-[var(--hub-surface)] border border-[var(--hub-line)] hover:border-[var(--hub-accent)]/50 text-xs font-semibold text-[var(--hub-ink)] transition-all cursor-pointer"
         >
-          <FileText className="w-4 h-4 text-rose-700 dark:text-rose-300 shrink-0" />
+          <FileText className="w-4 h-4 text-[var(--hub-accent-2)] shrink-0" />
           <span>Memory Vault</span>
         </button>
         <button
           type="button"
           onClick={() => setIsWeeklyReviewOpen(true)}
-          className="col-span-2 sm:col-span-1 flex items-center gap-2.5 px-3.5 py-3 rounded-2xl bg-[var(--hub-surface)] border border-[var(--hub-line)] hover:border-purple-500/50 text-xs font-semibold text-[var(--hub-ink)] transition-all cursor-pointer"
+          className="col-span-2 sm:col-span-1 flex items-center gap-2.5 px-3.5 py-3 rounded-2xl bg-[var(--hub-surface)] border border-[var(--hub-line)] hover:border-[var(--hub-accent)]/50 text-xs font-semibold text-[var(--hub-ink)] transition-all cursor-pointer"
         >
-          <Trophy className="w-4 h-4 text-purple-700 dark:text-purple-300 shrink-0" />
+          <Trophy className="w-4 h-4 text-[var(--hub-accent)] shrink-0" />
           <span>Weekly Review</span>
         </button>
       </div>
@@ -832,8 +832,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         >
           <span>
             {showMoreDetails
-              ? 'Hide detailed stats, workspaces & pinned notes'
-              : 'Show full overview (stats, Pawan Shakti, Robotics Lab, Neo 1 & pinned notes)'}
+              ? 'Hide workspaces & stats'
+              : 'Explore workspaces & detailed stats'}
           </span>
           {showMoreDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </button>
@@ -879,28 +879,27 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             {/* Workspaces Hub */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {/* Pawan Shakti Card */}
-              <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-5 shadow-xs flex flex-col justify-between hover:border-teal-500/50 transition-all">
+              <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-5 shadow-xs flex flex-col justify-between hover:border-[var(--hub-accent)]/50 transition-all">
                 <div className="space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-xs font-bold text-teal-700 dark:text-teal-400 uppercase tracking-wider">
+                  <div className="flex items-center gap-1.5">
+                    <span className="flex items-center gap-1.5 text-xs font-bold text-[var(--hub-accent)] uppercase tracking-wider">
                       <Wind className="w-4 h-4" />
                       <span>Pawan Shakti</span>
                     </span>
-                    <Badge variant="teal">TRL 4 Baseline</Badge>
                   </div>
                   <h4 className="font-heading font-bold text-base text-[var(--hub-ink)]">
-                    Low-Wind Planetary Gearbox
+                    Wind-turbine programme
                   </h4>
                   <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
-                    TRL 4 benchtop prototype with published Indian patent. Closed-loop bench testing toward TRL 5 in progress.
+                    Milestones, prototypes, tasks and documents for the Pawan Shakti project.
                   </p>
                   {pawanProject && (
-                    <div className="p-2.5 rounded-xl bg-teal-500/10 border border-teal-500/20 flex items-center justify-between text-xs">
-                      <span className="font-semibold text-teal-800 dark:text-teal-200">
-                        Target Date
+                    <div className="p-2.5 rounded-xl bg-[var(--hub-accent)]/10 border border-[var(--hub-accent)]/20 flex items-center justify-between text-xs">
+                      <span className="font-semibold text-[var(--hub-ink)]">
+                        Progress
                       </span>
-                      <span className="font-mono font-bold text-teal-700 dark:text-teal-300">
-                        {pawanProject.target_date || '2027-01-03'} • {pawanProject.progress}%
+                      <span className="font-mono font-bold text-[var(--hub-accent)]">
+                        {pawanProject.target_date ? `${pawanProject.target_date} · ` : ''}{pawanProject.progress}%
                       </span>
                     </div>
                   )}
@@ -910,26 +909,25 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   onClick={() => onNavigate('startup-command')}
                   className="mt-4 flex items-center justify-between w-full px-3.5 py-2 rounded-xl bg-[var(--hub-bg)] hover:bg-[var(--hub-surface-subtle)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] transition-colors cursor-pointer group"
                 >
-                  <span>Open Startup Command</span>
+                  <span>Open Pawan Shakti</span>
                   <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
                 </button>
               </div>
 
               {/* Robotics Lab Card */}
-              <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-5 shadow-xs flex flex-col justify-between hover:border-purple-500/50 transition-all">
+              <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-5 shadow-xs flex flex-col justify-between hover:border-[var(--hub-accent-2)]/50 transition-all">
                 <div className="space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-xs font-bold text-purple-700 dark:text-purple-400 uppercase tracking-wider">
+                  <div className="flex items-center gap-1.5">
+                    <span className="flex items-center gap-1.5 text-xs font-bold text-[var(--hub-accent-2)] uppercase tracking-wider">
                       <Bot className="w-4 h-4" />
                       <span>Robotics Lab</span>
                     </span>
-                    <Badge variant="purple">Experiment Log</Badge>
                   </div>
                   <h4 className="font-heading font-bold text-base text-[var(--hub-ink)]">
-                    PiPER, Swarm & mmWave Radar
+                    Experiments & builds
                   </h4>
                   <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
-                    Hardware experiment workspace for AgileX PiPER, 3-drone swarm coordination, and TI AWR2944 radar.
+                    Robotics records, experiment logs and hardware build notes.
                   </p>
                 </div>
                 <button
@@ -937,26 +935,25 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   onClick={() => onNavigate('robotics-lab')}
                   className="mt-4 flex items-center justify-between w-full px-3.5 py-2 rounded-xl bg-[var(--hub-bg)] hover:bg-[var(--hub-surface-subtle)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] transition-colors cursor-pointer group"
                 >
-                  <span>Launch Robotics Lab</span>
+                  <span>Open Robotics Lab</span>
                   <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
                 </button>
               </div>
 
               {/* Routine & Health Card */}
-              <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-5 shadow-xs flex flex-col justify-between hover:border-rose-500/50 transition-all">
+              <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-5 shadow-xs flex flex-col justify-between hover:border-[var(--hub-accent-2)]/50 transition-all">
                 <div className="space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-xs font-bold text-rose-700 dark:text-rose-400 uppercase tracking-wider">
+                  <div className="flex items-center gap-1.5">
+                    <span className="flex items-center gap-1.5 text-xs font-bold text-[var(--hub-accent-2)] uppercase tracking-wider">
                       <Heart className="w-4 h-4" />
                       <span>Routine & Health</span>
                     </span>
-                    <Badge variant="gray">Daily Check-In</Badge>
                   </div>
                   <h4 className="font-heading font-bold text-base text-[var(--hub-ink)]">
-                    Sleep, Energy & Deep Work
+                    Sleep, energy & habits
                   </h4>
                   <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
-                    Track sleep hours, deep engineering sessions, and daily habits across sessions.
+                    Track sleep, focus sessions and daily habits.
                   </p>
                 </div>
                 <button

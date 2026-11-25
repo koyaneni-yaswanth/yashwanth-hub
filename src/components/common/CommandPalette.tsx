@@ -100,7 +100,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   const navItems = [
     { label: 'Go to Home Dashboard', tab: 'dashboard' as NavigationTab, icon: Command, category: 'Navigation' },
-    { label: 'Go to Daily Compass (plan my day)', tab: 'my-day' as NavigationTab, icon: Sun, category: 'Navigation' },
+    { label: 'Go to My Day (plan my day)', tab: 'my-day' as NavigationTab, icon: Sun, category: 'Navigation' },
     { label: 'Go to Deep Work (focus timer)', tab: 'focus' as NavigationTab, icon: Zap, category: 'Navigation' },
     { label: 'Go to Momentum (score, next action, constellation)', tab: 'momentum' as NavigationTab, icon: Sparkles, category: 'Navigation' },
     { label: 'Go to Goals & Habits', tab: 'goals' as NavigationTab, icon: Target, category: 'Navigation' },

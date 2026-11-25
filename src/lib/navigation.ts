@@ -6,7 +6,7 @@ import type { NavigationTab } from '../types';
  */
 export const TAB_TITLES: Record<NavigationTab, string> = {
   dashboard: 'Home',
-  'my-day': 'Daily Compass',
+  'my-day': 'My Day',
   projects: 'Projects',
   'ai-assistant': 'Ask AI',
   automations: 'Automations',

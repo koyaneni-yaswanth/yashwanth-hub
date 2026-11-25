@@ -109,29 +109,6 @@ class SupabaseAuthManager {
     }
 
     const redirectTo = this.getRedirectToUrl();
-    const cfg = getSupabaseConfig();
-    const supabaseUrl = cfg.url || (import.meta as any).env?.VITE_SUPABASE_URL || '';
-
-    // Pre-flight validation: check if Google OAuth provider is enabled in Supabase GoTrue
-    if (supabaseUrl && typeof window !== 'undefined') {
-      try {
-        const checkRes = await fetch(`${supabaseUrl}/auth/v1/authorize?provider=google`, {
-          method: 'GET',
-          redirect: 'manual',
-        });
-        if (checkRes.status === 400) {
-          const body = await checkRes.json().catch(() => ({}));
-          if (body.error_code === 'validation_failed' || body.msg?.includes('provider is not enabled')) {
-            return {
-              error: 'Google Sign-In is not enabled on this Supabase project. Enable Google in the Supabase Dashboard (Authentication -> Providers) or sign in using Email & Password below.',
-              providerDisabled: true,
-            };
-          }
-        }
-      } catch {
-        // Continue to standard client call if network probe is blocked by CORS
-      }
-    }
 
     const { data, error } = await client.auth.signInWithOAuth({
       provider: 'google',
@@ -139,8 +116,7 @@ class SupabaseAuthManager {
         redirectTo,
         skipBrowserRedirect: true,
         queryParams: {
-          access_type: 'offline',
-          prompt: 'consent',
+          prompt: 'select_account',
         },
       },
     });
@@ -153,24 +129,6 @@ class SupabaseAuthManager {
         };
       }
       return { error: error.message };
-    }
-
-    if (data?.url && typeof window !== 'undefined') {
-      // Validate that data.url doesn't fail with provider error before returning URL for redirection
-      try {
-        const probeRes = await fetch(data.url, { method: 'GET', redirect: 'manual' });
-        if (probeRes.status === 400) {
-          const probeBody = await probeRes.json().catch(() => ({}));
-          if (probeBody.error_code === 'validation_failed' || probeBody.msg?.includes('provider is not enabled')) {
-            return {
-              error: 'Google Sign-In is not enabled on this Supabase project. Enable Google in the Supabase Dashboard (Authentication -> Providers) or sign in using Email & Password below.',
-              providerDisabled: true,
-            };
-          }
-        }
-      } catch {
-        // Expected when 302 cross-origin redirect to accounts.google.com occurs
-      }
     }
 
     return { url: data?.url };
