@@ -31,6 +31,8 @@ export interface OAuthCallbackResult {
   token?: string;
   expiresIn?: number;
   error?: string;
+  errorCode?: string;
+  errorDescription?: string;
   errorMessage?: string;
   resolutionHint?: string;
 }
@@ -154,27 +156,54 @@ export function parseOAuthCallback(
   const cleanStr = urlHashOrQuery.replace(/^[#?]/, '');
   const params = new URLSearchParams(cleanStr);
 
-  const error = params.get('error');
+  const error = params.get('error') || params.get('google_error');
+  const errorCode = params.get('error_code') || params.get('google_error_code') || undefined;
+  const errorDescription = params.get('error_description') || params.get('google_error_desc') || undefined;
+
   if (error) {
-    let errorMessage = `Google OAuth error: ${error}`;
+    let errorMessage = errorDescription ? `${error}: ${errorDescription}` : `Google OAuth error: ${error}`;
     let resolutionHint = 'Verify your Google Cloud Console OAuth 2.0 Web Client configuration.';
 
     if (error === 'invalid_client') {
-      errorMessage = '401 invalid_client: The OAuth client was not found or secret mismatch.';
+      errorMessage = `401 invalid_client${errorDescription ? `: ${errorDescription}` : ': The OAuth client was not found or secret mismatch.'}`;
       resolutionHint =
-        'Ensure your Google Cloud OAuth Client ID is registered as "Web application", matches VITE_GOOGLE_CLIENT_ID and Vercel GOOGLE_CLIENT_ID, and GOOGLE_CLIENT_SECRET matches Google Cloud Console.';
+        'Ensure your Google Cloud OAuth Client ID is registered as "Web application", matches VITE_GOOGLE_CLIENT_ID and Vercel GOOGLE_CLIENT_ID, and GOOGLE_CLIENT_SECRET (and Supabase Google provider Secret) matches Google Cloud Console.';
+    } else if (error === 'invalid_grant') {
+      errorMessage = `400 invalid_grant${errorDescription ? `: ${errorDescription}` : ': Authorization code was rejected, expired, or already used.'}`;
+      resolutionHint =
+        `Ensure PKCE code_verifier survived the redirect and redirect_uri ("${redirectBaseUri}") matches Authorized redirect URIs in Google Cloud Console identically.`;
     } else if (error === 'redirect_uri_mismatch') {
-      errorMessage = '400 redirect_uri_mismatch: The redirect URI does not match.';
+      errorMessage = `400 redirect_uri_mismatch${errorDescription ? `: ${errorDescription}` : ': The redirect URI does not match.'}`;
       resolutionHint = `Add "${redirectBaseUri}" and "${redirectBaseUri}/api/auth/google/callback" to Authorized redirect URIs in Google Cloud Console.`;
     } else if (error === 'access_denied') {
-      errorMessage = 'Access denied: Google account permission was declined.';
+      errorMessage = `Access denied: ${errorDescription || 'Google account permission was declined.'}`;
       resolutionHint = 'Approve the requested Workspace permissions on the Google consent screen.';
     } else if (error === 'unauthorized_client') {
-      errorMessage = 'Unauthorized client type for this OAuth request.';
+      errorMessage = `Unauthorized client${errorDescription ? `: ${errorDescription}` : ' type for this OAuth request.'}`;
       resolutionHint = 'Ensure the Google OAuth client application type is "Web application".';
+    } else if (error === 'server_misconfigured') {
+      errorMessage = errorDescription || 'Server Google OAuth credentials are missing or invalid in Vercel Environment Variables.';
+      resolutionHint = 'Set GOOGLE_CLIENT_ID, VITE_GOOGLE_CLIENT_ID, and GOOGLE_CLIENT_SECRET in Vercel Environment Variables and redeploy.';
+    } else if (error === 'server_error') {
+      const details = [errorCode, errorDescription].filter(Boolean).join(' — ');
+      errorMessage = `server_error${details ? `: ${details}` : ': OAuth code exchange failed on auth server.'}`;
+      if (errorDescription && /external code|invalid_client|client secret/i.test(errorDescription)) {
+        resolutionHint =
+          'Supabase Auth failed to exchange the Google authorization code at Google (often invalid/stale Client Secret or wrong Client ID in Supabase Dashboard -> Authentication -> Providers -> Google). Verify both Supabase Google Provider credentials and Google Cloud Console callback URI (https://xjhkxnfahkkgwbbtmhtk.supabase.co/auth/v1/callback).';
+      } else {
+        resolutionHint =
+          'Check Supabase Auth logs (/callback) and Vercel Function logs for exact Google token-endpoint error details.';
+      }
     }
 
-    return { success: false, error, errorMessage, resolutionHint };
+    return {
+      success: false,
+      error,
+      errorCode,
+      errorDescription,
+      errorMessage,
+      resolutionHint,
+    };
   }
 
   const code = params.get('code');

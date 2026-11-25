@@ -24,7 +24,93 @@ export class GoogleAuthService {
   private static PKCE_VERIFIER_KEY = 'yash_google_pkce_verifier';
   private static OAUTH_STATE_KEY = 'yash_google_oauth_state';
   private static OAUTH_REDIRECT_KEY = 'yash_google_oauth_redirect_uri';
+  private static PKCE_BACKUP_KEY = 'yash_google_pkce_backup';
+  private static PKCE_BACKUP_TTL_MS = 10 * 60 * 1000;
   private static gisScriptLoadingPromise: Promise<boolean> | null = null;
+
+  private static persistPkceContext(codeVerifier: string, state: string, redirectUri: string): void {
+    if (typeof window === 'undefined') return;
+    try {
+      sessionStorage.setItem(this.PKCE_VERIFIER_KEY, codeVerifier);
+      sessionStorage.setItem(this.OAUTH_STATE_KEY, state);
+      sessionStorage.setItem(this.OAUTH_REDIRECT_KEY, redirectUri);
+    } catch {
+      /* sessionStorage unavailable */
+    }
+    try {
+      localStorage.setItem(
+        this.PKCE_BACKUP_KEY,
+        JSON.stringify({ v: codeVerifier, s: state, r: redirectUri, ts: Date.now() })
+      );
+    } catch {
+      /* localStorage unavailable */
+    }
+    if (typeof document !== 'undefined' && redirectUri.endsWith('/api/auth/google/callback')) {
+      const secureFlag = window.location.protocol === 'https:' ? '; Secure' : '';
+      document.cookie = `yash_google_pkce_v=${encodeURIComponent(codeVerifier)}; Path=/; Max-Age=600; SameSite=Lax${secureFlag}`;
+      document.cookie = `yash_google_oauth_r=${encodeURIComponent(redirectUri)}; Path=/; Max-Age=600; SameSite=Lax${secureFlag}`;
+    }
+  }
+
+  private static readStoredPkceContext(): {
+    codeVerifier: string | null;
+    state: string | null;
+    redirectUri: string | null;
+  } {
+    let ssVerifier: string | null = null;
+    let ssState: string | null = null;
+    let ssRedirect: string | null = null;
+    if (typeof sessionStorage !== 'undefined') {
+      ssVerifier = sessionStorage.getItem(this.PKCE_VERIFIER_KEY);
+      ssState = sessionStorage.getItem(this.OAUTH_STATE_KEY);
+      ssRedirect = sessionStorage.getItem(this.OAUTH_REDIRECT_KEY);
+    }
+    if (ssVerifier) {
+      return { codeVerifier: ssVerifier, state: ssState, redirectUri: ssRedirect };
+    }
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const raw = localStorage.getItem(this.PKCE_BACKUP_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.v && typeof parsed.ts === 'number' && Date.now() - parsed.ts <= this.PKCE_BACKUP_TTL_MS) {
+            return {
+              codeVerifier: String(parsed.v),
+              state: parsed.s ? String(parsed.s) : ssState,
+              redirectUri: parsed.r ? String(parsed.r) : ssRedirect,
+            };
+          }
+        }
+      } catch {
+        /* ignore corrupt backup */
+      }
+    }
+    return { codeVerifier: null, state: ssState, redirectUri: ssRedirect };
+  }
+
+  private static clearStoredPkceContext(): void {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem(this.PKCE_VERIFIER_KEY);
+      sessionStorage.removeItem(this.OAUTH_STATE_KEY);
+      sessionStorage.removeItem(this.OAUTH_REDIRECT_KEY);
+    }
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(this.PKCE_BACKUP_KEY);
+    }
+    if (typeof document !== 'undefined') {
+      document.cookie = 'yash_google_pkce_v=; Path=/; Max-Age=0; SameSite=Lax';
+      document.cookie = 'yash_google_oauth_r=; Path=/; Max-Age=0; SameSite=Lax';
+    }
+  }
+
+  public static hasStoredPkceSession(): boolean {
+    const ctx = this.readStoredPkceContext();
+    return Boolean(ctx.codeVerifier);
+  }
+
+  public static getSavedPkceState(): string | null {
+    return this.readStoredPkceContext().state;
+  }
 
   public static getDefaultServices(): Record<GoogleServiceKey, GoogleServiceStatus> {
     return getDefaultGoogleServices();
@@ -145,12 +231,7 @@ export class GoogleAuthService {
     specificServices: (GoogleServiceKey | 'identity')[] = DEFAULT_GOOGLE_SERVICES_LIST
   ): Promise<{ url: string; state: string; redirectUri: string }> {
     const built = await buildPkceAuthUrlPure(clientId, redirectUri, specificServices);
-
-    if (typeof window !== 'undefined' && typeof sessionStorage !== 'undefined') {
-      sessionStorage.setItem(this.PKCE_VERIFIER_KEY, built.codeVerifier);
-      sessionStorage.setItem(this.OAUTH_STATE_KEY, built.state);
-      sessionStorage.setItem(this.OAUTH_REDIRECT_KEY, built.redirectUri);
-    }
+    this.persistPkceContext(built.codeVerifier, built.state, built.redirectUri);
 
     return {
       url: built.url,
@@ -320,17 +401,26 @@ export class GoogleAuthService {
     code: string,
     returnedState?: string
   ): Promise<{ success: boolean; email?: string; hasRefreshToken?: boolean; error?: string; hint?: string }> {
-    const savedState = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(this.OAUTH_STATE_KEY) : null;
-    const savedVerifier = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(this.PKCE_VERIFIER_KEY) : null;
-    const savedRedirect =
-      (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(this.OAUTH_REDIRECT_KEY) : null) ||
-      this.getRedirectUri();
+    const pkceCtx = this.readStoredPkceContext();
+    const savedState = pkceCtx.state;
+    const savedVerifier = pkceCtx.codeVerifier;
+    const savedRedirect = (pkceCtx.redirectUri || this.getRedirectUri()).trim().replace(/\/+$/, '');
 
     if (savedState && returnedState && savedState !== returnedState) {
+      this.clearStoredPkceContext();
       return {
         success: false,
-        error: 'OAuth state mismatch (CSRF protection triggered).',
+        error: 'state_mismatch: OAuth state mismatch (CSRF protection triggered).',
         hint: 'Clear stale tabs and retry connecting Google from Integrations.',
+      };
+    }
+
+    if (!savedVerifier) {
+      this.clearStoredPkceContext();
+      return {
+        success: false,
+        error: 'missing_code_verifier: PKCE code_verifier did not survive redirect.',
+        hint: 'Browser storage was cleared or redirect landed in a different origin/profile. Click Connect Google Workspace again in the same tab.',
       };
     }
 
@@ -367,24 +457,20 @@ export class GoogleAuthService {
         headers,
         body: JSON.stringify({
           code,
-          code_verifier: savedVerifier || undefined,
+          code_verifier: savedVerifier,
           redirect_uri: savedRedirect,
           client_id: this.getEffectiveClientId(),
         }),
       });
 
       const data = await resp.json().catch(() => ({}));
-      if (typeof sessionStorage !== 'undefined') {
-        sessionStorage.removeItem(this.PKCE_VERIFIER_KEY);
-        sessionStorage.removeItem(this.OAUTH_STATE_KEY);
-        sessionStorage.removeItem(this.OAUTH_REDIRECT_KEY);
-      }
+      this.clearStoredPkceContext();
 
       if (!resp.ok || !data.success) {
         return {
           success: false,
-          error: data.message || data.error || `Server token exchange returned HTTP ${resp.status}`,
-          hint: data.hint || 'Verify GOOGLE_CLIENT_SECRET and redirect URIs in Vercel and Google Cloud Console.',
+          error: data.message || data.googleError || data.error || `Server token exchange returned HTTP ${resp.status}`,
+          hint: data.hint || 'Verify GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and redirect URIs in Vercel and Google Cloud Console.',
         };
       }
 

@@ -10,6 +10,13 @@ import {
   isServerSupabaseConfigured,
   resolveAuthenticatedUser,
 } from '../../_lib/db.ts';
+import {
+  buildGoogleTokenErrorDiagnostic,
+  normalizeRedirectUri,
+  resolveGoogleOAuthConfig,
+  sanitizeSupabaseError,
+  summarizeGoogleTokenResponse,
+} from '../../_lib/googleOAuth.ts';
 import { applyCors, safeError } from '../../_lib/http.ts';
 
 export default async function handler(req: any, res: any) {
@@ -34,6 +41,7 @@ export default async function handler(req: any, res: any) {
 
   const auth = await resolveAuthenticatedUser(req);
   if (!auth.authenticated || !auth.userId) {
+    console.warn('[Google Auth Token] Supabase user authentication failed:', { error: auth.error });
     return res.status(401).json({
       success: false,
       error: 'Unauthorized',
@@ -43,8 +51,9 @@ export default async function handler(req: any, res: any) {
   const userId = auth.userId;
   const db = auth.client || supabaseServer;
 
-  const clientId = (process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || '').trim();
-  const clientSecret = (process.env.GOOGLE_CLIENT_SECRET || '').trim();
+  const baseOAuthCfg = resolveGoogleOAuthConfig();
+  const clientId = baseOAuthCfg.clientId;
+  const clientSecret = baseOAuthCfg.clientSecret;
 
   try {
     // -------------------------------------------------------------------------
@@ -57,6 +66,10 @@ export default async function handler(req: any, res: any) {
         .eq('user_id', userId)
         .eq('provider', 'google')
         .single();
+
+      if (fetchErr && fetchErr.code !== 'PGRST116') {
+        console.error('[Google Auth Token] Supabase read error:', sanitizeSupabaseError(fetchErr));
+      }
 
       if (fetchErr || !tokenRecord) {
         return res.status(200).json({
@@ -83,7 +96,7 @@ export default async function handler(req: any, res: any) {
               ? new Date(credentials.expiry_date).toISOString()
               : new Date(Date.now() + 3600000).toISOString();
 
-            await db
+            const { error: refreshUpdateErr } = await db
               .from('integration_tokens')
               .update({
                 access_token: accessToken,
@@ -94,15 +107,20 @@ export default async function handler(req: any, res: any) {
                 updated_at: new Date().toISOString(),
               })
               .eq('id', tokenRecord.id);
+
+            if (refreshUpdateErr) {
+              console.error('[Google Auth Token] Supabase refresh update error:', sanitizeSupabaseError(refreshUpdateErr));
+            }
           }
         } catch (refreshErr: any) {
+          console.error('[Google Auth Token] Google refreshAccessToken failed:', safeError(refreshErr));
           return res.status(200).json({
             success: false,
             connected: false,
             has_refresh_token: Boolean(refreshToken),
             account_email: tokenRecord.account_email,
-            error: 'refresh_failed',
-            message: `Google token refresh failed (${refreshErr.message}). Please reconnect Google Workspace.`,
+            error: refreshErr?.response?.data?.error || 'refresh_failed',
+            message: `Google token refresh failed (${refreshErr?.response?.data?.error_description || refreshErr.message}). Please reconnect Google Workspace.`,
           });
         }
       }
@@ -141,11 +159,15 @@ export default async function handler(req: any, res: any) {
         }
       }
 
-      await db
+      const { error: delErr } = await db
         .from('integration_tokens')
         .delete()
         .eq('user_id', userId)
         .eq('provider', 'google');
+
+      if (delErr) {
+        console.error('[Google Auth Token] Supabase delete error:', sanitizeSupabaseError(delErr));
+      }
 
       return res.status(200).json({
         success: true,
@@ -182,6 +204,7 @@ export default async function handler(req: any, res: any) {
         );
 
       if (upsertErr) {
+        console.error('[Google Auth Token] Supabase GIS vault upsert error:', sanitizeSupabaseError(upsertErr));
         return res.status(500).json({ success: false, error: 'DB Persist Failed', message: upsertErr.message });
       }
 
@@ -199,8 +222,11 @@ export default async function handler(req: any, res: any) {
     // -------------------------------------------------------------------------
     const code = req.query?.code || body.code;
     const codeVerifier = body.code_verifier || body.codeVerifier;
-    const redirectUri = req.query?.redirect_uri || body.redirect_uri || 'https://yashwanth-hub.vercel.app';
-    const effectiveClientId = (body.client_id || clientId).trim();
+    const redirectUri = normalizeRedirectUri(
+      String(req.query?.redirect_uri || body.redirect_uri || 'https://yashwanth-hub.vercel.app')
+    );
+    const effectiveCfg = resolveGoogleOAuthConfig(body.client_id);
+    const effectiveClientId = effectiveCfg.clientId;
 
     if (!code) {
       return res.status(400).json({
@@ -211,25 +237,75 @@ export default async function handler(req: any, res: any) {
     }
 
     if (!effectiveClientId || !clientSecret) {
+      console.error('[Google Auth Token] Missing OAuth credentials:', {
+        missingEnvVars: effectiveCfg.missingEnvVars,
+        ...effectiveCfg.presence,
+      });
       return res.status(503).json({
         success: false,
         error: 'Google OAuth Server Secret Missing',
+        missingEnvVars: effectiveCfg.missingEnvVars,
         message:
-          'GOOGLE_CLIENT_SECRET is not configured in Vercel serverless environment variables. Configure GOOGLE_CLIENT_SECRET and redeploy.',
-        hint: 'Go to Vercel Project Settings -> Environment Variables and add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET from Google Cloud Console.',
+          'GOOGLE_CLIENT_SECRET is not configured in Vercel serverless environment variables. Configure GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET and redeploy.',
+        hint: 'Go to Vercel Project Settings -> Environment Variables and add GOOGLE_CLIENT_ID, VITE_GOOGLE_CLIENT_ID, and GOOGLE_CLIENT_SECRET from Google Cloud Console.',
       });
     }
 
-    const oauth2Client = new google.auth.OAuth2(effectiveClientId, clientSecret, redirectUri);
-    const { tokens } = await oauth2Client.getToken({
+    const tokenParams = new URLSearchParams({
       code: String(code),
-      codeVerifier: codeVerifier ? String(codeVerifier) : undefined,
-      redirect_uri: String(redirectUri),
+      client_id: effectiveClientId,
+      client_secret: clientSecret,
+      redirect_uri: redirectUri,
+      grant_type: 'authorization_code',
     });
-    oauth2Client.setCredentials(tokens);
+    if (codeVerifier) {
+      tokenParams.set('code_verifier', String(codeVerifier));
+    }
+
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: tokenParams.toString(),
+    });
+
+    const rawText = await tokenRes.text();
+    let tokenJson: Record<string, any> = {};
+    try {
+      tokenJson = rawText ? JSON.parse(rawText) : {};
+    } catch {
+      tokenJson = { error: 'invalid_token_response', error_description: rawText.slice(0, 200) };
+    }
+
+    // Log strictly redacted Google token-endpoint metadata (zero secrets/codes/tokens)
+    console.info('[Google Auth Token] Google token-endpoint response:', {
+      redirectUri,
+      hadCodeVerifier: Boolean(codeVerifier),
+      ...effectiveCfg.presence,
+      ...summarizeGoogleTokenResponse(tokenRes.status, tokenJson),
+    });
+
+    if (!tokenRes.ok || tokenJson.error) {
+      const googleErr = typeof tokenJson.error === 'string' ? tokenJson.error : null;
+      const googleDesc = typeof tokenJson.error_description === 'string' ? tokenJson.error_description : null;
+      const diag = buildGoogleTokenErrorDiagnostic(googleErr, googleDesc, redirectUri);
+      const httpStatus = tokenRes.status >= 400 && tokenRes.status < 500 ? tokenRes.status : 502;
+
+      return res.status(httpStatus).json({
+        success: false,
+        error: diag.code,
+        googleError: diag.code,
+        googleErrorDescription: googleDesc,
+        message: diag.message,
+        hint: diag.hint,
+        redirectUriUsed: redirectUri,
+        hadCodeVerifier: Boolean(codeVerifier),
+      });
+    }
 
     let userEmail: string | undefined;
     try {
+      const oauth2Client = new google.auth.OAuth2(effectiveClientId, clientSecret, redirectUri);
+      oauth2Client.setCredentials({ access_token: tokenJson.access_token });
       const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
       const profileRes = await oauth2.userinfo.get();
       userEmail = profileRes.data.email || undefined;
@@ -237,19 +313,21 @@ export default async function handler(req: any, res: any) {
       // Non-fatal if scope omitted profile
     }
 
-    const expiresAt = tokens.expiry_date
-      ? new Date(tokens.expiry_date).toISOString()
-      : new Date(Date.now() + 3600000).toISOString();
-    const scopesList = tokens.scope ? tokens.scope.split(' ') : [];
+    const expiresInSec = Number(tokenJson.expires_in) || 3600;
+    const expiresAt = new Date(Date.now() + expiresInSec * 1000).toISOString();
+    const scopesList = typeof tokenJson.scope === 'string' ? tokenJson.scope.split(' ') : [];
 
-    let refreshToken = tokens.refresh_token || null;
+    let refreshToken = tokenJson.refresh_token || null;
     if (!refreshToken) {
-      const { data: existing } = await db
+      const { data: existing, error: prevErr } = await db
         .from('integration_tokens')
         .select('refresh_token, encrypted_refresh_token')
         .eq('user_id', userId)
         .eq('provider', 'google')
         .single();
+      if (prevErr && prevErr.code !== 'PGRST116') {
+        console.error('[Google Auth Token] Supabase prior refresh_token read error:', sanitizeSupabaseError(prevErr));
+      }
       refreshToken = existing?.refresh_token || existing?.encrypted_refresh_token || null;
     }
 
@@ -259,13 +337,13 @@ export default async function handler(req: any, res: any) {
         {
           user_id: userId,
           provider: 'google',
-          access_token: tokens.access_token || null,
+          access_token: tokenJson.access_token || null,
           refresh_token: refreshToken,
           expires_at: expiresAt,
-          token_type: tokens.token_type || 'Bearer',
+          token_type: tokenJson.token_type || 'Bearer',
           scopes: scopesList,
           account_email: userEmail || null,
-          encrypted_access_token: tokens.access_token || null,
+          encrypted_access_token: tokenJson.access_token || null,
           encrypted_refresh_token: refreshToken,
           token_expires_at: expiresAt,
           token_expiry: expiresAt,
@@ -275,37 +353,46 @@ export default async function handler(req: any, res: any) {
       );
 
     if (upsertErr) {
+      const safeDbErr = sanitizeSupabaseError(upsertErr);
+      console.error('[Google Auth Token] Supabase integration_tokens upsert error:', safeDbErr);
       return res.status(500).json({
         success: false,
         error: 'Database Persistence Failed',
+        supabaseError: safeDbErr,
         message: upsertErr.message,
       });
     }
 
     // Clear needs_authorization status on any Google automations owned by this user
-    await db
+    const { error: autoErr } = await db
       .from('automations')
       .update({ status: 'active' })
       .eq('user_id', userId)
       .in('action_type', ['google_calendar', 'google_gmail', 'google_workspace']);
+
+    if (autoErr) {
+      console.warn('[Google Auth Token] Supabase automations update warning:', sanitizeSupabaseError(autoErr));
+    }
 
     return res.status(200).json({
       success: true,
       message: 'Google Workspace tokens exchanged via PKCE and vaulted securely in integration_tokens.',
       provider: 'google',
       account_email: userEmail || null,
-      access_token: tokens.access_token || null,
+      access_token: tokenJson.access_token || null,
       has_refresh_token: Boolean(refreshToken),
       expires_at: expiresAt,
     });
   } catch (error: any) {
-    // Log only the code and message: the full client error echoes the request
-    // (authorization code and PKCE verifier).
+    // Log only the code and message: never log full request config/code/verifier.
     console.error('[Google Auth Token] Exchange error:', safeError(error));
     return res.status(500).json({
       success: false,
-      error: 'Token Exchange Failed',
-      message: error.message || 'Error exchanging authorization code with Google.',
+      error: error?.response?.data?.error || 'Token Exchange Failed',
+      message:
+        error?.response?.data?.error_description ||
+        error.message ||
+        'Error exchanging authorization code with Google.',
       hint: 'Verify that redirect_uri matches Authorized redirect URIs in Google Cloud Console with zero trailing slash mismatch.',
     });
   }
