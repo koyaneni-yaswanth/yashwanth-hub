@@ -51,6 +51,9 @@ export const HudAiCaptureBar: React.FC<HudAiCaptureBarProps> = ({
       data-agent-target="quick-actions"
       role="region"
       aria-label="Unified AI and Quick Capture Bar"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onClose();
+      }}
       className="hud-glass hud-focus-glow hud-enter-core w-full max-w-xl mx-auto p-3 sm:p-3.5 shadow-2xl"
     >
       <form onSubmit={onSubmitTask} className="space-y-2.5">

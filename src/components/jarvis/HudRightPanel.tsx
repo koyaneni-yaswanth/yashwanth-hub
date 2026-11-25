@@ -41,6 +41,8 @@ interface HudRightPanelProps {
   onOpenQuickCapture?: () => void;
   onNavigate: (tab: NavigationTab) => void;
   onSelectArea?: (area: string) => void;
+  onPanelMouseEnter?: () => void;
+  onPanelMouseLeave?: () => void;
   tasks: Task[];
   today: string;
   currentArea: string;
@@ -64,6 +66,8 @@ export const HudRightPanel: React.FC<HudRightPanelProps> = ({
   onOpenQuickCapture,
   onNavigate,
   onSelectArea,
+  onPanelMouseEnter,
+  onPanelMouseLeave,
   tasks,
   today,
   currentArea,
@@ -172,8 +176,10 @@ export const HudRightPanel: React.FC<HudRightPanelProps> = ({
                   type="button"
                   onClick={() => onCompleteTaskById(t.id)}
                   aria-label={`Complete task ${t.text}`}
-                  className="w-4 h-4 rounded border border-[#3BE8FF]/50 hover:bg-[#3BE8FF]/20 flex items-center justify-center shrink-0 cursor-pointer"
-                />
+                  className="group/chk w-4 h-4 rounded border border-[#3BE8FF]/50 hover:bg-[#3BE8FF]/20 flex items-center justify-center shrink-0 cursor-pointer"
+                >
+                  <Check className="w-2.5 h-2.5 text-[#3BE8FF] opacity-0 group-hover/chk:opacity-100 transition-opacity" />
+                </button>
                 <span className="flex-1 min-w-0 truncate text-[#E6F1FF]">{t.text}</span>
                 {t.priority === 'urgent' && (
                   <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-[#FF4D6D]/20 text-[#FF4D6D]">
@@ -329,7 +335,11 @@ export const HudRightPanel: React.FC<HudRightPanelProps> = ({
   return (
     <>
       {/* Desktop Collapsible Right Panel (340px) */}
-      <div className="hud-enter-panel hidden md:flex items-stretch z-20 shrink-0">
+      <div
+        onMouseEnter={onPanelMouseEnter}
+        onMouseLeave={onPanelMouseLeave}
+        className="hud-enter-panel hidden md:flex items-stretch z-20 shrink-0"
+      >
         <button
           type="button"
           onClick={onToggleOpen}

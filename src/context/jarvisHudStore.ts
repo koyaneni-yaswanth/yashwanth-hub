@@ -13,6 +13,8 @@ export interface JarvisHudContextValue {
   coreState: HudCoreState;
   hoveredNodeId: string | null;
   setHoveredNodeId: (id: string | null) => void;
+  setRightPanelPointerInside: (inside: boolean) => void;
+  clearWorkspacePreview: () => void;
   selectedNodeId: string | null;
   setSelectedNodeId: (id: string | null) => void;
   isAiBarOpen: boolean;
@@ -26,6 +28,8 @@ export interface JarvisHudContextValue {
   setDockExpanded: (expanded: boolean) => void;
   perf: HudPerfTelemetry;
   setPerf: (perf: HudPerfTelemetry) => void;
+  is3DEnabled: boolean;
+  setIs3DEnabled: (enabled: boolean) => void;
 }
 
 export const DEFAULT_CORE: HudCoreState = {

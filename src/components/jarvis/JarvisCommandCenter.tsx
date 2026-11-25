@@ -72,12 +72,14 @@ export const JarvisCommandCenter: React.FC<{
 
   const toggle = () => {
     setExpanded((v) => {
+      const next = !v;
       try {
-        localStorage.setItem(PREF_KEY, v ? 'off' : 'on');
+        localStorage.setItem(PREF_KEY, next ? 'on' : 'off');
       } catch {
         /* storage unavailable: preference lasts this visit only */
       }
-      return !v;
+      hud?.setIs3DEnabled(next);
+      return next;
     });
   };
 

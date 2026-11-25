@@ -60,7 +60,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onSelectArea,
 }) => {
   const today = getTodayISO();
-  const [nowMs] = useState(() => Date.now());
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 60000);
+    return () => window.clearInterval(id);
+  }, []);
   const nextWeek = React.useMemo(
     () => new Date(nowMs + 7 * 86400000).toISOString().slice(0, 10),
     [nowMs]
@@ -240,8 +244,9 @@ const DashboardHudShell: React.FC<ShellProps> = ({
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
   const [showQuickOptions, setShowQuickOptions] = useState(false);
 
-  // Quick Task / Ask AI Unified Bar State
-  const [quickText, setQuickText] = useState('');
+  // Quick Task / Ask AI Unified Bar State (backed by context draft so prefill works synchronously)
+  const quickText = hud.pendingAiPrompt;
+  const setQuickText = hud.setPendingAiPrompt;
   const [quickArea, setQuickArea] = useState(currentArea !== 'All' ? currentArea : 'PAWAN SHAKTI');
   const [quickDate, setQuickDate] = useState(today);
   const [quickPriority, setQuickPriority] = useState<Priority>('medium');
@@ -456,17 +461,10 @@ const DashboardHudShell: React.FC<ShellProps> = ({
     setTimeout(() => setWeeklyReviewNotice(null), 4000);
   };
 
-  let scenePref = true;
-  try {
-    scenePref = localStorage.getItem('yash_jarvis_scene') !== 'off';
-  } catch {
-    scenePref = true;
-  }
-
   return (
     <div className="relative flex-1 flex flex-col gap-3 min-h-[calc(100vh-88px)] lg:h-[calc(100vh-84px)] lg:overflow-hidden">
       {/* Decorative HUD Frame Overlay (Corner brackets, live clock, SYSTEMS NOMINAL line) */}
-      <HudFrameOverlay coreState={hud.coreState} perf={hud.perf} is3DEnabled={scenePref} />
+      <HudFrameOverlay coreState={hud.coreState} perf={hud.perf} is3DEnabled={hud.is3DEnabled} />
 
       {/* Top Greeting & Status Strip */}
       <div className="relative z-20 flex flex-wrap items-center justify-between gap-2 px-1 sm:pt-4">
@@ -564,10 +562,9 @@ const DashboardHudShell: React.FC<ShellProps> = ({
           mobileSheetOpen={mobileSheetOpen}
           onToggleMobileSheet={() => setMobileSheetOpen((v) => !v)}
           activeWorkspace={activeWorkspace}
-          onClearSelectedWorkspace={() => {
-            hud.setSelectedNodeId(null);
-            hud.setHoveredNodeId(null);
-          }}
+          onClearSelectedWorkspace={() => hud.clearWorkspacePreview()}
+          onPanelMouseEnter={() => hud.setRightPanelPointerInside(true)}
+          onPanelMouseLeave={() => hud.setRightPanelPointerInside(false)}
           activeRecommendation={activeRecommendation}
           onSkipRecommendation={() => setRecommendationSkipIndex((p) => p + 1)}
           onStartFocus={(task) => {
