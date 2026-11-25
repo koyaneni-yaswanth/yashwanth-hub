@@ -4,8 +4,8 @@
  * Zero DOM and zero Three.js dependencies so every selector is directly unit-tested.
  * Every count, metric, milestone and deadline comes strictly from stored Dexie records.
  */
-import type { AiActivityPhase } from './aiActivity';
-import { dueStatus, toDueKey } from './utils';
+import type { AiActivityPhase } from './aiActivity.ts';
+import { dueStatus, toDueKey } from './utils.ts';
 
 export type HudGlyph =
   | 'wind'

@@ -467,7 +467,7 @@ const DashboardHudShell: React.FC<ShellProps> = ({
       <HudFrameOverlay coreState={hud.coreState} perf={hud.perf} is3DEnabled={hud.is3DEnabled} />
 
       {/* Top Greeting & Status Strip */}
-      <div className="relative z-20 flex flex-wrap items-center justify-between gap-2 px-1 sm:pt-4">
+      <div className="relative z-20 flex flex-wrap items-center justify-between gap-2 px-1 sm:pt-7">
         <div className="min-w-0">
           <h2 className="text-lg sm:text-xl font-bold font-heading text-[#E6F1FF] tracking-tight truncate">
             {getGreeting('Yaswanth')}

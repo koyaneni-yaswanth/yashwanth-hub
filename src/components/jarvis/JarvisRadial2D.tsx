@@ -87,9 +87,10 @@ export const JarvisRadial2D: React.FC<JarvisRadial2DProps> = ({
         aria-label="Open Jarvis AI & Quick Capture Bar"
         className="hud-enter-core relative z-10 flex flex-col items-center justify-center w-24 h-24 sm:w-28 sm:h-28 rounded-full border transition-transform duration-300 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3BE8FF] cursor-pointer"
         style={{
-          borderColor: `${coreState.primaryHex}70`,
-          background: `radial-gradient(circle at 35% 35%, ${coreState.primaryHex}33, rgba(10,16,28,0.88) 72%)`,
-          boxShadow: `0 0 36px -6px ${coreState.primaryHex}66, inset 0 0 24px ${coreState.secondaryHex}30`,
+          borderColor: coreState.primaryHex,
+          borderWidth: '1.5px',
+          background: `radial-gradient(circle at 35% 35%, ${coreState.primaryHex}44, rgba(10,16,28,0.92) 72%)`,
+          boxShadow: `0 0 42px -4px ${coreState.primaryHex}88, inset 0 0 28px ${coreState.secondaryHex}44`,
         }}
       >
         <Sparkles className="w-5 h-5 mb-1" style={{ color: coreState.primaryHex }} aria-hidden="true" />

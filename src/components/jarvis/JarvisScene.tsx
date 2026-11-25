@@ -346,25 +346,21 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
           uniforms: coreUniforms,
           vertexShader: JARVIS_CORE_VERTEX_SHADER,
           fragmentShader: JARVIS_CORE_FRAGMENT_SHADER,
-          transparent: true,
+          transparent: false,
         })
       );
       core.add(heart);
 
       const shellMat = new THREE.MeshPhysicalMaterial({
         color: 0xffffff,
-        metalness: 0,
-        roughness: 0.08,
-        transmission: tier.glassTransmission ? 1 : 0,
-        transparent: !tier.glassTransmission,
-        opacity: tier.glassTransmission ? 1 : 0.16,
-        thickness: 1.0,
-        ior: 1.4,
+        metalness: 0.1,
+        roughness: 0.12,
+        transparent: true,
+        opacity: 0.16,
+        depthWrite: false,
         clearcoat: 1,
-        attenuationColor: primaryColor,
-        attenuationDistance: 2.5,
         flatShading: true,
-        envMapIntensity: 1.15,
+        envMapIntensity: 1.2,
       });
       const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(1.14, 1), shellMat);
       core.add(shell);
@@ -640,11 +636,11 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
           const activity = live?.activityLevel ?? 0.25;
           const beamOn = Boolean(live?.hasDueTodayBeam);
           const on = o.id === id;
-          o.baseScale = 0.78 + activity * 0.62;
-          o.targetScale = on ? o.baseScale * 1.38 : o.baseScale;
-          o.mat.emissiveIntensity = on ? 1.45 : 0.35 + activity * 0.95;
-          o.collarMat.opacity = on ? 0.95 : 0.35 + activity * 0.35;
-          (o.glow.material as import('three').SpriteMaterial).opacity = on ? 1 : 0.24 + activity * 0.45;
+          o.baseScale = 0.76 + activity * 0.5;
+          o.targetScale = highlighted === o.id ? o.baseScale * 1.32 : o.baseScale;
+          o.mat.emissiveIntensity = on ? 1.05 : 0.3 + activity * 0.62;
+          o.collarMat.opacity = on ? 0.92 : 0.32 + activity * 0.32;
+          (o.glow.material as import('three').SpriteMaterial).opacity = on ? 0.88 : 0.18 + activity * 0.36;
           o.beamMesh.visible = beamOn || on;
           o.bead.visible = beamOn || on;
           o.beamMat.opacity = on ? 0.68 : 0.36;
@@ -699,18 +695,22 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
           o.nodeGroup.getWorldPosition(proj);
           const depth = proj.z;
           proj.project(camera);
-          const x = (proj.x * 0.5 + 0.5) * w;
-          const y = (-proj.y * 0.5 + 0.5) * h;
+          const x = Math.round((proj.x * 0.5 + 0.5) * w);
+          const y = Math.round((-proj.y * 0.5 + 0.5) * h);
           const below = y < h - 54;
-          el.style.transform = below
+          const nextTransform = below
             ? `translate(${x}px, ${y + 22}px) translate(-50%, 0)`
             : `translate(${x}px, ${y - 22}px) translate(-50%, -100%)`;
+          if (el.style.transform !== nextTransform) el.style.transform = nextTransform;
           el.dataset.depth = depth < -1 ? 'back' : 'front';
         }
         const c = coreLabelRef.current;
         if (c) {
           proj.set(0, -1.9, 0).project(camera);
-          c.style.transform = `translate(${(proj.x * 0.5 + 0.5) * w}px, ${(-proj.y * 0.5 + 0.5) * h}px) translate(-50%, 0)`;
+          const cx = Math.round((proj.x * 0.5 + 0.5) * w);
+          const cy = Math.round((-proj.y * 0.5 + 0.5) * h);
+          const nextTransform = `translate(${cx}px, ${cy}px) translate(-50%, 0)`;
+          if (c.style.transform !== nextTransform) c.style.transform = nextTransform;
         }
       };
 
@@ -851,8 +851,8 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
           const live = currentHudNodes.find((x) => x.id === o.id);
           const activity = live?.activityLevel ?? 0.25;
           const beamOn = Boolean(live?.hasDueTodayBeam) || highlighted === o.id;
-          o.baseScale = 0.78 + activity * 0.62;
-          o.targetScale = highlighted === o.id ? o.baseScale * 1.38 : o.baseScale;
+          o.baseScale = 0.76 + activity * 0.5;
+          o.targetScale = highlighted === o.id ? o.baseScale * 1.32 : o.baseScale;
           const curScale = o.nodeGroup.scale.x;
           o.nodeGroup.scale.setScalar(curScale + (o.targetScale - curScale) * lerpAlpha);
 

@@ -67,8 +67,8 @@ export const HudFrameOverlay: React.FC<HudFrameOverlayProps> = ({
       <div className="hidden md:block absolute bottom-4 left-[76px] w-4 h-4 border-b border-l border-[#3BE8FF]/30" />
       <div className="hidden md:block absolute bottom-4 right-4 w-4 h-4 border-b border-r border-[#3BE8FF]/30" />
 
-      {/* Top HUD Telemetry Bar (inset cleanly below Header) */}
-      <div className="hidden sm:flex items-center justify-between px-4 lg:pl-20 lg:pr-6 pt-2 text-[10px] tracking-[0.14em] uppercase hud-tabular">
+      {/* Top HUD Telemetry Bar (inset cleanly below Header between corner brackets) */}
+      <div className="hidden sm:flex items-center justify-between px-4 md:pl-24 md:pr-8 pt-[62px] text-[10px] tracking-[0.14em] uppercase hud-tabular">
         <div className="flex items-center gap-3 text-[#7A8BA6]">
           <span className="inline-flex items-center gap-1.5 text-[#E6F1FF]">
             <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
