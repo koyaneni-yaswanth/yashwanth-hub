@@ -476,9 +476,15 @@ function HubMain() {
     }
   };
 
+  const isHome = currentTab === 'dashboard';
+
   return (
-    <div className="min-h-screen text-[var(--hub-ink)] flex flex-col font-sans transition-colors duration-200">
-      <AmbientBackground />
+    <div
+      className={`min-h-screen flex flex-col font-sans transition-colors duration-200 ${
+        isHome ? 'jarvis-hud text-[#E6F1FF]' : 'text-[var(--hub-ink)]'
+      }`}
+    >
+      {!isHome && <AmbientBackground />}
       <a href="#main-content" className="hub-skip-link">
         Skip to content
       </a>
@@ -492,11 +498,12 @@ function HubMain() {
         onOpenQuickCapture={() => setIsQuickCaptureOpen(true)}
         onNavigate={(tab) => setCurrentTab(tab)}
         turbineDuration={turbineDuration}
+        hudMode={isHome}
       />
 
       {/* Main Container */}
-      <div className="flex-1 flex max-w-7xl w-full mx-auto">
-        {/* Navigation Sidebar */}
+      <div className={`flex-1 flex w-full ${isHome ? 'relative' : 'max-w-7xl mx-auto'}`}>
+        {/* Navigation Sidebar (64px glass icon rail on Home; full sidebar on other tabs) */}
         <Sidebar
           currentTab={currentTab}
           onSelectTab={setCurrentTab}
@@ -506,6 +513,7 @@ function HubMain() {
           isOpenMobile={isMobileMenuOpen}
           onCloseMobile={() => setIsMobileMenuOpen(false)}
           onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+          compactRail={isHome}
         />
 
         {/* Dynamic Page Content */}
@@ -514,7 +522,11 @@ function HubMain() {
           ref={mainRef}
           tabIndex={-1}
           aria-label={TAB_TITLES[currentTab]}
-          className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 overflow-x-hidden pb-24 lg:pb-8 safe-area-content-pb focus:outline-none"
+          className={`flex-1 min-w-0 overflow-x-hidden focus:outline-none ${
+            isHome
+              ? 'relative flex flex-col p-2.5 sm:p-4 pb-20 lg:pb-3'
+              : 'p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8 safe-area-content-pb'
+          }`}
         >
           {!isDbReady ? (
             <PageSkeleton label="Booting Jarvis Personal AI Operating System" />

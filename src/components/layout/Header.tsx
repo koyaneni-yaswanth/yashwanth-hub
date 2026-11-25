@@ -30,6 +30,7 @@ interface HeaderProps {
   onOpenQuickCapture?: () => void;
   onNavigate: (tab: NavigationTab) => void;
   turbineDuration?: number;
+  hudMode?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -41,6 +42,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenQuickCapture,
   onNavigate,
   turbineDuration = 8,
+  hudMode = false,
 }) => {
   const { isDark, toggleTheme } = useTheme();
   const { status, queueCount, failedCount, statusMessage } = useSync();
@@ -107,8 +109,14 @@ export const Header: React.FC<HeaderProps> = ({
   const syncInfo = getSyncDot();
 
   return (
-    <header className={`sticky top-0 z-30 bg-[var(--hub-surface)]/95 border-b border-[var(--hub-line)] backdrop-blur-md px-3 sm:px-6 py-2.5 safe-area-header transition-colors${isScrolled ? ' is-scrolled' : ''}`}>
-      <div className="flex items-center justify-between gap-2 sm:gap-3 max-w-7xl mx-auto">
+    <header
+      className={`sticky top-0 z-30 backdrop-blur-md px-3 sm:px-6 py-2 safe-area-header transition-colors${
+        hudMode
+          ? ' bg-[rgba(5,7,13,0.78)] border-b border-[rgba(59,232,255,0.18)] text-[#E6F1FF]'
+          : ' bg-[var(--hub-surface)]/95 border-b border-[var(--hub-line)]'
+      }${isScrolled ? ' is-scrolled' : ''}`}
+    >
+      <div className={`flex items-center justify-between gap-2 sm:gap-3 ${hudMode ? 'w-full' : 'max-w-7xl mx-auto'}`}>
         {/* Left: Menu + Brand */}
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button

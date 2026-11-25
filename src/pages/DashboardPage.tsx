@@ -1,59 +1,44 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useSyncExternalStore } from 'react';
 import { JarvisCommandCenter } from '../components/jarvis/JarvisCommandCenter';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   CheckCircle2,
-  AlertCircle,
-  Calendar,
-  IndianRupee,
-  Plus,
+  Clock,
+  RefreshCw,
   Star,
   Trash2,
-  MapPin,
-  FileText,
-  Wind,
-  Check,
-  RefreshCw,
-  Sparkles,
-  Bot,
-  Heart,
-  ArrowRight,
-  Clock,
-  FolderKanban,
-  Sun,
-  Target,
-  Play,
-  Eye,
-  SkipForward,
-  CalendarCheck,
   Trophy,
   X,
-  Mic,
-  SlidersHorizontal,
-  ChevronDown,
-  ChevronUp,
+  CalendarCheck,
   Undo2,
+  Check,
 } from 'lucide-react';
 import { db } from '../db';
 import type { Task, Area, Priority } from '../types';
 import {
-  formatINR,
   formatShortDate,
   getGreeting,
   getTodayISO,
-  isOverdue,
   toDueKey,
   dueStatus,
   generateId,
 } from '../lib/utils';
-import { StatCard } from '../components/common/StatCard';
-import { Badge } from '../components/common/Badge';
-import { Neo1DeviceCard } from '../components/neo/Neo1DeviceCard';
 import { IntegrationVaultService } from '../services/integrationVaultService';
 import { handOffFocusTask } from '../lib/focusHandoff';
 import { MomentumChip } from '../components/momentum/MomentumChip';
 import { TaskService } from '../services/sync/taskService';
-import { TodayProgress } from '../components/home/TodayProgress';
+import {
+  buildHudWorkspaceNodes,
+  collectDeadlines,
+  deriveCoreState,
+} from '../lib/jarvisHud';
+import { getAiActivityPhase, subscribeAiActivity } from '../lib/aiActivity';
+import { JarvisHudProvider } from '../context/JarvisHudContext';
+import { useJarvisHud } from '../context/jarvisHudStore';
+import { HudFrameOverlay } from '../components/jarvis/HudFrameOverlay';
+import { HudRightPanel } from '../components/jarvis/HudRightPanel';
+import { HudMissionDock } from '../components/jarvis/HudMissionDock';
+import { HudAiCaptureBar } from '../components/jarvis/HudAiCaptureBar';
 
 interface DashboardPageProps {
   currentArea: string;
@@ -65,6 +50,8 @@ interface DashboardPageProps {
   onSelectArea?: (area: string) => void;
 }
 
+const NO_ARR: never[] = [];
+
 export const DashboardPage: React.FC<DashboardPageProps> = ({
   currentArea,
   areas,
@@ -73,35 +60,199 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onSelectArea,
 }) => {
   const today = getTodayISO();
+  const [nowMs] = useState(() => Date.now());
   const nextWeek = React.useMemo(
-    () => new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
-    []
+    () => new Date(nowMs + 7 * 86400000).toISOString().slice(0, 10),
+    [nowMs]
+  );
+  const sevenDaysAgo = React.useMemo(
+    () => new Date(nowMs - 7 * 86400000).toISOString(),
+    [nowMs]
   );
   const currentMonthStr = today.slice(0, 7);
-  const taskInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Sync & View Preferences
+  // Live Dexie Queries (real local-first stores + sync_queue)
+  const allTasks = useLiveQuery(() => db.tasks.toArray(), []) ?? NO_ARR;
+  const allEvents = useLiveQuery(() => db.events.toArray(), []) ?? NO_ARR;
+  const allMeetings = useLiveQuery(() => db.meetings.toArray(), []) ?? NO_ARR;
+  const allExpenses = useLiveQuery(() => db.expenses.toArray(), []) ?? NO_ARR;
+  const allProjects = useLiveQuery(() => db.projects.toArray(), []) ?? NO_ARR;
+  const allNotes = useLiveQuery(() => db.notes.toArray(), []) ?? NO_ARR;
+  const allHabits = useLiveQuery(() => db.habits.toArray(), []) ?? NO_ARR;
+  const allHabitLogs = useLiveQuery(() => db.habit_logs.toArray(), []) ?? NO_ARR;
+  const roboticsRecords = useLiveQuery(() => db.robotics_records.count(), []) ?? 0;
+  const neoMemoriesCount = useLiveQuery(() => db.neo_memories.count(), []) ?? 0;
+
+  const pinnedNotes = React.useMemo(() => allNotes.filter((n) => n.pinned), [allNotes]);
+  const aiPhase = useSyncExternalStore(subscribeAiActivity, getAiActivityPhase, () => 'idle' as const);
+
+  const tasks = React.useMemo(
+    () => (currentArea === 'All' ? allTasks : allTasks.filter((t) => t.area === currentArea)),
+    [allTasks, currentArea]
+  );
+  const openTasks = React.useMemo(() => tasks.filter((t) => !t.done), [tasks]);
+  const dueAndOverdueTasks = React.useMemo(
+    () =>
+      openTasks
+        .filter((t) => {
+          const st = dueStatus(t.due_date, t.done, today);
+          return st === 'overdue' || st === 'today';
+        })
+        .sort((a, b) => {
+          if (a.starred && !b.starred) return -1;
+          if (!a.starred && b.starred) return 1;
+          return toDueKey(a.due_date).localeCompare(toDueKey(b.due_date));
+        }),
+    [openTasks, today]
+  );
+  const overdueCount = React.useMemo(
+    () => dueAndOverdueTasks.filter((t) => dueStatus(t.due_date, t.done, today) === 'overdue').length,
+    [dueAndOverdueTasks, today]
+  );
+  const dueTodayCount = dueAndOverdueTasks.length - overdueCount;
+
+  const hudNodes = React.useMemo(
+    () =>
+      buildHudWorkspaceNodes({
+        today,
+        recentCutoffISO: sevenDaysAgo,
+        tasks: allTasks,
+        projects: allProjects,
+        notes: allNotes,
+        expenses: allExpenses,
+        habits: allHabits,
+        habitLogs: allHabitLogs,
+        roboticsRecords,
+        neoMemoriesCount,
+      }),
+    [
+      today,
+      sevenDaysAgo,
+      allTasks,
+      allProjects,
+      allNotes,
+      allExpenses,
+      allHabits,
+      allHabitLogs,
+      roboticsRecords,
+      neoMemoriesCount,
+    ]
+  );
+
+  const coreState = React.useMemo(
+    () => deriveCoreState({ aiPhase, overdueCount, dueTodayCount }),
+    [aiPhase, overdueCount, dueTodayCount]
+  );
+
+  const deadlines = React.useMemo(
+    () =>
+      collectDeadlines({
+        tasks,
+        events: currentArea === 'All' ? allEvents : allEvents.filter((e) => e.area === currentArea),
+        meetings: currentArea === 'All' ? allMeetings : allMeetings.filter((m) => m.area === currentArea),
+        nowMs,
+        todayISO: today,
+        nextWeekISO: nextWeek,
+      }),
+    [tasks, allEvents, allMeetings, currentArea, nowMs, today, nextWeek]
+  );
+
+  return (
+    <JarvisHudProvider hudNodes={hudNodes} coreState={coreState}>
+      <DashboardHudShell
+        currentArea={currentArea}
+        areas={areas}
+        onNavigate={onNavigate}
+        onOpenQuickCapture={onOpenQuickCapture}
+        onSelectArea={onSelectArea}
+        today={today}
+        nextWeek={nextWeek}
+        sevenDaysAgo={sevenDaysAgo}
+        currentMonthStr={currentMonthStr}
+        allTasks={allTasks}
+        tasks={tasks}
+        openTasks={openTasks}
+        dueAndOverdueTasks={dueAndOverdueTasks}
+        overdueCount={overdueCount}
+        dueTodayCount={dueTodayCount}
+        allEvents={allEvents}
+        allMeetings={allMeetings}
+        allExpenses={allExpenses}
+        allProjects={allProjects}
+        pinnedNotes={pinnedNotes}
+        deadlines={deadlines}
+      />
+    </JarvisHudProvider>
+  );
+};
+
+interface ShellProps {
+  currentArea: string;
+  areas: Area[];
+  onNavigate: (tab: any) => void;
+  onOpenQuickCapture?: () => void;
+  onSelectArea?: (area: string) => void;
+  today: string;
+  nextWeek: string;
+  sevenDaysAgo: string;
+  currentMonthStr: string;
+  allTasks: Task[];
+  tasks: Task[];
+  openTasks: Task[];
+  dueAndOverdueTasks: Task[];
+  overdueCount: number;
+  dueTodayCount: number;
+  allEvents: any[];
+  allMeetings: any[];
+  allExpenses: any[];
+  allProjects: any[];
+  pinnedNotes: any[];
+  deadlines: ReturnType<typeof collectDeadlines>;
+}
+
+const DashboardHudShell: React.FC<ShellProps> = ({
+  currentArea,
+  areas,
+  onNavigate,
+  onOpenQuickCapture,
+  onSelectArea,
+  today,
+  nextWeek,
+  sevenDaysAgo,
+  currentMonthStr,
+  allTasks,
+  tasks,
+  openTasks,
+  dueAndOverdueTasks,
+  overdueCount,
+  dueTodayCount,
+  allEvents,
+  allMeetings,
+  allExpenses,
+  allProjects,
+  pinnedNotes,
+  deadlines,
+}) => {
+  const hud = useJarvisHud()!;
+  const taskInputRef = useRef<HTMLInputElement>(null);
+
   const [isSyncing, setIsSyncing] = useState(false);
-  const [showMoreDetails, setShowMoreDetails] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('yash_home_show_details') === 'true';
-    } catch {
-      return false;
-    }
-  });
+  const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
   const [showQuickOptions, setShowQuickOptions] = useState(false);
 
-  const toggleMoreDetails = () => {
-    setShowMoreDetails((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem('yash_home_show_details', String(next));
-      } catch {
-        // Ignore storage errors
-      }
-      return next;
-    });
-  };
+  // Quick Task / Ask AI Unified Bar State
+  const [quickText, setQuickText] = useState('');
+  const [quickArea, setQuickArea] = useState(currentArea !== 'All' ? currentArea : 'PAWAN SHAKTI');
+  const [quickDate, setQuickDate] = useState(today);
+  const [quickPriority, setQuickPriority] = useState<Priority>('medium');
+  const [quickAddedToast, setQuickAddedToast] = useState<string | null>(null);
+
+  // Modals & Notices
+  const [isDailyPlanningOpen, setIsDailyPlanningOpen] = useState(false);
+  const [isWeeklyReviewOpen, setIsWeeklyReviewOpen] = useState(false);
+  const [dailyPlanNotice, setDailyPlanNotice] = useState<string | null>(null);
+  const [weeklyReviewNotice, setWeeklyReviewNotice] = useState<string | null>(null);
+  const [recommendationSkipIndex, setRecommendationSkipIndex] = useState(0);
 
   const handleSyncNow = async () => {
     setIsSyncing(true);
@@ -114,61 +265,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     }
   };
 
-  // Quick Task / Ask AI Unified Bar State
-  const [quickText, setQuickText] = useState('');
-  const [quickArea, setQuickArea] = useState(currentArea !== 'All' ? currentArea : 'PAWAN SHAKTI');
-  const [quickDate, setQuickDate] = useState(today);
-  const [quickPriority, setQuickPriority] = useState<Priority>('medium');
-  const [quickAddedToast, setQuickAddedToast] = useState<string | null>(null);
-
-  // Live queries from IndexedDB
-  const allTasks = useLiveQuery(() => db.tasks.toArray(), []) || [];
-  const allEvents = useLiveQuery(() => db.events.toArray(), []) || [];
-  const allMeetings = useLiveQuery(() => db.meetings.toArray(), []) || [];
-  const allExpenses = useLiveQuery(() => db.expenses.toArray(), []) || [];
-  const allProjects = useLiveQuery(() => db.projects.toArray(), []) || [];
-  const pinnedNotes =
-    useLiveQuery(() => db.notes.filter((n) => n.pinned).toArray(), []) || [];
-
-  // Planning & Review Modals
-  const [isDailyPlanningOpen, setIsDailyPlanningOpen] = useState(false);
-  const [isWeeklyReviewOpen, setIsWeeklyReviewOpen] = useState(false);
-  const [dailyPlanNotice, setDailyPlanNotice] = useState<string | null>(null);
-  const [weeklyReviewNotice, setWeeklyReviewNotice] = useState<string | null>(null);
-
-  // Filter based on selected area
-  const tasks = currentArea === 'All' ? allTasks : allTasks.filter((t) => t.area === currentArea);
-  const openTasks = tasks.filter((t) => !t.done);
-  // Dates are normalised (toDueKey) so timestamps from integrations compare correctly.
-  const dueAndOverdueTasks = openTasks
-    .filter((t) => {
-      const st = dueStatus(t.due_date, t.done, today);
-      return st === 'overdue' || st === 'today';
-    })
-    .sort((a, b) => {
-      if (a.starred && !b.starred) return -1;
-      if (!a.starred && b.starred) return 1;
-      return toDueKey(a.due_date).localeCompare(toDueKey(b.due_date));
-    });
-  const overdueCount = dueAndOverdueTasks.filter((t) => dueStatus(t.due_date, t.done, today) === 'overdue').length;
-  const dueTodayCount = dueAndOverdueTasks.length - overdueCount;
-
-  // Focus Mode state
-  const [recommendationSkipIndex, setRecommendationSkipIndex] = useState(0);
-
-  // Smart Task Recommendation (clean human reasons, no jargon)
-  interface ScoredTask {
-    task: Task;
-    score: number;
-    label: string;
-  }
-
-  const scoredCandidateTasks: ScoredTask[] = React.useMemo(() => {
+  const scoredCandidateTasks = React.useMemo(() => {
     return openTasks
       .map((t) => {
         let score = 0;
         let label = 'Next up';
-
         const dueKey = toDueKey(t.due_date);
         if (dueKey) {
           if (dueKey < today) {
@@ -184,7 +285,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             score += 5;
           }
         }
-
         if (t.priority === 'urgent') {
           score += 40;
           if (label === 'Next up') label = 'Urgent';
@@ -194,31 +294,22 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         } else if (t.priority === 'medium') {
           score += 10;
         }
-
         if (t.starred) {
           score += 20;
           if (label === 'Next up') label = 'Starred focus';
         }
-
         if (t.plan !== undefined) score += 15;
         if (currentArea !== 'All' && t.area === currentArea) score += 10;
-
         return { task: t, score, label };
       })
       .sort((a, b) => b.score - a.score);
   }, [openTasks, today, nextWeek, currentArea]);
 
   const candidateTasks = scoredCandidateTasks.map((s) => s.task);
-  const activeRecommendationItem =
+  const activeRecommendation =
     scoredCandidateTasks.length > 0
       ? scoredCandidateTasks[recommendationSkipIndex % scoredCandidateTasks.length]
       : null;
-  const activeRecommendation = activeRecommendationItem ? activeRecommendationItem.task : null;
-
-  const sevenDaysAgo = React.useMemo(
-    () => new Date(Date.now() - 7 * 86400000).toISOString(),
-    []
-  );
 
   const overdueTasks = React.useMemo(
     () => openTasks.filter((t) => dueStatus(t.due_date, t.done, today) === 'overdue'),
@@ -230,41 +321,118 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     [allTasks, sevenDaysAgo]
   );
 
-  const todayEvents = React.useMemo(
-    () => allEvents.filter((e) => e.date === today),
-    [allEvents, today]
-  );
-
+  const todayEvents = React.useMemo(() => allEvents.filter((e) => e.date === today), [allEvents, today]);
   const todayMeetings = React.useMemo(
     () => allMeetings.filter((m) => m.date === today && m.status === 'scheduled'),
     [allMeetings, today]
   );
 
-  const upcomingEvents = (
-    currentArea === 'All' ? allEvents : allEvents.filter((e) => e.area === currentArea)
-  )
-    .filter((e) => e.date >= today && e.date <= nextWeek)
-    .sort((a, b) => (a.date + (a.start_time || '')).localeCompare(b.date + (b.start_time || '')));
-
+  const upcomingEvents = (currentArea === 'All' ? allEvents : allEvents.filter((e) => e.area === currentArea)).filter(
+    (e) => e.date >= today && e.date <= nextWeek
+  );
   const upcomingMeetings = (
     currentArea === 'All' ? allMeetings : allMeetings.filter((m) => m.area === currentArea)
-  )
-    .filter((m) => m.date >= today && m.date <= nextWeek && m.status === 'scheduled')
-    .sort((a, b) => (a.date + a.start_time).localeCompare(b.date + b.start_time));
+  ).filter((m) => m.date >= today && m.date <= nextWeek && m.status === 'scheduled');
+  const scheduleCount = upcomingEvents.length + upcomingMeetings.length;
 
-  const monthExpenses = (
-    currentArea === 'All' ? allExpenses : allExpenses.filter((e) => e.area === currentArea)
-  )
+  const monthExpenses = (currentArea === 'All' ? allExpenses : allExpenses.filter((e) => e.area === currentArea))
     .filter((e) => e.date.startsWith(currentMonthStr))
     .reduce((sum, e) => sum + e.amount, 0);
 
-  const pawanProject = allProjects.find((p) => p.area === 'PAWAN SHAKTI');
+  const activeWorkspace = React.useMemo(() => {
+    const id = hud.hoveredNodeId || hud.selectedNodeId;
+    return id ? hud.hudNodes.find((n) => n.id === id) || null : null;
+  }, [hud.hoveredNodeId, hud.selectedNodeId, hud.hudNodes]);
 
-  // Every Home task edit goes through the same persistence + cloud-sync path as the Tasks page.
+  const handleToggleTask = (task: Task) => TaskService.toggleDone(task);
+  const handleToggleStar = (task: Task) => TaskService.toggleStar(task);
   const handleMoveToToday = (task: Task) => TaskService.scheduleFor(task, today);
 
+  const handleCompleteTaskById = async (taskId: string) => {
+    const t = allTasks.find((x) => x.id === taskId);
+    if (t) await TaskService.toggleDone(t);
+  };
+
+  // Delete with undo
+  const UNDO_WINDOW_MS = 6000;
+  const [pendingDelete, setPendingDelete] = useState<Task | null>(null);
+  const pendingDeleteRef = useRef<{ task: Task; timer: number } | null>(null);
+
+  const commitPendingDelete = useCallback(() => {
+    const pending = pendingDeleteRef.current;
+    if (!pending) return;
+    window.clearTimeout(pending.timer);
+    pendingDeleteRef.current = null;
+    TaskService.commitRemove(pending.task.id);
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('pagehide', commitPendingDelete);
+    return () => {
+      window.removeEventListener('pagehide', commitPendingDelete);
+      commitPendingDelete();
+    };
+  }, [commitPendingDelete]);
+
+  const handleDeleteTask = async (task: Task) => {
+    commitPendingDelete();
+    await TaskService.removeLocally(task);
+    const timer = window.setTimeout(() => {
+      commitPendingDelete();
+      setPendingDelete(null);
+    }, UNDO_WINDOW_MS);
+    pendingDeleteRef.current = { task, timer };
+    setPendingDelete(task);
+  };
+
+  const handleUndoDelete = useCallback(async () => {
+    const pending = pendingDeleteRef.current;
+    if (!pending) return;
+    window.clearTimeout(pending.timer);
+    pendingDeleteRef.current = null;
+    setPendingDelete(null);
+    await TaskService.restore(pending.task);
+  }, []);
+
+  useEffect(() => {
+    if (!pendingDelete) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.key.toLowerCase() !== 'z') return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      e.preventDefault();
+      handleUndoDelete();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [pendingDelete, handleUndoDelete]);
+
+  const handleQuickAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickText.trim()) return;
+    await TaskService.create({
+      text: quickText.trim(),
+      area: quickArea,
+      priority: quickPriority,
+      due_date: quickDate || undefined,
+      starred: false,
+      done: false,
+    });
+    setQuickText('');
+    setShowQuickOptions(false);
+    setQuickAddedToast('Task added!');
+    setTimeout(() => setQuickAddedToast(null), 2500);
+  };
+
+  const handleSendToAI = () => {
+    if (quickText.trim()) {
+      localStorage.setItem('yash_ai_prefill_prompt', quickText.trim());
+    }
+    onNavigate('ai-assistant');
+  };
+
   const handleFinishDailyPlan = () => {
-    setDailyPlanNotice('Daily plan saved — your top focus priorities are ready.');
+    setDailyPlanNotice('Daily plan saved — top focus priorities ready.');
     setIsDailyPlanningOpen(false);
     setTimeout(() => setDailyPlanNotice(null), 4000);
   };
@@ -288,785 +456,220 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     setTimeout(() => setWeeklyReviewNotice(null), 4000);
   };
 
-  // Quick Task Submit
-  const handleQuickAdd = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!quickText.trim()) return;
-
-    await TaskService.create({
-      text: quickText.trim(),
-      area: quickArea,
-      priority: quickPriority,
-      due_date: quickDate || undefined,
-      starred: false,
-      done: false,
-    });
-    setQuickText('');
-    setShowQuickOptions(false);
-    setQuickAddedToast('Task added!');
-    setTimeout(() => setQuickAddedToast(null), 2500);
-  };
-
-  // Send directly to Ask AI from Home bar
-  const handleSendToAI = () => {
-    if (quickText.trim()) {
-      localStorage.setItem('yash_ai_prefill_prompt', quickText.trim());
-    }
-    onNavigate('ai-assistant');
-  };
-
-  const handleToggleTask = (task: Task) => TaskService.toggleDone(task);
-
-  const handleToggleStar = (task: Task) => TaskService.toggleStar(task);
-
-  // Delete with undo: the task leaves the list at once, but the cloud delete is held
-  // until the undo window closes, so undoing never races an already-synced delete.
-  const UNDO_WINDOW_MS = 6000;
-  const [pendingDelete, setPendingDelete] = useState<Task | null>(null);
-  const pendingDeleteRef = useRef<{ task: Task; timer: number } | null>(null);
-
-  const commitPendingDelete = useCallback(() => {
-    const pending = pendingDeleteRef.current;
-    if (!pending) return;
-    window.clearTimeout(pending.timer);
-    pendingDeleteRef.current = null;
-    TaskService.commitRemove(pending.task.id);
-  }, []);
-
-  // Finalize a pending delete if the user leaves Home or closes the app mid-window.
-  useEffect(() => {
-    window.addEventListener('pagehide', commitPendingDelete);
-    return () => {
-      window.removeEventListener('pagehide', commitPendingDelete);
-      commitPendingDelete();
-    };
-  }, [commitPendingDelete]);
-
-  const handleDeleteTask = async (task: Task) => {
-    commitPendingDelete(); // a second delete finalizes the first
-    await TaskService.removeLocally(task);
-    const timer = window.setTimeout(() => {
-      commitPendingDelete();
-      setPendingDelete(null);
-    }, UNDO_WINDOW_MS);
-    pendingDeleteRef.current = { task, timer };
-    setPendingDelete(task);
-  };
-
-  const handleUndoDelete = useCallback(async () => {
-    const pending = pendingDeleteRef.current;
-    if (!pending) return;
-    window.clearTimeout(pending.timer);
-    pendingDeleteRef.current = null;
-    setPendingDelete(null);
-    await TaskService.restore(pending.task);
-  }, []);
-
-  // Ctrl/Cmd+Z undoes while the toast is showing (but not while typing in a field).
-  useEffect(() => {
-    if (!pendingDelete) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.key.toLowerCase() !== 'z') return;
-      const el = e.target as HTMLElement | null;
-      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
-      e.preventDefault();
-      handleUndoDelete();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [pendingDelete, handleUndoDelete]);
-
-  const scheduleCount = upcomingEvents.length + upcomingMeetings.length;
+  let scenePref = false;
+  try {
+    scenePref = localStorage.getItem('yash_jarvis_scene') === 'on';
+  } catch {
+    scenePref = false;
+  }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 pb-10">
-      {/* 1. Calm Greeting & Clean Top Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h2 className="text-2xl sm:text-3xl font-bold font-heading text-[var(--hub-ink)] tracking-tight">
+    <div className="relative flex-1 flex flex-col gap-3 min-h-[calc(100vh-88px)] lg:h-[calc(100vh-84px)] lg:overflow-hidden">
+      {/* Decorative HUD Frame Overlay (Corner brackets, live clock, SYSTEMS NOMINAL line) */}
+      <HudFrameOverlay coreState={hud.coreState} perf={hud.perf} is3DEnabled={scenePref} />
+
+      {/* Top Greeting & Status Strip */}
+      <div className="relative z-20 flex flex-wrap items-center justify-between gap-2 px-1 sm:pt-4">
+        <div className="min-w-0">
+          <h2 className="text-lg sm:text-xl font-bold font-heading text-[#E6F1FF] tracking-tight truncate">
             {getGreeting('Yaswanth')}
           </h2>
-          <p className="text-sm text-[var(--hub-muted)] mt-0.5">
+          <p className="text-xs text-[#7A8BA6] hud-tabular">
             {dueAndOverdueTasks.length === 0
-              ? `All clear today • ${openTasks.length} open task${openTasks.length === 1 ? '' : 's'}`
+              ? `ALL CLEAR · ${openTasks.length} OPEN`
               : [
-                  overdueCount ? `${overdueCount} overdue` : '',
-                  dueTodayCount ? `${dueTodayCount} due today` : '',
-                  `${scheduleCount} upcoming`,
+                  overdueCount ? `${overdueCount} OVERDUE` : '',
+                  dueTodayCount ? `${dueTodayCount} DUE TODAY` : '',
+                  `${scheduleCount} UPCOMING`,
                 ]
                   .filter(Boolean)
-                  .join(' • ')}
+                  .join(' · ')}
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
-          <button
-            onClick={() => {
-              if (activeRecommendation) handOffFocusTask(activeRecommendation.id);
-              onNavigate('focus');
-            }}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer bg-[var(--hub-surface)] border-[var(--hub-line)] text-[var(--hub-ink)] hover:border-[var(--hub-accent)]/50"
-          >
-            <Eye className="w-3.5 h-3.5" aria-hidden="true" />
-            <span>Focus Mode</span>
-          </button>
-
+        <div className="flex items-center gap-2">
           <MomentumChip onOpen={() => onNavigate('momentum')} />
-
           <button
-            onClick={() => setIsDailyPlanningOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-line)] text-[var(--hub-ink)] text-xs font-semibold hover:border-[var(--hub-accent)]/50 transition-all cursor-pointer"
-          >
-            <CalendarCheck className="w-3.5 h-3.5 text-[var(--hub-accent)]" />
-            <span>Plan Day</span>
-          </button>
-
-          <button
+            type="button"
             onClick={handleSyncNow}
             disabled={isSyncing}
-            className="p-2 rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)] transition-all cursor-pointer disabled:opacity-50"
-            title="Sync now"
+            className="p-2 rounded-xl hud-glass-pill text-[#7A8BA6] hover:text-[#3BE8FF] transition-colors cursor-pointer disabled:opacity-50"
+            title="Sync workspace"
             aria-label="Sync now"
           >
-            <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin text-[var(--hub-accent)]' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin text-[#3BE8FF]' : ''}`} />
           </button>
         </div>
       </div>
 
-      <JarvisCommandCenter areas={areas} onNavigate={onNavigate} onSelectArea={onSelectArea} />
-
-      <TodayProgress tasks={tasks} today={today} currentArea={currentArea} onNavigate={onNavigate} />
-
       {/* Notices */}
-      <div role="status" aria-live="polite">
       {(dailyPlanNotice || weeklyReviewNotice || quickAddedToast) && (
-        <div className="p-3 rounded-xl bg-teal-500/10 border border-teal-500/30 text-teal-700 dark:text-teal-300 text-xs font-semibold flex items-center justify-between">
+        <div
+          role="status"
+          aria-live="polite"
+          className="relative z-20 p-2.5 rounded-xl bg-[#3BE8FF]/12 border border-[#3BE8FF]/40 text-[#E6F1FF] text-xs font-semibold flex items-center justify-between"
+        >
           <span className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <CheckCircle2 className="w-4 h-4 text-[#3BE8FF] shrink-0" />
             <span>{dailyPlanNotice || weeklyReviewNotice || quickAddedToast}</span>
           </span>
           <button
+            type="button"
             onClick={() => {
               setDailyPlanNotice(null);
               setWeeklyReviewNotice(null);
               setQuickAddedToast(null);
             }}
-            className="text-xs hover:underline cursor-pointer"
+            className="text-xs text-[#3BE8FF] hover:underline cursor-pointer"
           >
             Dismiss
           </button>
         </div>
       )}
-      </div>
 
-      {/* 2. Unified "Do Anything" Bar — Add Task, Ask AI, or Voice Capture in One Place */}
-      <div
-        data-agent-target="quick-actions"
-        className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-3 sm:p-4 shadow-xs focus-within:border-[var(--hub-accent)] transition-colors"
-      >
-        <form onSubmit={handleQuickAdd} className="space-y-3">
-          <div className="flex items-center gap-2">
-            <input
-              ref={taskInputRef}
-              type="text"
-              value={quickText}
-              onChange={(e) => setQuickText(e.target.value)}
-              aria-label="Add a task, capture a thought, or ask AI"
-              placeholder="Add a task, capture a thought, or ask Jarvis AI..."
-              className="flex-1 min-w-0 px-3 py-2.5 rounded-xl bg-[var(--hub-bg)]/70 border border-transparent focus:border-[var(--hub-accent)]/40 text-[var(--hub-ink)] text-sm focus:outline-none placeholder:text-[var(--hub-muted)]"
-            />
-
-            {onOpenQuickCapture && (
-              <button
-                type="button"
-                onClick={onOpenQuickCapture}
-                title="Voice & Smart Capture"
-                aria-label="Voice Capture"
-                className="p-2.5 rounded-xl bg-[var(--hub-bg)] text-[var(--hub-muted)] hover:text-[var(--hub-accent)] transition-colors cursor-pointer flex-none"
-              >
-                <Mic className="w-4 h-4" />
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={() => setShowQuickOptions(!showQuickOptions)}
-              title="Due date, area & priority"
-              aria-label="Task options"
-              className={`p-2.5 rounded-xl transition-colors cursor-pointer flex-none ${
-                showQuickOptions
-                  ? 'bg-[var(--hub-accent)]/15 text-[var(--hub-accent)]'
-                  : 'bg-[var(--hub-bg)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
-              }`}
-            >
-              <SlidersHorizontal className="w-4 h-4" />
-            </button>
-
-            <button
-              type="button"
-              onClick={handleSendToAI}
-              title="Ask Jarvis AI"
-              className="hidden sm:flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-teal-500/10 text-teal-700 dark:text-teal-300 hover:bg-teal-500/20 text-xs font-semibold transition-colors cursor-pointer flex-none"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>Ask AI</span>
-            </button>
-
-            <button
-              type="submit"
-              disabled={!quickText.trim()}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs sm:text-sm font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer flex-none shadow-xs disabled:opacity-40"
-            >
-              <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline">Add</span>
-            </button>
+      {/* Middle Row: Center 3D/2D Stage + Right Contextual Panel */}
+      <div className="relative z-20 flex-1 min-h-0 flex flex-col md:flex-row gap-3">
+        {/* Center Jarvis Core Stage (top ~40vh on mobile, flex-1 on desktop) */}
+        <div className="relative flex-1 min-h-[260px] md:min-h-0 flex flex-col gap-2">
+          <div className="relative flex-1 min-h-[240px] md:min-h-0">
+            <JarvisCommandCenter areas={areas} onNavigate={onNavigate} onSelectArea={onSelectArea} />
           </div>
 
-          {showQuickOptions && (
-            <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-[var(--hub-line)]/70 text-xs">
-              <label className="flex items-center gap-1.5 text-[var(--hub-muted)]">
-                <span>Area:</span>
-                <select
-                  value={quickArea}
-                  onChange={(e) => setQuickArea(e.target.value)}
-                  className="py-1 px-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)] text-xs font-medium cursor-pointer"
-                >
-                  {areas.map((a) => (
-                    <option key={a.id} value={a.name}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="flex items-center gap-1.5 text-[var(--hub-muted)]">
-                <span>Due:</span>
-                <input
-                  type="date"
-                  value={quickDate}
-                  onChange={(e) => setQuickDate(e.target.value)}
-                  className="py-1 px-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)] text-xs font-medium cursor-pointer"
-                />
-              </label>
-
-              <label className="flex items-center gap-1.5 text-[var(--hub-muted)]">
-                <span>Priority:</span>
-                <select
-                  value={quickPriority}
-                  onChange={(e) => setQuickPriority(e.target.value as Priority)}
-                  className="py-1 px-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)] text-xs font-medium cursor-pointer"
-                >
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="urgent">Urgent</option>
-                </select>
-              </label>
-            </div>
-          )}
-        </form>
-      </div>
-
-      {/* 4. Clean "Up Next" Single Focus Card */}
-      {activeRecommendation && activeRecommendationItem && (
-        <div className="rounded-2xl p-4 sm:p-5 bg-[var(--hub-surface)] border border-teal-500/30 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-start gap-3 min-w-0">
-            <div className="p-2.5 rounded-xl bg-teal-500/15 text-teal-700 dark:text-teal-400 shrink-0">
-              <Target className="w-5 h-5" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-teal-700 dark:text-teal-400">
-                  Up Next
-                </span>
-                <span className="text-xs text-[var(--hub-muted)]">
-                  • {activeRecommendationItem.label} • {activeRecommendation.area}
-                </span>
-              </div>
-              <h3 className="text-base font-bold text-[var(--hub-ink)] mt-1 font-heading break-words">
-                {activeRecommendation.text}
-              </h3>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => {
-                handOffFocusTask(activeRecommendation.id);
-                onNavigate('focus');
-              }}
-              aria-label={`Start a focus session: ${activeRecommendation.text}`}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer"
-            >
-              <Play className="w-3.5 h-3.5" />
-              <span>Focus</span>
-            </button>
-            <button
-              onClick={() => handleToggleTask(activeRecommendation)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs font-semibold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 transition-colors cursor-pointer"
-            >
-              <Check className="w-3.5 h-3.5" />
-              <span>Done</span>
-            </button>
-            <button
-              onClick={() => setRecommendationSkipIndex((prev) => prev + 1)}
-              title="Show another task"
-              aria-label="Next task"
-              className="p-2 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)] transition-colors cursor-pointer"
-            >
-              <SkipForward className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* 5. Core 2-Column Everyday Workspace: Today's Tasks + Upcoming Schedule */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left: Today & Overdue Tasks */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="font-heading font-bold text-base sm:text-lg text-[var(--hub-ink)] flex items-center gap-2">
-              <span>Today&apos;s Tasks</span>
-              {dueAndOverdueTasks.length > 0 && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-teal-500/10 text-[var(--hub-accent)] font-bold">
-                  {dueAndOverdueTasks.length}
-                </span>
-              )}
-            </h3>
-            <button
-              onClick={() => onNavigate('tasks')}
-              className="text-xs font-semibold text-[var(--hub-accent)] hover:underline cursor-pointer"
-            >
-              All tasks ({openTasks.length}) →
-            </button>
-          </div>
-
-          <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl divide-y divide-[var(--hub-line)] overflow-hidden shadow-xs">
-            {dueAndOverdueTasks.length === 0 ? (
-              <div className="p-8 text-center text-sm text-[var(--hub-muted)]">
-                <Check className="w-7 h-7 mx-auto text-teal-700 dark:text-teal-300 mb-2 opacity-80" />
-                <p className="font-semibold text-[var(--hub-ink)]">All caught up for today</p>
-                <p className="text-xs mt-1">Use the bar above to add a task or ask AI what to work on.</p>
-              </div>
-            ) : (
-              dueAndOverdueTasks.slice(0, 8).map((task) => {
-                const overdue = isOverdue(task.due_date, task.done);
-                return (
-                  <div
-                    key={task.id}
-                    className="flex items-start gap-3 p-3.5 hover:bg-[var(--hub-bg)]/50 transition-colors group"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={task.done}
-                      onChange={() => handleToggleTask(task)}
-                      aria-label={`Mark ${task.text} complete`}
-                      className="mt-0.5 w-4 h-4 rounded text-[var(--hub-accent)] focus:ring-[var(--hub-accent)] cursor-pointer flex-none"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <span className="text-sm font-medium text-[var(--hub-ink)] break-words block">
-                        {task.text}
-                      </span>
-                      <div className="flex flex-wrap items-center gap-2 mt-1">
-                        <span className="text-[11px] font-medium text-[var(--hub-muted)]">
-                          {task.area}
-                        </span>
-                        {task.priority === 'urgent' && <Badge variant="red">Urgent</Badge>}
-                        {task.priority === 'high' && <Badge variant="amber">High</Badge>}
-                        {task.due_date && overdue && (
-                          <span className="text-[11px] font-semibold text-red-700 dark:text-red-400">
-                            Overdue • {formatShortDate(task.due_date)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 opacity-70 group-hover:opacity-100">
-                      <button
-                        onClick={() => handleToggleStar(task)}
-                        className="p-1 rounded-lg text-amber-800 dark:text-amber-300 hover:bg-[var(--hub-bg)] cursor-pointer"
-                        title={task.starred ? 'Unstar' : 'Star'}
-                      >
-                        <Star className={`w-4 h-4 ${task.starred ? 'fill-amber-500' : ''}`} />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteTask(task)}
-                        className="p-1 rounded-lg text-[var(--hub-muted)] hover:text-red-600 hover:bg-[var(--hub-bg)] cursor-pointer"
-                        title="Delete task"
-                        aria-label={`Delete task: ${task.text}`}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
+          {/* Core-Click Unified AI / Task / Voice Input Bar */}
+          <HudAiCaptureBar
+            isOpen={hud.isAiBarOpen}
+            onClose={() => hud.setIsAiBarOpen(false)}
+            quickText={quickText}
+            onQuickTextChange={setQuickText}
+            quickArea={quickArea}
+            onQuickAreaChange={setQuickArea}
+            quickDate={quickDate}
+            onQuickDateChange={setQuickDate}
+            quickPriority={quickPriority}
+            onQuickPriorityChange={setQuickPriority}
+            showOptions={showQuickOptions}
+            onToggleOptions={() => setShowQuickOptions((v) => !v)}
+            areas={areas}
+            inputRef={taskInputRef}
+            onSubmitTask={handleQuickAdd}
+            onSendToAI={handleSendToAI}
+            onOpenQuickCapture={onOpenQuickCapture}
+          />
         </div>
 
-        {/* Right: Upcoming Schedule */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="font-heading font-bold text-base sm:text-lg text-[var(--hub-ink)] flex items-center gap-2">
-              <span>Upcoming</span>
-              {scheduleCount > 0 && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-[var(--hub-accent-2)]/10 text-[var(--hub-accent-2)] font-bold">
-                  {scheduleCount}
-                </span>
-              )}
-            </h3>
-            <button
-              onClick={() => onNavigate('calendar')}
-              className="text-xs font-semibold text-[var(--hub-accent)] hover:underline cursor-pointer"
-            >
-              Calendar →
-            </button>
-          </div>
-
-          <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl divide-y divide-[var(--hub-line)] overflow-hidden shadow-xs">
-            {scheduleCount === 0 ? (
-              <div className="p-8 text-center text-sm text-[var(--hub-muted)]">
-                <Calendar className="w-7 h-7 mx-auto text-[var(--hub-accent-2)] mb-2 opacity-80" />
-                <p className="font-semibold text-[var(--hub-ink)]">No events in the next 7 days</p>
-                <p className="text-xs mt-1">A good window for focused work.</p>
-              </div>
-            ) : (
-              <>
-                {upcomingMeetings.slice(0, 4).map((m) => (
-                  <div key={m.id} className="p-3.5 hover:bg-[var(--hub-bg)]/50 transition-colors">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <span className="text-[11px] font-semibold text-[var(--hub-accent-2)]">
-                          {formatShortDate(m.date)} • {m.start_time}
-                        </span>
-                        <h4 className="text-sm font-semibold text-[var(--hub-ink)] mt-0.5">
-                          {m.title}
-                        </h4>
-                        {m.attendees && (
-                          <p className="text-xs text-[var(--hub-muted)] mt-0.5">{m.attendees}</p>
-                        )}
-                      </div>
-                      <Badge variant="purple">{m.area}</Badge>
-                    </div>
-                  </div>
-                ))}
-
-                {upcomingEvents.slice(0, 4).map((e) => (
-                  <div key={e.id} className="p-3.5 hover:bg-[var(--hub-bg)]/50 transition-colors">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <span className="text-[11px] font-semibold text-teal-700 dark:text-teal-400">
-                          {formatShortDate(e.date)} {e.start_time ? `• ${e.start_time}` : ''}
-                        </span>
-                        <h4 className="text-sm font-semibold text-[var(--hub-ink)] mt-0.5">
-                          {e.title}
-                        </h4>
-                        {e.place && (
-                          <p className="text-xs text-[var(--hub-muted)] flex items-center gap-1 mt-0.5">
-                            <MapPin className="w-3 h-3" />
-                            <span>{e.place}</span>
-                          </p>
-                        )}
-                      </div>
-                      {e.area && <Badge variant="teal">{e.area}</Badge>}
-                    </div>
-                  </div>
-                ))}
-              </>
-            )}
-          </div>
-        </div>
+        {/* Right Contextual Panel (Desktop 320-350px, Mobile bottom sheet) */}
+        <HudRightPanel
+          isOpen={hud.rightPanelOpen}
+          onToggleOpen={() => hud.setRightPanelOpen(!hud.rightPanelOpen)}
+          mobileSheetOpen={mobileSheetOpen}
+          onToggleMobileSheet={() => setMobileSheetOpen((v) => !v)}
+          activeWorkspace={activeWorkspace}
+          onClearSelectedWorkspace={() => {
+            hud.setSelectedNodeId(null);
+            hud.setHoveredNodeId(null);
+          }}
+          activeRecommendation={activeRecommendation}
+          onSkipRecommendation={() => setRecommendationSkipIndex((p) => p + 1)}
+          onStartFocus={(task) => {
+            handOffFocusTask(task.id);
+            onNavigate('focus');
+          }}
+          onCompleteTask={handleToggleTask}
+          onCompleteTaskById={handleCompleteTaskById}
+          onOpenPlanDay={() => setIsDailyPlanningOpen(true)}
+          onOpenWeeklyReview={() => setIsWeeklyReviewOpen(true)}
+          onOpenQuickTask={() => {
+            hud.openAiBar();
+            setTimeout(() => taskInputRef.current?.focus(), 60);
+          }}
+          onOpenQuickCapture={onOpenQuickCapture}
+          onNavigate={onNavigate}
+          onSelectArea={onSelectArea}
+          tasks={tasks}
+          today={today}
+          currentArea={currentArea}
+        />
       </div>
 
-      {/* 6. Shortcut pills */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-        <button
-          type="button"
-          onClick={() => onNavigate('ai-assistant')}
-          className="flex items-center gap-2.5 px-3.5 py-3 rounded-2xl bg-[var(--hub-surface)] border border-[var(--hub-line)] hover:border-[var(--hub-accent)]/50 text-xs font-semibold text-[var(--hub-ink)] transition-all cursor-pointer"
-        >
-          <Sparkles className="w-4 h-4 text-[var(--hub-accent)] shrink-0" />
-          <span>Ask AI</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => onNavigate('projects')}
-          className="flex items-center gap-2.5 px-3.5 py-3 rounded-2xl bg-[var(--hub-surface)] border border-[var(--hub-line)] hover:border-[var(--hub-accent)]/50 text-xs font-semibold text-[var(--hub-ink)] transition-all cursor-pointer"
-        >
-          <FolderKanban className="w-4 h-4 text-[var(--hub-accent-2)] shrink-0" />
-          <span>Projects</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => onNavigate('my-day')}
-          className="flex items-center gap-2.5 px-3.5 py-3 rounded-2xl bg-[var(--hub-surface)] border border-[var(--hub-line)] hover:border-[var(--hub-accent)]/50 text-xs font-semibold text-[var(--hub-ink)] transition-all cursor-pointer"
-        >
-          <Sun className="w-4 h-4 text-[var(--hub-accent)] shrink-0" />
-          <span>My Day</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => onNavigate('knowledge-memory')}
-          className="flex items-center gap-2.5 px-3.5 py-3 rounded-2xl bg-[var(--hub-surface)] border border-[var(--hub-line)] hover:border-[var(--hub-accent)]/50 text-xs font-semibold text-[var(--hub-ink)] transition-all cursor-pointer"
-        >
-          <FileText className="w-4 h-4 text-[var(--hub-accent-2)] shrink-0" />
-          <span>Memory Vault</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setIsWeeklyReviewOpen(true)}
-          className="col-span-2 sm:col-span-1 flex items-center gap-2.5 px-3.5 py-3 rounded-2xl bg-[var(--hub-surface)] border border-[var(--hub-line)] hover:border-[var(--hub-accent)]/50 text-xs font-semibold text-[var(--hub-ink)] transition-all cursor-pointer"
-        >
-          <Trophy className="w-4 h-4 text-[var(--hub-accent)] shrink-0" />
-          <span>Weekly Review</span>
-        </button>
-      </div>
-
-      {/* 7. Progressive Disclosure: Expandable Full Overview (Stats, Workspaces, Neo 1, Pinned Notes) */}
-      <div className="pt-1">
-        <button
-          type="button"
-          onClick={toggleMoreDetails}
-          aria-expanded={showMoreDetails}
-          className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-[var(--hub-surface)]/70 border border-[var(--hub-line)] hover:border-[var(--hub-accent)]/40 text-xs font-semibold text-[var(--hub-muted)] hover:text-[var(--hub-ink)] transition-all cursor-pointer"
-        >
-          <span>
-            {showMoreDetails
-              ? 'Hide workspaces & stats'
-              : 'Explore workspaces & detailed stats'}
-          </span>
-          {showMoreDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-        </button>
-
-        {showMoreDetails && (
-          <div className="mt-5 space-y-6">
-            {/* KPI Stats Grid */}
-            <div data-agent-target="stats-grid" className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-              <StatCard
-                label="Due & Overdue"
-                value={dueAndOverdueTasks.length}
-                subtext={dueAndOverdueTasks.length === 0 ? 'All caught up' : 'Action needed today'}
-                icon={
-                  <AlertCircle
-                    className={`w-5 h-5 ${dueAndOverdueTasks.length > 0 ? 'text-red-700 dark:text-red-300' : 'text-teal-700 dark:text-teal-300'}`}
-                  />
-                }
-                onClick={() => onNavigate('tasks')}
-              />
-              <StatCard
-                label="Open Tasks"
-                value={openTasks.length}
-                subtext={`${tasks.filter((t) => t.done).length} completed`}
-                icon={<CheckCircle2 className="w-5 h-5 text-teal-700 dark:text-teal-300" />}
-                onClick={() => onNavigate('tasks')}
-              />
-              <StatCard
-                label="Spent This Month"
-                value={monthExpenses === 0 ? '₹0' : formatINR(monthExpenses)}
-                subtext={monthExpenses === 0 ? 'Manually logged only' : `Cycle ${today.slice(0, 7)}`}
-                icon={<IndianRupee className="w-5 h-5 text-amber-800 dark:text-amber-300" />}
-                onClick={() => onNavigate('finance')}
-              />
-              <StatCard
-                label="Schedule (7 Days)"
-                value={scheduleCount}
-                subtext={`${upcomingMeetings.length} meetings, ${upcomingEvents.length} events`}
-                icon={<Calendar className="w-5 h-5 text-blue-700 dark:text-blue-300" />}
-                onClick={() => onNavigate('calendar')}
-              />
-            </div>
-
-            {/* Workspaces Hub */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {/* Pawan Shakti Card */}
-              <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-5 shadow-xs flex flex-col justify-between hover:border-[var(--hub-accent)]/50 transition-all">
-                <div className="space-y-2.5">
-                  <div className="flex items-center gap-1.5">
-                    <span className="flex items-center gap-1.5 text-xs font-bold text-[var(--hub-accent)] uppercase tracking-wider">
-                      <Wind className="w-4 h-4" />
-                      <span>Pawan Shakti</span>
-                    </span>
-                  </div>
-                  <h4 className="font-heading font-bold text-base text-[var(--hub-ink)]">
-                    Wind-turbine programme
-                  </h4>
-                  <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
-                    Milestones, prototypes, tasks and documents for the Pawan Shakti project.
-                  </p>
-                  {pawanProject && (
-                    <div className="p-2.5 rounded-xl bg-[var(--hub-accent)]/10 border border-[var(--hub-accent)]/20 flex items-center justify-between text-xs">
-                      <span className="font-semibold text-[var(--hub-ink)]">
-                        Progress
-                      </span>
-                      <span className="font-mono font-bold text-[var(--hub-accent)]">
-                        {pawanProject.target_date ? `${pawanProject.target_date} · ` : ''}{pawanProject.progress}%
-                      </span>
-                    </div>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onNavigate('startup-command')}
-                  className="mt-4 flex items-center justify-between w-full px-3.5 py-2 rounded-xl bg-[var(--hub-bg)] hover:bg-[var(--hub-surface-subtle)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] transition-colors cursor-pointer group"
-                >
-                  <span>Open Pawan Shakti</span>
-                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                </button>
-              </div>
-
-              {/* Robotics Lab Card */}
-              <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-5 shadow-xs flex flex-col justify-between hover:border-[var(--hub-accent-2)]/50 transition-all">
-                <div className="space-y-2.5">
-                  <div className="flex items-center gap-1.5">
-                    <span className="flex items-center gap-1.5 text-xs font-bold text-[var(--hub-accent-2)] uppercase tracking-wider">
-                      <Bot className="w-4 h-4" />
-                      <span>Robotics Lab</span>
-                    </span>
-                  </div>
-                  <h4 className="font-heading font-bold text-base text-[var(--hub-ink)]">
-                    Experiments & builds
-                  </h4>
-                  <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
-                    Robotics records, experiment logs and hardware build notes.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onNavigate('robotics-lab')}
-                  className="mt-4 flex items-center justify-between w-full px-3.5 py-2 rounded-xl bg-[var(--hub-bg)] hover:bg-[var(--hub-surface-subtle)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] transition-colors cursor-pointer group"
-                >
-                  <span>Open Robotics Lab</span>
-                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                </button>
-              </div>
-
-              {/* Routine & Health Card */}
-              <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-5 shadow-xs flex flex-col justify-between hover:border-[var(--hub-accent-2)]/50 transition-all">
-                <div className="space-y-2.5">
-                  <div className="flex items-center gap-1.5">
-                    <span className="flex items-center gap-1.5 text-xs font-bold text-[var(--hub-accent-2)] uppercase tracking-wider">
-                      <Heart className="w-4 h-4" />
-                      <span>Routine & Health</span>
-                    </span>
-                  </div>
-                  <h4 className="font-heading font-bold text-base text-[var(--hub-ink)]">
-                    Sleep, energy & habits
-                  </h4>
-                  <p className="text-xs text-[var(--hub-muted)] leading-relaxed">
-                    Track sleep, focus sessions and daily habits.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onNavigate('health-routine')}
-                  className="mt-4 flex items-center justify-between w-full px-3.5 py-2 rounded-xl bg-[var(--hub-bg)] hover:bg-[var(--hub-surface-subtle)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] transition-colors cursor-pointer group"
-                >
-                  <span>Open Routine Tracker</span>
-                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                </button>
-              </div>
-            </div>
-
-            {/* Neo 1 Card */}
-            <div data-agent-target="automations-card">
-              <Neo1DeviceCard />
-            </div>
-
-            {/* Pinned Notes */}
-            {pinnedNotes.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-amber-800 dark:text-amber-300" />
-                    <span>Pinned Notes</span>
-                  </h3>
-                  <button
-                    onClick={() => onNavigate('notes')}
-                    className="text-xs font-semibold text-[var(--hub-accent)] hover:underline cursor-pointer"
-                  >
-                    Manage notes →
-                  </button>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {pinnedNotes.map((note) => (
-                    <div
-                      key={note.id}
-                      className="bg-[var(--hub-surface)] border-l-4 border-l-[var(--hub-amber)] border border-[var(--hub-line)] rounded-xl p-4 shadow-xs"
-                    >
-                      <div className="flex items-start justify-between gap-2 mb-1.5">
-                        <h4 className="text-sm font-bold font-heading text-[var(--hub-ink)]">
-                          {note.title}
-                        </h4>
-                        {note.area && <Badge variant="amber">{note.area}</Badge>}
-                      </div>
-                      <p className="text-xs text-[var(--hub-muted)] whitespace-pre-wrap leading-relaxed">
-                        {note.body}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      {/* Bottom Mission Dock (3 Snap Tracks + Expandable Overview Drawer) */}
+      <HudMissionDock
+        expanded={hud.dockExpanded}
+        onToggleExpand={() => hud.setDockExpanded(!hud.dockExpanded)}
+        dueAndOverdueTasks={dueAndOverdueTasks}
+        openTasks={openTasks}
+        completedTasksCount={tasks.filter((t) => t.done).length}
+        deadlines={deadlines}
+        projects={allProjects}
+        pinnedNotes={pinnedNotes}
+        monthExpenses={monthExpenses}
+        scheduleCount={scheduleCount}
+        upcomingMeetingsCount={upcomingMeetings.length}
+        upcomingEventsCount={upcomingEvents.length}
+        today={today}
+        areas={areas}
+        onToggleTask={handleToggleTask}
+        onToggleStar={handleToggleStar}
+        onDeleteTask={handleDeleteTask}
+        onNavigate={onNavigate}
+      />
 
       {/* Interactive Daily Planning Modal */}
       {isDailyPlanningOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-5 my-8 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-start justify-between gap-4 border-b border-[var(--hub-line)] pb-4">
+          <div className="hud-glass max-w-2xl w-full p-6 shadow-2xl space-y-5 my-8 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-4 border-b border-[rgba(59,232,255,0.16)] pb-4">
               <div>
-                <h3 className="text-lg font-bold font-heading text-[var(--hub-ink)] flex items-center gap-2">
-                  <CalendarCheck className="w-5 h-5 text-indigo-700 dark:text-indigo-300" />
+                <h3 className="text-lg font-bold font-heading text-[#E6F1FF] flex items-center gap-2">
+                  <CalendarCheck className="w-5 h-5 text-[#3BE8FF]" />
                   <span>Plan Your Day</span>
                 </h3>
-                <p className="text-xs text-[var(--hub-muted)] mt-1">
+                <p className="text-xs text-[#7A8BA6] mt-1">
                   Handle overdue items, star your top priorities, and check today&apos;s schedule.
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setIsDailyPlanningOpen(false)}
-                className="p-1 rounded-lg text-[var(--hub-muted)] hover:text-[var(--hub-ink)] cursor-pointer"
+                className="p-1 rounded-lg text-[#7A8BA6] hover:text-[#E6F1FF] cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Overdue */}
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--hub-ink)]">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[#E6F1FF]">
                   1. Overdue ({overdueTasks.length})
                 </h4>
                 {overdueTasks.length === 0 && (
-                  <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">All clear</span>
+                  <span className="text-xs font-semibold text-[#3BE8FF]">All clear</span>
                 )}
               </div>
-
               {overdueTasks.length > 0 && (
                 <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
                   {overdueTasks.map((t) => (
                     <div
                       key={t.id}
-                      className="p-3 rounded-xl bg-red-500/5 border border-red-500/20 flex items-center justify-between gap-3 text-xs"
+                      className="p-3 rounded-xl bg-[#FF4D6D]/10 border border-[#FF4D6D]/30 flex items-center justify-between gap-3 text-xs"
                     >
                       <div className="min-w-0">
-                        <div className="font-semibold text-[var(--hub-ink)] truncate">{t.text}</div>
-                        <div className="text-[10px] text-red-700 dark:text-red-300">
+                        <div className="font-semibold text-[#E6F1FF] truncate">{t.text}</div>
+                        <div className="text-[10px] text-[#FF4D6D]">
                           Due {t.due_date} • {t.area}
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <button
+                          type="button"
                           onClick={() => handleMoveToToday(t)}
-                          className="px-2.5 py-1 rounded-lg bg-[var(--hub-surface)] border border-[var(--hub-line)] text-indigo-700 dark:text-indigo-300 font-medium cursor-pointer"
+                          className="px-2.5 py-1 rounded-lg bg-[#05070D] border border-[#3BE8FF]/30 text-[#3BE8FF] font-medium cursor-pointer"
                         >
                           Today
                         </button>
                         <button
+                          type="button"
                           onClick={() => handleToggleTask(t)}
-                          className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400 font-medium cursor-pointer"
+                          className="px-2.5 py-1 rounded-lg bg-[#3BE8FF]/15 border border-[#3BE8FF]/40 text-[#3BE8FF] font-medium cursor-pointer"
                         >
                           Done
                         </button>
@@ -1077,29 +680,29 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               )}
             </div>
 
-            {/* Top Focus */}
             <div className="space-y-2.5">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--hub-ink)]">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-[#E6F1FF]">
                 2. Star Your Top Focus Tasks
               </h4>
               <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
                 {candidateTasks.slice(0, 5).map((t) => (
                   <div
                     key={t.id}
-                    className="p-2.5 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] flex items-center justify-between gap-3 text-xs"
+                    className="p-2.5 rounded-xl bg-[#05070D]/60 border border-[rgba(59,232,255,0.16)] flex items-center justify-between gap-3 text-xs"
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <button
+                        type="button"
                         onClick={() => handleToggleStar(t)}
                         className={`p-1 rounded-md cursor-pointer ${
-                          t.starred ? 'text-amber-800 dark:text-amber-300' : 'text-[var(--hub-muted)] hover:text-amber-400'
+                          t.starred ? 'text-[#FFB547]' : 'text-[#7A8BA6] hover:text-[#FFB547]'
                         }`}
                       >
-                        <Star className={`w-4 h-4 ${t.starred ? 'fill-amber-400' : ''}`} />
+                        <Star className={`w-4 h-4 ${t.starred ? 'fill-[#FFB547]' : ''}`} />
                       </button>
-                      <span className="text-[var(--hub-ink)] font-medium truncate">{t.text}</span>
+                      <span className="text-[#E6F1FF] font-medium truncate">{t.text}</span>
                     </div>
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-[var(--hub-surface)] text-[var(--hub-muted)] shrink-0">
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-white/5 text-[#7A8BA6] shrink-0">
                       {t.area}
                     </span>
                   </div>
@@ -1107,44 +710,45 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               </div>
             </div>
 
-            {/* Today's Agenda */}
             <div className="space-y-2">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--hub-ink)] flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-teal-700 dark:text-teal-300" />
+              <h4 className="text-xs font-bold uppercase tracking-wider text-[#E6F1FF] flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-[#3BE8FF]" />
                 <span>3. Today&apos;s Schedule</span>
               </h4>
               {todayMeetings.length === 0 && todayEvents.length === 0 ? (
-                <p className="text-xs text-[var(--hub-muted)] p-3 rounded-xl bg-[var(--hub-bg)]">
+                <p className="text-xs text-[#7A8BA6] p-3 rounded-xl bg-[#05070D]/50">
                   No meetings or events today.
                 </p>
               ) : (
                 <div className="space-y-1.5 text-xs">
                   {todayMeetings.map((m) => (
-                    <div key={m.id} className="p-2.5 rounded-lg bg-[var(--hub-bg)] flex items-center justify-between">
-                      <span className="font-medium text-[var(--hub-ink)]">{m.title}</span>
-                      <span className="text-[var(--hub-muted)]">{m.start_time}</span>
+                    <div key={m.id} className="p-2.5 rounded-lg bg-[#05070D]/50 flex items-center justify-between">
+                      <span className="font-medium text-[#E6F1FF]">{m.title}</span>
+                      <span className="hud-tabular text-[#7A8BA6]">{m.start_time}</span>
                     </div>
                   ))}
                   {todayEvents.map((e) => (
-                    <div key={e.id} className="p-2.5 rounded-lg bg-[var(--hub-bg)] flex items-center justify-between">
-                      <span className="font-medium text-[var(--hub-ink)]">{e.title}</span>
-                      <span className="text-[var(--hub-muted)]">{e.start_time || 'All day'}</span>
+                    <div key={e.id} className="p-2.5 rounded-lg bg-[#05070D]/50 flex items-center justify-between">
+                      <span className="font-medium text-[#E6F1FF]">{e.title}</span>
+                      <span className="hud-tabular text-[#7A8BA6]">{e.start_time || 'All day'}</span>
                     </div>
                   ))}
                 </div>
               )}
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--hub-line)]">
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[rgba(59,232,255,0.14)]">
               <button
+                type="button"
                 onClick={() => setIsDailyPlanningOpen(false)}
-                className="px-4 py-2 rounded-xl border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] cursor-pointer"
+                className="px-4 py-2 rounded-xl border border-white/15 text-xs font-semibold text-[#E6F1FF] cursor-pointer"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={handleFinishDailyPlan}
-                className="px-5 py-2 rounded-xl bg-[var(--hub-accent)] hover:bg-[var(--hub-accent-hover)] text-[var(--hub-accent-ink)] text-xs font-semibold cursor-pointer"
+                className="px-5 py-2 rounded-xl bg-[#3BE8FF] text-[#05070D] text-xs font-bold cursor-pointer"
               >
                 Save Plan
               </button>
@@ -1156,27 +760,28 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       {/* Interactive Weekly Review Modal */}
       {isWeeklyReviewOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-5 my-8 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-start justify-between gap-4 border-b border-[var(--hub-line)] pb-4">
+          <div className="hud-glass max-w-2xl w-full p-6 shadow-2xl space-y-5 my-8 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-4 border-b border-[rgba(59,232,255,0.16)] pb-4">
               <div>
-                <h3 className="text-lg font-bold font-heading text-[var(--hub-ink)] flex items-center gap-2">
-                  <Trophy className="w-5 h-5 text-purple-700 dark:text-purple-300" />
+                <h3 className="text-lg font-bold font-heading text-[#E6F1FF] flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-[#7C5CFF]" />
                   <span>Weekly Review</span>
                 </h3>
-                <p className="text-xs text-[var(--hub-muted)] mt-1">
+                <p className="text-xs text-[#7A8BA6] mt-1">
                   Review your completed tasks and check active project progress.
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setIsWeeklyReviewOpen(false)}
-                className="p-1 rounded-lg text-[var(--hub-muted)] hover:text-[var(--hub-ink)] cursor-pointer"
+                className="p-1 rounded-lg text-[#7A8BA6] hover:text-[#E6F1FF] cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-2.5">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--hub-ink)]">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-[#E6F1FF]">
                 1. Completed This Week ({completedPastWeek.length})
               </h4>
               {completedPastWeek.length > 0 ? (
@@ -1184,24 +789,24 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   {completedPastWeek.slice(0, 6).map((t) => (
                     <div
                       key={t.id}
-                      className="p-2.5 rounded-xl bg-purple-500/5 border border-purple-500/20 flex items-center justify-between text-xs"
+                      className="p-2.5 rounded-xl bg-[#7C5CFF]/10 border border-[#7C5CFF]/30 flex items-center justify-between text-xs"
                     >
-                      <span className="font-medium text-[var(--hub-ink)] line-through opacity-80">
+                      <span className="font-medium text-[#E6F1FF] line-through opacity-80">
                         {t.text}
                       </span>
-                      <span className="text-[10px] text-purple-700 dark:text-purple-300 font-semibold">{t.area}</span>
+                      <span className="text-[10px] text-[#7C5CFF] font-semibold">{t.area}</span>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-[var(--hub-muted)] p-3 rounded-xl bg-[var(--hub-bg)]">
+                <p className="text-xs text-[#7A8BA6] p-3 rounded-xl bg-[#05070D]/50">
                   No tasks completed in the last 7 days yet.
                 </p>
               )}
             </div>
 
             <div className="space-y-2.5">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--hub-ink)]">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-[#E6F1FF]">
                 2. Active Projects ({allProjects.filter((p) => p.status === 'active' || p.status === 'planning').length})
               </h4>
               <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
@@ -1210,15 +815,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   .map((p) => (
                     <div
                       key={p.id}
-                      className="p-3 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] space-y-1.5 text-xs"
+                      className="p-3 rounded-xl bg-[#05070D]/60 border border-[rgba(59,232,255,0.16)] space-y-1.5 text-xs"
                     >
                       <div className="flex items-center justify-between">
-                        <span className="font-semibold text-[var(--hub-ink)]">{p.title}</span>
-                        <span className="text-[10px] text-teal-700 dark:text-teal-300 font-bold">{p.progress}%</span>
+                        <span className="font-semibold text-[#E6F1FF]">{p.title}</span>
+                        <span className="hud-tabular text-[10px] text-[#3BE8FF] font-bold">
+                          {p.progress}%
+                        </span>
                       </div>
-                      <div className="w-full bg-[var(--hub-line)] rounded-full h-1.5 overflow-hidden">
+                      <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
                         <div
-                          className="bg-teal-500 h-1.5 rounded-full"
+                          className="bg-gradient-to-r from-[#3BE8FF] to-[#7C5CFF] h-1.5 rounded-full"
                           style={{ width: `${Math.min(100, Math.max(0, p.progress))}%` }}
                         />
                       </div>
@@ -1227,18 +834,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--hub-line)]">
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-[rgba(59,232,255,0.14)]">
               <button
+                type="button"
                 onClick={() => setIsWeeklyReviewOpen(false)}
-                className="px-4 py-2 rounded-xl border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-ink)] cursor-pointer"
+                className="px-4 py-2 rounded-xl border border-white/15 text-xs font-semibold text-[#E6F1FF] cursor-pointer"
               >
                 Close
               </button>
               <button
+                type="button"
                 onClick={handleFinishWeeklyReview}
-                className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold cursor-pointer"
+                className="px-5 py-2 rounded-xl bg-[#7C5CFF] hover:bg-[#8e74ff] text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
               >
-                Save to Notes
+                <Check className="w-3.5 h-3.5" />
+                <span>Save to Notes</span>
               </button>
             </div>
           </div>
@@ -1254,16 +864,19 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         {pendingDelete && (
           <div
             key={pendingDelete.id}
-            className="hub-toast-enter pointer-events-auto relative overflow-hidden flex items-center gap-3 max-w-md w-full sm:w-auto pl-4 pr-2 py-2.5 rounded-2xl bg-[var(--hub-ink)] text-[var(--hub-bg)] shadow-xl"
+            className="hub-toast-enter pointer-events-auto relative overflow-hidden flex items-center gap-3 max-w-md w-full sm:w-auto pl-4 pr-2 py-2.5 rounded-2xl hud-glass-pill text-[#E6F1FF] shadow-xl"
           >
             <Trash2 className="w-4 h-4 shrink-0 opacity-70" />
             <span className="text-sm min-w-0 flex-1">
-              Deleted <span className="font-semibold truncate inline-block max-w-[12rem] sm:max-w-[16rem] align-bottom">"{pendingDelete.text}"</span>
+              Deleted{' '}
+              <span className="font-semibold truncate inline-block max-w-[12rem] sm:max-w-[16rem] align-bottom">
+                "{pendingDelete.text}"
+              </span>
             </span>
             <button
               type="button"
               onClick={handleUndoDelete}
-              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-semibold bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer"
+              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-semibold bg-[#3BE8FF] text-[#05070D] hover:bg-[#70f0ff] transition-colors cursor-pointer"
               title="Undo (Ctrl+Z)"
             >
               <Undo2 className="w-4 h-4" />
@@ -1271,7 +884,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </button>
             <span
               aria-hidden="true"
-              className="hub-toast-timer absolute left-0 bottom-0 h-0.5 bg-[var(--hub-accent)]"
+              className="hub-toast-timer absolute left-0 bottom-0 h-0.5 bg-[#3BE8FF]"
               style={{ animationDuration: `${UNDO_WINDOW_MS}ms` }}
             />
           </div>

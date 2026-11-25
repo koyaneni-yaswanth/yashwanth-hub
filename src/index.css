@@ -720,3 +720,113 @@ header.sticky.is-scrolled {
     transition: none;
   }
 }
+
+/* ==========================================================================
+   Jarvis HUD Command Centre (v4 — scoped strictly to `.jarvis-hud` on Home)
+   Deep navy-black (#05070D), frosted glass rgba(10,16,28,0.55), cyan (#3BE8FF),
+   violet (#7C5CFF), warn (#FFB547), danger (#FF4D6D). Other routes preserve v3.
+   ========================================================================== */
+.jarvis-hud {
+  --hud-bg: #05070d;
+  --hud-surface: rgba(10, 16, 28, 0.55);
+  --hud-surface-subtle: rgba(8, 13, 24, 0.62);
+  --hud-surface-hover: rgba(18, 28, 48, 0.72);
+  --hud-surface-raised: rgba(14, 22, 38, 0.78);
+  --hud-ink: #e6f1ff;
+  --hud-muted: #7a8ba6;
+  --hud-line: rgba(59, 232, 255, 0.18);
+  --hud-border: rgba(59, 232, 255, 0.18);
+  --hud-accent: #3be8ff;
+  --hud-accent-hover: #70f0ff;
+  --hud-accent-ink: #05070d;
+  --hud-accent-2: #7c5cff;
+  --hud-amber: #ffb547;
+  --hud-red: #ff4d6d;
+  --hud-done: rgba(59, 232, 255, 0.12);
+  --hud-done-border: rgba(59, 232, 255, 0.35);
+  color-scheme: dark;
+  color: var(--hud-ink);
+  background:
+    radial-gradient(64rem 42rem at 50% 42%, rgba(59, 232, 255, 0.08), transparent 64%),
+    radial-gradient(48rem 34rem at 78% 18%, rgba(124, 92, 255, 0.08), transparent 62%),
+    linear-gradient(180deg, #070b14 0%, #05070d 55%, #020306 100%);
+}
+
+.hud-glass {
+  background: rgba(10, 16, 28, 0.55);
+  border: 1px solid rgba(59, 232, 255, 0.18);
+  border-radius: 14px;
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  box-shadow:
+    inset 0 1px 0 rgba(230, 241, 255, 0.07),
+    0 18px 48px -26px rgba(0, 0, 0, 0.92);
+}
+
+.hud-glass-pill {
+  background: rgba(10, 16, 28, 0.68);
+  border: 1px solid rgba(59, 232, 255, 0.22);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.hud-focus-glow:focus-within {
+  box-shadow:
+    inset 0 0 0 1px rgba(59, 232, 255, 0.42),
+    0 0 24px -6px rgba(59, 232, 255, 0.32);
+}
+
+.hud-tabular {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-scanlines {
+  background-image:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(59, 232, 255, 0.022) 0px,
+      transparent 1px,
+      transparent 4px
+    );
+  pointer-events: none;
+}
+
+/* Staggered first-load entrance choreography: core -> rings -> nodes -> panel -> dock */
+@keyframes hud-choreo-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes hud-core-ignite {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.hud-enter-core { animation: hud-core-ignite 360ms cubic-bezier(0.2, 0.7, 0.2, 1) 40ms backwards; }
+.hud-enter-rail { animation: hud-choreo-in 280ms cubic-bezier(0.2, 0.7, 0.2, 1) 120ms backwards; }
+.hud-enter-panel { animation: hud-choreo-in 320ms cubic-bezier(0.2, 0.7, 0.2, 1) 200ms backwards; }
+.hud-enter-dock { animation: hud-choreo-in 340ms cubic-bezier(0.2, 0.7, 0.2, 1) 280ms backwards; }
+.hud-enter-nodes { animation: hud-choreo-in 300ms cubic-bezier(0.2, 0.7, 0.2, 1) 180ms backwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-enter-core,
+  .hud-enter-rail,
+  .hud-enter-panel,
+  .hud-enter-dock,
+  .hud-enter-nodes {
+    animation: none !important;
+  }
+}
