@@ -17,6 +17,7 @@ import { NeoSapienMemoryService } from '../neoSapienMemoryService';
 import { SupabaseAuthService } from '../auth/supabaseAuthService';
 import { SyncQueueService } from '../sync/syncQueueService';
 import { AutomationService } from '../automationService';
+import { beginAiThinking, endAiThinking } from '../../lib/aiActivity';
 import {
   AI_TOOL_DEFINITIONS,
   buildDeterministicGroundedResponse,
@@ -151,6 +152,21 @@ export class AIGateway {
    * grounded deterministic workspace reasoning (or optional local override if configured).
    */
   public static async executePrompt(
+    userPrompt: string,
+    options: AISendOptions
+  ): Promise<AIResponse> {
+    beginAiThinking();
+    let responded = false;
+    try {
+      const response = await this.executePromptCore(userPrompt, options);
+      responded = true;
+      return response;
+    } finally {
+      endAiThinking(responded);
+    }
+  }
+
+  private static async executePromptCore(
     userPrompt: string,
     options: AISendOptions
   ): Promise<AIResponse> {

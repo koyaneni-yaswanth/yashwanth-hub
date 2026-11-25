@@ -1,19 +1,18 @@
 /**
  * JarvisScene: the Jarvis core and its orbiting workspace nodes (three r187, WebGLRenderer).
  *
- * Structure
- * - JarvisCore: a luminous gold heart inside a faceted shell, three precision rings at different
- *   tilts, a gimbal dial of 120 instanced ticks, and two steel arc segments.
- * - WorkspaceNodes: one faceted node per real workspace on a tilted orbit; colour from the area.
- * - Atmosphere, LightingDirector, PostFX, PerformanceManager and CinematicCameraRig are the shared
- *   modules from src/components/momentum/cinema (one config, one look across the app).
- *
- * The 3D is decorative for assistive tech (aria-hidden canvas). Every node is mirrored by a real,
- * focusable button positioned over it, which is also the direct (no-animation) way to navigate.
+ * P2 upgrade:
+ * - Inner icosphere uses a custom GLSL Fresnel + 3D noise displacement shader reactive to AI
+ *   thinking/talking and calm/amber/red status states.
+ * - Outer translucent geodesic wireframe cage, 3 counter-rotating cyan/violet holographic rings,
+ *   120 instanced gimbal ticks, and an InstancedMesh orbiting particle halo (halved on low tier).
+ * - Deep #05070D background, volumetric FogExp2, and a fading hex/radar floor grid.
+ * - DPR capped at <= 1.75; strict cleanup disposes all geometries, materials, textures, and composer.
  */
 import React, { useEffect, useRef, useState } from 'react';
 import type { WorkspaceNode } from '../../lib/jarvisWorkspaces';
 import { nodeAngles } from '../../lib/jarvisWorkspaces';
+import { DEFAULT_CORE, useJarvisHud } from '../../context/jarvisHudStore';
 import { CINEMA, easeInOutCubic } from '../momentum/cinema/cinemaConfig';
 import { CinematicCameraRig } from '../momentum/cinema/CinematicCameraRig';
 import { LightingDirector } from '../momentum/cinema/LightingDirector';
@@ -21,6 +20,16 @@ import { Atmosphere } from '../momentum/cinema/Atmosphere';
 import { PostFX } from '../momentum/cinema/PostFX';
 import { PerformanceManager } from '../momentum/cinema/PerformanceManager';
 import { NodeButtons } from './NodeButtons';
+import {
+  HEX_FLOOR_FRAGMENT_SHADER,
+  HEX_FLOOR_VERTEX_SHADER,
+  JARVIS_CORE_FRAGMENT_SHADER,
+  JARVIS_CORE_VERTEX_SHADER,
+} from './jarvisShaders';
+
+const MAX_DPR = 1.75;
+const MAX_HALO_PARTICLES = 96;
+const LOW_HALO_PARTICLES = 48;
 
 /** Tunables specific to this scene (shared look lives in CINEMA). */
 const JARVIS = {
@@ -28,7 +37,7 @@ const JARVIS = {
   nodeRingRadius: 5.6,
   nodeRingTilt: 0.32,
   nodeSpin: 0.035, // rad/s, the whole node ring
-  coreSpin: [0.18, -0.12, 0.07] as const, // ring speeds
+  coreSpin: [0.24, -0.17, 0.11] as const, // holographic ring speeds
   glideSeconds: 0.75, // camera move before opening a workspace
 };
 
@@ -57,6 +66,7 @@ type Props = {
 };
 
 export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
+  const hud = useJarvisHud();
   const mountRef = useRef<HTMLDivElement>(null);
   const labelRefs = useRef(new Map<string, HTMLButtonElement>());
   const coreLabelRef = useRef<HTMLButtonElement>(null);
@@ -71,6 +81,22 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
   useEffect(() => {
     openRef.current = { onOpen, onOpenCore };
   }, [onOpen, onOpenCore]);
+
+  const coreStateRef = useRef(hud?.coreState ?? DEFAULT_CORE);
+  useEffect(() => {
+    coreStateRef.current = hud?.coreState ?? DEFAULT_CORE;
+  }, [hud?.coreState]);
+
+  const setPerfRef = useRef(hud?.setPerf);
+  useEffect(() => {
+    setPerfRef.current = hud?.setPerf;
+  }, [hud?.setPerf]);
+
+  const setHoveredRef = useRef(hud?.setHoveredNodeId);
+  useEffect(() => {
+    setHoveredRef.current = hud?.setHoveredNodeId;
+  }, [hud?.setHoveredNodeId]);
+
   const [panelWidth, setPanelWidth] = useState(800);
   const busy = useRef(false);
   // Rebuild only when the set of nodes (not their status text) changes.
@@ -102,7 +128,14 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
           import('three/examples/jsm/postprocessing/ShaderPass.js'),
           import('three/examples/jsm/environments/RoomEnvironment.js'),
         ]);
-        mods = { EffectComposer: ec.EffectComposer, RenderPass: rp.RenderPass, UnrealBloomPass: ub.UnrealBloomPass, OutputPass: op.OutputPass, ShaderPass: sp.ShaderPass, RoomEnvironment: re.RoomEnvironment };
+        mods = {
+          EffectComposer: ec.EffectComposer,
+          RenderPass: rp.RenderPass,
+          UnrealBloomPass: ub.UnrealBloomPass,
+          OutputPass: op.OutputPass,
+          ShaderPass: sp.ShaderPass,
+          RoomEnvironment: re.RoomEnvironment,
+        };
       } catch {
         if (!disposed) setStatus('unsupported');
         return;
@@ -120,20 +153,28 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
       let width = mount.clientWidth || 800;
       let height = mount.clientHeight || 340;
       const reduced = prefersReducedMotion();
-      const perf = new PerformanceManager(PerformanceManager.readDevice(width, reduced), (_tier, set) => {
-        const ratio = Math.min(window.devicePixelRatio, set.pixelRatioCap);
+
+      let currentTierName: 'high' | 'medium' | 'low' = 'high';
+      const perf = new PerformanceManager(PerformanceManager.readDevice(width, reduced), (newTier, set) => {
+        currentTierName = newTier;
+        const ratio = Math.min(MAX_DPR, window.devicePixelRatio, set.pixelRatioCap);
         renderer.setPixelRatio(ratio);
         postFX.setPixelRatio(ratio);
         postFX.setSize(width, height);
-        postFX.setQuality({ bloom: set.bloom, grain: set.grain });
+        postFX.setQuality({ bloom: newTier === 'low' ? false : set.bloom, grain: newTier === 'low' ? false : set.grain });
         if (!set.glassTransmission) toSheen();
         if (atmosphere.dust && set.dust === 0) atmosphere.dust.visible = false;
+        haloParticles.count = newTier === 'low' ? LOW_HALO_PARTICLES : MAX_HALO_PARTICLES;
         needsRender = true;
       });
       const tier = perf.settings;
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, tier.pixelRatioCap));
+      currentTierName = perf.tier;
+      setPerfRef.current?.({ tier: perf.tier, fps: 60, webglActive: true });
+
+      const initialRatio = Math.min(MAX_DPR, window.devicePixelRatio, tier.pixelRatioCap);
+      renderer.setPixelRatio(initialRatio);
       renderer.setSize(width, height);
-      renderer.setClearColor(CINEMA.palette.background, 0);
+      renderer.setClearColor(0x05070d, 1);
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
       renderer.toneMappingExposure = CINEMA.renderer.exposure;
       renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -142,13 +183,15 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
       mount.appendChild(renderer.domElement);
 
       const scene = new THREE.Scene();
-      scene.background = new THREE.Color(CINEMA.palette.background);
+      scene.background = new THREE.Color('#05070D');
+      scene.fog = new THREE.FogExp2(0x05070d, 0.024);
+
       const lighting = new LightingDirector(THREE, renderer, scene, mods.RoomEnvironment);
       const disc = radialTexture(THREE, 'rgba(255,255,255,1)', 'rgba(255,255,255,0)', 64);
       const atmosphere = new Atmosphere(THREE, scene, disc, (i, o, s) => radialTexture(THREE, i, o, s), {
-        starsFar: Math.round(tier.starsFar * 0.6),
-        starsNear: Math.round(tier.starsNear * 0.6),
-        dust: tier.dust,
+        starsFar: Math.round(tier.starsFar * 0.65),
+        starsNear: Math.round(tier.starsNear * 0.65),
+        dust: currentTierName === 'low' ? Math.round(tier.dust * 0.5) : tier.dust,
       });
 
       const camera = new THREE.PerspectiveCamera(CINEMA.camera.fov, width / height, 0.1, 400);
@@ -157,100 +200,214 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
       const fit = () => Math.max(1, 1.45 / Math.max(0.6, width / height));
       const base = new THREE.Vector3().copy(home).multiplyScalar(fit());
       camera.position.copy(base);
-      // Aim slightly below the core so the orbit (and its front node) sits fully inside the panel.
-      const aim = new THREE.Vector3(0, -0.9, 0);
+      const aim = new THREE.Vector3(0, -0.85, 0);
       const target = aim.clone();
       camera.lookAt(target);
 
-      // ------------------------------------------------------------------ JarvisCore
-      const gold = new THREE.Color(CINEMA.palette.accent);
-      const steel = new THREE.Color(CINEMA.palette.steel);
+      // ------------------------------------------------------------------ Hex & Radar Floor
+      const hexFloorMat = new THREE.ShaderMaterial({
+        uniforms: {
+          uTime: { value: 0 },
+          uGridColor: { value: new THREE.Color('#3BE8FF') },
+          uAccentColor: { value: new THREE.Color('#7C5CFF') },
+        },
+        vertexShader: HEX_FLOOR_VERTEX_SHADER,
+        fragmentShader: HEX_FLOOR_FRAGMENT_SHADER,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const hexFloor = new THREE.Mesh(new THREE.PlaneGeometry(44, 44), hexFloorMat);
+      hexFloor.rotation.x = -Math.PI / 2;
+      hexFloor.position.y = -2.45;
+      scene.add(hexFloor);
+
+      // ------------------------------------------------------------------ JarvisCore (Custom GLSL Shader + Geodesic Shell + Holographic Rings)
+      const initialCore = coreStateRef.current;
+      const primaryColor = new THREE.Color(initialCore.primaryHex);
+      const secondaryColor = new THREE.Color(initialCore.secondaryHex);
+      const targetPrimary = new THREE.Color(initialCore.primaryHex);
+      const targetSecondary = new THREE.Color(initialCore.secondaryHex);
+
+      lighting.coreLight.color.copy(primaryColor);
+
       const core = new THREE.Group();
       scene.add(core);
       core.add(lighting.coreLight);
+
+      const coreUniforms = {
+        uTime: { value: 0 },
+        uPulseRate: { value: initialCore.pulseRate },
+        uDispAmp: { value: initialCore.displacementAmp },
+        uPrimaryColor: { value: primaryColor.clone() },
+        uSecondaryColor: { value: secondaryColor.clone() },
+        uEnergy: { value: 0.45 },
+      };
+
       const heart = new THREE.Mesh(
-        new THREE.IcosahedronGeometry(0.62, 3),
-        new THREE.MeshStandardMaterial({ color: gold, emissive: gold, emissiveIntensity: 1.25, roughness: 0.4 })
-      );
-      core.add(heart);
-      const shell = new THREE.Mesh(
-        new THREE.IcosahedronGeometry(1.15, 1),
-        new THREE.MeshPhysicalMaterial({
-          color: 0xffffff,
-          metalness: 0,
-          roughness: 0.08,
-          transmission: tier.glassTransmission ? 1 : 0,
-          transparent: !tier.glassTransmission,
-          opacity: tier.glassTransmission ? 1 : 0.22,
-          thickness: 1.1,
-          ior: 1.4,
-          clearcoat: 1,
-          attenuationColor: gold,
-          attenuationDistance: 2.5,
-          flatShading: true,
-          envMapIntensity: 1.2,
+        new THREE.IcosahedronGeometry(0.76, 4),
+        new THREE.ShaderMaterial({
+          uniforms: coreUniforms,
+          vertexShader: JARVIS_CORE_VERTEX_SHADER,
+          fragmentShader: JARVIS_CORE_FRAGMENT_SHADER,
+          transparent: true,
         })
       );
+      core.add(heart);
+
+      const shellMat = new THREE.MeshPhysicalMaterial({
+        color: 0xffffff,
+        metalness: 0,
+        roughness: 0.08,
+        transmission: tier.glassTransmission ? 1 : 0,
+        transparent: !tier.glassTransmission,
+        opacity: tier.glassTransmission ? 1 : 0.16,
+        thickness: 1.0,
+        ior: 1.4,
+        clearcoat: 1,
+        attenuationColor: primaryColor,
+        attenuationDistance: 2.5,
+        flatShading: true,
+        envMapIntensity: 1.15,
+      });
+      const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(1.14, 1), shellMat);
       core.add(shell);
+
+      const cageMat = new THREE.MeshBasicMaterial({
+        color: primaryColor,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.24,
+        toneMapped: false,
+      });
+      const cage = new THREE.Mesh(new THREE.IcosahedronGeometry(1.22, 1), cageMat);
+      core.add(cage);
+
       function toSheen() {
-        const m = shell.material as import('three').MeshPhysicalMaterial;
-        if (m.transmission === 0) return;
-        m.transmission = 0;
-        m.transparent = true;
-        m.opacity = 0.22;
-        m.needsUpdate = true;
+        if (shellMat.transmission === 0) return;
+        shellMat.transmission = 0;
+        shellMat.transparent = true;
+        shellMat.opacity = 0.18;
+        shellMat.needsUpdate = true;
       }
-      const metal = new THREE.MeshStandardMaterial({ color: CINEMA.palette.metal, metalness: 1, roughness: 0.26, envMapIntensity: 1.3 });
-      const rings = [
-        { r: 1.65, tube: 0.032, rot: [Math.PI / 2.1, 0, 0] },
-        { r: 1.95, tube: 0.018, rot: [Math.PI / 2.8, 0.6, 0.2] },
-        { r: 2.3, tube: 0.012, rot: [Math.PI / 1.7, -0.4, 0.5] },
-      ].map((d) => {
+
+      // Three counter-rotating holographic/wireframe rings around the core
+      const ringSpecs = [
+        { r: 1.62, tube: 0.022, rot: [Math.PI / 2.1, 0.08, 0], color: 0x3be8ff, wireframe: false, opacity: 0.72 },
+        { r: 1.98, tube: 0.016, rot: [Math.PI / 2.8, 0.62, 0.22], color: 0x7c5cff, wireframe: true, opacity: 0.65 },
+        { r: 2.34, tube: 0.012, rot: [Math.PI / 1.72, -0.45, 0.52], color: 0x3be8ff, wireframe: true, opacity: 0.45 },
+      ] as const;
+
+      const rings = ringSpecs.map((d) => {
         const holder = new THREE.Object3D();
         holder.rotation.set(d.rot[0], d.rot[1], d.rot[2]);
-        const ring = new THREE.Mesh(new THREE.TorusGeometry(d.r, d.tube, 12, 200), metal);
-        holder.add(ring);
+        const mat = new THREE.MeshBasicMaterial({
+          color: d.color,
+          wireframe: d.wireframe,
+          transparent: true,
+          opacity: d.opacity,
+          toneMapped: false,
+        });
+        const rMesh = new THREE.Mesh(new THREE.TorusGeometry(d.r, d.tube, 8, 128), mat);
+        holder.add(rMesh);
         core.add(holder);
-        return ring;
+        return { mesh: rMesh, mat, baseOpacity: d.opacity, isSecondary: d.color === 0x7c5cff };
       });
-      // Precision gimbal dial: 120 instanced ticks, every 10th one longer and gold.
+
+      // Precision gimbal dial: 120 instanced ticks, every 10th one longer and cyan.
       const tickGeo = new THREE.BoxGeometry(0.018, 0.018, 0.14);
-      const ticks = new THREE.InstancedMesh(tickGeo, new THREE.MeshStandardMaterial({ color: 0xbfb8aa, metalness: 0.8, roughness: 0.35 }), 120);
+      const tickMat = new THREE.MeshBasicMaterial({ color: 0x5c7596, transparent: true, opacity: 0.72, toneMapped: false });
+      const ticks = new THREE.InstancedMesh(tickGeo, tickMat, 120);
       const m4 = new THREE.Matrix4();
       const q = new THREE.Quaternion();
       const sc = new THREE.Vector3();
       const ps = new THREE.Vector3();
+      const yAxis = new THREE.Vector3(0, 1, 0);
       for (let i = 0; i < 120; i++) {
         const a = (i / 120) * Math.PI * 2;
         const major = i % 10 === 0;
         ps.set(Math.cos(a) * 2.75, 0, Math.sin(a) * 2.75);
-        q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -a + Math.PI / 2);
-        sc.set(1, 1, major ? 2.2 : 1);
+        q.setFromAxisAngle(yAxis, -a + Math.PI / 2);
+        sc.set(1, 1, major ? 2.1 : 1);
         ticks.setMatrixAt(i, m4.compose(ps, q, sc));
-        if (major) ticks.setColorAt(i, gold);
+        if (major) ticks.setColorAt(i, primaryColor);
       }
+      if (ticks.instanceColor) ticks.instanceColor.needsUpdate = true;
       const dial = new THREE.Object3D();
       dial.rotation.x = 0.08;
       dial.add(ticks);
       core.add(dial);
-      // Two steel arc segments: emissive, slow counter-rotation.
+
+      // Two holographic arc segments
+      const arcPalette = [0x3be8ff, 0x7c5cff];
       const arcs = [0, 1].map((k) => {
         const arc = new THREE.Mesh(
-          new THREE.TorusGeometry(3.1 + k * 0.18, 0.012, 6, 120, Math.PI * (0.55 - k * 0.15)),
-          new THREE.MeshBasicMaterial({ color: steel, toneMapped: false, transparent: true, opacity: 0.75 })
+          new THREE.TorusGeometry(3.1 + k * 0.18, 0.014, 6, 96, Math.PI * (0.58 - k * 0.16)),
+          new THREE.MeshBasicMaterial({ color: arcPalette[k], toneMapped: false, transparent: true, opacity: 0.72 })
         );
         arc.rotation.x = Math.PI / 2 + 0.08;
         arc.rotation.z = k * Math.PI;
         core.add(arc);
         return arc;
       });
-      const halo = new THREE.Sprite(
-        new THREE.SpriteMaterial({ map: radialTexture(THREE, 'rgba(198,164,107,0.2)'), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })
+
+      // Instanced particle halo orbiting the core (halved automatically on low tier)
+      const haloParticleMat = new THREE.MeshBasicMaterial({
+        color: primaryColor,
+        transparent: true,
+        opacity: 0.75,
+        toneMapped: false,
+      });
+      const haloParticles = new THREE.InstancedMesh(
+        new THREE.OctahedronGeometry(0.032, 0),
+        haloParticleMat,
+        MAX_HALO_PARTICLES
       );
-      halo.scale.setScalar(6.2);
+      haloParticles.count = currentTierName === 'low' ? LOW_HALO_PARTICLES : MAX_HALO_PARTICLES;
+      const haloSeeds = Array.from({ length: MAX_HALO_PARTICLES }, (_, i) => ({
+        radius: 1.55 + (i % 7) * 0.24,
+        speed: (0.28 + (i % 5) * 0.09) * (i % 2 === 0 ? 1 : -1),
+        phase: (i / MAX_HALO_PARTICLES) * Math.PI * 2,
+        tiltX: ((i * 37) % 100) / 100 * 1.4 - 0.7,
+        tiltZ: ((i * 53) % 100) / 100 * 1.1 - 0.55,
+        scale: 0.75 + (i % 4) * 0.22,
+      }));
+      const pDummy = new THREE.Vector3();
+      const pQuat = new THREE.Quaternion();
+      const pScale = new THREE.Vector3();
+      const pMat = new THREE.Matrix4();
+      const updateHaloParticles = (timeSec: number, pulseRate: number) => {
+        const activeCount = haloParticles.count;
+        const speedBoost = 0.75 + pulseRate * 0.45;
+        for (let i = 0; i < activeCount; i++) {
+          const s = haloSeeds[i];
+          const theta = s.phase + timeSec * s.speed * speedBoost;
+          const x = Math.cos(theta) * s.radius;
+          const z = Math.sin(theta) * s.radius;
+          const y = Math.sin(theta * 2.0 + s.phase) * 0.36 + x * s.tiltZ * 0.35 + z * s.tiltX * 0.35;
+          pDummy.set(x, y, z);
+          pQuat.setFromAxisAngle(yAxis, theta);
+          pScale.setScalar(s.scale * (0.9 + 0.15 * Math.sin(timeSec * 2.5 + s.phase)));
+          haloParticles.setMatrixAt(i, pMat.compose(pDummy, pQuat, pScale));
+        }
+        haloParticles.instanceMatrix.needsUpdate = true;
+      };
+      updateHaloParticles(0, initialCore.pulseRate);
+      core.add(haloParticles);
+
+      const haloSpriteMat = new THREE.SpriteMaterial({
+        map: radialTexture(THREE, 'rgba(59,232,255,0.22)'),
+        color: primaryColor,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      const halo = new THREE.Sprite(haloSpriteMat);
+      halo.scale.setScalar(6.4);
       core.add(halo);
 
       // ------------------------------------------------------------------ WorkspaceNodes
+      const steel = new THREE.Color(CINEMA.palette.steel);
       const ring = new THREE.Object3D();
       ring.rotation.x = JARVIS.nodeRingTilt;
       scene.add(ring);
@@ -258,18 +415,40 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
         const a = (k / 240) * Math.PI * 2;
         return new THREE.Vector3(Math.cos(a) * JARVIS.nodeRingRadius, 0, Math.sin(a) * JARVIS.nodeRingRadius);
       });
-      ring.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(orbitPts), new THREE.LineBasicMaterial({ color: steel, transparent: true, opacity: 0.16 })));
+      ring.add(
+        new THREE.LineLoop(
+          new THREE.BufferGeometry().setFromPoints(orbitPts),
+          new THREE.LineBasicMaterial({ color: steel, transparent: true, opacity: 0.18 })
+        )
+      );
       const angles = nodeAngles(nodes.length);
       const nodeObjs = nodes.map((n, i) => {
         const color = new THREE.Color(n.color);
         const mesh = new THREE.Mesh(
           new THREE.OctahedronGeometry(0.3, 0),
-          new THREE.MeshPhysicalMaterial({ color, emissive: color, emissiveIntensity: 0.35, metalness: 0.5, roughness: 0.22, clearcoat: 1, flatShading: true })
+          new THREE.MeshPhysicalMaterial({
+            color,
+            emissive: color,
+            emissiveIntensity: 0.42,
+            metalness: 0.45,
+            roughness: 0.22,
+            clearcoat: 1,
+            flatShading: true,
+          })
         );
         mesh.position.set(Math.cos(angles[i]) * JARVIS.nodeRingRadius, 0, Math.sin(angles[i]) * JARVIS.nodeRingRadius);
         ring.add(mesh);
         const glow = new THREE.Sprite(
-          new THREE.SpriteMaterial({ map: radialTexture(THREE, `rgba(${Math.round(color.r * 255)},${Math.round(color.g * 255)},${Math.round(color.b * 255)},0.55)`), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending })
+          new THREE.SpriteMaterial({
+            map: radialTexture(
+              THREE,
+              `rgba(${Math.round(color.r * 255)},${Math.round(color.g * 255)},${Math.round(color.b * 255)},0.55)`
+            ),
+            transparent: true,
+            opacity: 0.2,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+          })
         );
         glow.scale.setScalar(1.6);
         mesh.add(glow);
@@ -280,20 +459,31 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
         highlighted = id;
         for (const o of nodeObjs) {
           const on = o.id === id;
-          o.mesh.scale.setScalar(on ? 1.35 : 1);
-          (o.mesh.material as import('three').MeshPhysicalMaterial).emissiveIntensity = on ? 0.9 : 0.35;
-          (o.glow.material as import('three').SpriteMaterial).opacity = on ? 1 : 0;
+          o.mesh.scale.setScalar(on ? 1.38 : 1);
+          (o.mesh.material as import('three').MeshPhysicalMaterial).emissiveIntensity = on ? 0.95 : 0.42;
+          (o.glow.material as import('three').SpriteMaterial).opacity = on ? 1 : 0.2;
         }
         needsRender = true;
       };
 
       // ------------------------------------------------------------------ Post, camera rig
-      const postFX = new PostFX(THREE, mods, renderer, scene, camera, { width, height }, { bloom: tier.bloom, grain: tier.grain });
+      const postFX = new PostFX(THREE, mods, renderer, scene, camera, { width, height }, {
+        bloom: currentTierName === 'low' ? false : tier.bloom,
+        grain: currentTierName === 'low' ? false : tier.grain,
+      });
+      postFX.setPixelRatio(initialRatio);
       let needsRender = true;
       const rig = new CinematicCameraRig(THREE, mount, { motion: !reduced, intro: true, onChange: () => (needsRender = true) });
 
-      // Click → short camera glide towards the node, then open the workspace.
-      const glide = { id: '', t: 0, from: new THREE.Vector3(), to: new THREE.Vector3(), look: new THREE.Vector3(), done: null as null | (() => void) };
+      // Click -> short camera glide towards the node, then open the workspace.
+      const glide = {
+        id: '',
+        t: 0,
+        from: new THREE.Vector3(),
+        to: new THREE.Vector3(),
+        look: new THREE.Vector3(),
+        done: null as null | (() => void),
+      };
       const world = new THREE.Vector3();
       api.current.glide = (id, done) => {
         const o = nodeObjs.find((x) => x.id === id);
@@ -322,10 +512,10 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
           proj.project(camera);
           const x = (proj.x * 0.5 + 0.5) * w;
           const y = (-proj.y * 0.5 + 0.5) * h;
-          // Labels sit under their node, or above it near the bottom edge so they never clip.
           const below = y < h - 48;
-          el.style.transform = below ? `translate(${x}px, ${y + 20}px) translate(-50%, 0)` : `translate(${x}px, ${y - 20}px) translate(-50%, -100%)`;
-          // Nodes behind the core recede (still focusable and readable on focus).
+          el.style.transform = below
+            ? `translate(${x}px, ${y + 20}px) translate(-50%, 0)`
+            : `translate(${x}px, ${y - 20}px) translate(-50%, -100%)`;
           el.dataset.depth = depth < -1 ? 'back' : 'front';
         }
         const c = coreLabelRef.current;
@@ -340,7 +530,10 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
         width = mount.clientWidth;
         height = mount.clientHeight;
         if (!width || !height) return;
+        const ratio = Math.min(MAX_DPR, window.devicePixelRatio, perf.settings.pixelRatioCap);
+        renderer.setPixelRatio(ratio);
         renderer.setSize(width, height);
+        postFX.setPixelRatio(ratio);
         postFX.setSize(width, height);
         camera.aspect = width / height;
         camera.updateProjectionMatrix();
@@ -361,9 +554,32 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
       };
       renderer.domElement.addEventListener('webglcontextlost', onLost);
 
+      const raycaster = new THREE.Raycaster();
+      const ndc = new THREE.Vector2();
+      let downPos = { x: 0, y: 0 };
+      const onCanvasPointerDown = (e: PointerEvent) => {
+        downPos = { x: e.clientX, y: e.clientY };
+      };
+      const onCanvasPointerUp = (e: PointerEvent) => {
+        if (Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 8) return;
+        const rect = renderer.domElement.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
+        ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera(ndc, camera);
+        if (raycaster.intersectObjects([heart, shell, cage], false).length > 0) {
+          openRef.current.onOpenCore();
+        }
+      };
+      renderer.domElement.addEventListener('pointerdown', onCanvasPointerDown);
+      renderer.domElement.addEventListener('pointerup', onCanvasPointerUp);
+
       // ------------------------------------------------------------------ Loop
       const timer = new THREE.Timer();
       let raf = 0;
+      let fpsFrames = 0;
+      let fpsElapsed = 0;
+
       const tick = () => {
         raf = requestAnimationFrame(tick);
         timer.update();
@@ -376,22 +592,70 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
         const animate = !reduced;
         if (!animate && !needsRender && !glide.done) return;
         needsRender = false;
+
+        // Smoothly interpolate shader uniforms and lights toward current HUD coreState
+        const cs = coreStateRef.current;
+        targetPrimary.set(cs.primaryHex);
+        targetSecondary.set(cs.secondaryHex);
+        const lerpAlpha = animate ? Math.min(1, dt * 4.5) : 1;
+
+        coreUniforms.uTime.value = t;
+        coreUniforms.uPrimaryColor.value.lerp(targetPrimary, lerpAlpha);
+        coreUniforms.uSecondaryColor.value.lerp(targetSecondary, lerpAlpha);
+        coreUniforms.uPulseRate.value += (cs.pulseRate - coreUniforms.uPulseRate.value) * lerpAlpha;
+        coreUniforms.uDispAmp.value += (cs.displacementAmp - coreUniforms.uDispAmp.value) * lerpAlpha;
+
+        const targetEnergy = cs.mode === 'thinking' ? 1.0 : cs.mode === 'talking' ? 0.8 : cs.mode === 'idle' ? 0.42 : 0.72;
+        coreUniforms.uEnergy.value += (targetEnergy - coreUniforms.uEnergy.value) * lerpAlpha;
+
+        hexFloorMat.uniforms.uTime.value = t;
+        hexFloorMat.uniforms.uGridColor.value.copy(coreUniforms.uPrimaryColor.value);
+        hexFloorMat.uniforms.uAccentColor.value.copy(coreUniforms.uSecondaryColor.value);
+
+        lighting.coreLight.color.copy(coreUniforms.uPrimaryColor.value);
+        lighting.coreLight.intensity = 1.6 + coreUniforms.uEnergy.value * 1.4;
+        cageMat.color.copy(coreUniforms.uPrimaryColor.value);
+        haloParticleMat.color.copy(coreUniforms.uPrimaryColor.value);
+        haloSpriteMat.color.copy(coreUniforms.uPrimaryColor.value);
+
+        for (const r of rings) {
+          if (!r.isSecondary) r.mat.color.copy(coreUniforms.uPrimaryColor.value);
+          r.mat.opacity = r.baseOpacity * (0.78 + coreUniforms.uEnergy.value * 0.35);
+        }
+
         if (animate) {
           perf.sample(dt);
-          rings[0].rotation.z += JARVIS.coreSpin[0] * dt;
-          rings[1].rotation.z += JARVIS.coreSpin[1] * dt;
-          rings[2].rotation.z += JARVIS.coreSpin[2] * dt;
-          dial.rotation.y -= 0.02 * dt;
-          arcs[0].rotation.z += 0.09 * dt;
-          arcs[1].rotation.z -= 0.06 * dt;
-          shell.rotation.y += 0.05 * dt;
-          heart.scale.setScalar(1 + Math.sin(t * 0.8) * 0.025);
-          halo.scale.setScalar(6.2 + Math.sin(t * 0.8) * 0.25);
-          // The orbit holds still while a node is hovered or focused, so it's easy to hit.
+          fpsFrames += 1;
+          fpsElapsed += dt;
+          if (fpsElapsed >= 0.6) {
+            const measuredFps = Math.max(1, Math.min(120, Math.round(fpsFrames / fpsElapsed)));
+            fpsFrames = 0;
+            fpsElapsed = 0;
+            setPerfRef.current?.({ tier: currentTierName, fps: measuredFps, webglActive: true });
+          }
+
+          const spinFactor = 1 + coreUniforms.uEnergy.value * 0.85;
+          rings[0].mesh.rotation.z += JARVIS.coreSpin[0] * spinFactor * dt;
+          rings[1].mesh.rotation.z += JARVIS.coreSpin[1] * spinFactor * dt;
+          rings[2].mesh.rotation.z += JARVIS.coreSpin[2] * spinFactor * dt;
+          dial.rotation.y -= 0.03 * dt;
+          arcs[0].rotation.z += 0.11 * spinFactor * dt;
+          arcs[1].rotation.z -= 0.08 * spinFactor * dt;
+          shell.rotation.y += 0.06 * dt;
+          cage.rotation.y -= 0.09 * dt;
+          cage.rotation.x += 0.03 * dt;
+
+          const breathScale = 1 + Math.sin(t * (1.1 + coreUniforms.uPulseRate.value * 1.8)) * (0.025 + coreUniforms.uEnergy.value * 0.025);
+          heart.scale.setScalar(breathScale);
+          halo.scale.setScalar(6.2 + Math.sin(t * (1.1 + coreUniforms.uPulseRate.value * 1.8)) * 0.38);
+          updateHaloParticles(t, coreUniforms.uPulseRate.value);
+
+          // Hold the outer workspace orbit still while hovered or focused for easy targeting.
           if (!glide.done && !highlighted) ring.rotation.y += JARVIS.nodeSpin * dt;
-          for (const o of nodeObjs) o.mesh.rotation.y += 0.4 * dt;
+          for (const o of nodeObjs) o.mesh.rotation.y += 0.45 * dt;
           atmosphere.update(dt, t, 1);
         }
+
         if (glide.done) {
           glide.t += dt / JARVIS.glideSeconds;
           const e = easeInOutCubic(glide.t);
@@ -420,6 +684,9 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
         ro.disconnect();
         io.disconnect();
         renderer.domElement.removeEventListener('webglcontextlost', onLost);
+        renderer.domElement.removeEventListener('pointerdown', onCanvasPointerDown);
+        renderer.domElement.removeEventListener('pointerup', onCanvasPointerUp);
+        setPerfRef.current?.({ tier: currentTierName, fps: 60, webglActive: false });
         rig.dispose();
         postFX.dispose();
         lighting.dispose();
@@ -450,6 +717,7 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
 
   const focusNode = (id: string | null) => {
     setHovered(id);
+    setHoveredRef.current?.(id);
     api.current.highlight(id);
     const el = id ? labelRefs.current.get(id) : null;
     const box = mountRef.current?.getBoundingClientRect();
@@ -457,11 +725,11 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
       setTip(null);
       return;
     }
-    // Anchor the tooltip to the focused label's on-screen position.
     const r = el.getBoundingClientRect();
     setPanelWidth(box.width);
     setTip({ x: r.left + r.width / 2 - box.left, y: r.top - box.top });
   };
+
   const openNode = (n: WorkspaceNode) => {
     if (busy.current) return;
     busy.current = true;
@@ -472,7 +740,7 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
   if (status === 'unsupported') {
     return (
       <div className="absolute inset-0 flex flex-col justify-end p-4 sm:p-5">
-        <p className="mb-3 text-xs text-[var(--hub-muted)]">The 3D view isn’t available on this device.</p>
+        <p className="mb-3 text-xs text-[#7A8BA6]">The 3D view isn’t available on this device.</p>
         <NodeButtons nodes={nodes} onOpen={onOpen} />
       </div>
     );
@@ -500,7 +768,7 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
                   onFocus={() => focusNode(n.id)}
                   onBlur={() => focusNode(null)}
                   aria-label={`${n.label}${n.status ? `, ${n.status}` : ''}. Open workspace`}
-                  className="jarvis-node-label pointer-events-auto absolute left-0 top-0 whitespace-nowrap rounded-full px-2.5 py-1 font-mono text-[0.625rem] uppercase tracking-[0.14em] text-[var(--hub-ink)] bg-[rgba(5,6,8,0.55)] border border-white/10 hover:border-[var(--hub-accent)]/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--hub-accent)] cursor-pointer transition-opacity duration-300 data-[depth=back]:opacity-45 hover:opacity-100 focus-visible:opacity-100"
+                  className="jarvis-node-label pointer-events-auto absolute left-0 top-0 whitespace-nowrap rounded-full px-2.5 py-1 font-mono text-[0.625rem] uppercase tracking-[0.14em] text-[#E6F1FF] bg-[rgba(10,16,28,0.68)] border border-[rgba(59,232,255,0.22)] hover:border-[#3BE8FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3BE8FF] cursor-pointer transition-opacity duration-300 data-[depth=back]:opacity-45 hover:opacity-100 focus-visible:opacity-100"
                 >
                   {n.label}
                 </button>
@@ -511,19 +779,19 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
             ref={coreLabelRef}
             type="button"
             onClick={() => onOpenCore()}
-            className="absolute left-0 top-0 rounded-full px-3 py-1 text-[0.6875rem] font-medium text-[var(--hub-accent)] bg-[rgba(5,6,8,0.55)] border border-[var(--hub-accent)]/30 hover:border-[var(--hub-accent)]/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--hub-accent)] cursor-pointer"
+            className="absolute left-0 top-0 rounded-full px-3.5 py-1.5 text-[0.6875rem] font-semibold text-[#3BE8FF] bg-[rgba(10,16,28,0.72)] border border-[#3BE8FF]/40 hover:border-[#3BE8FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3BE8FF] cursor-pointer shadow-[0_0_16px_rgba(59,232,255,0.22)]"
           >
             Ask Jarvis
           </button>
           {hoveredNode && tip && (
             <div
               role="tooltip"
-              className="pointer-events-none absolute left-0 top-0 w-60 rounded-xl border border-white/10 bg-[rgba(10,13,18,0.92)] p-3 shadow-lg"
+              className="pointer-events-none absolute left-0 top-0 w-60 rounded-xl border border-[rgba(59,232,255,0.24)] bg-[rgba(10,16,28,0.9)] backdrop-blur-md p-3 shadow-lg"
               style={{ transform: `translate(${Math.min(Math.max(tip.x, 130), panelWidth - 130)}px, ${Math.max(8, tip.y - 8)}px) translate(-50%, -100%)` }}
             >
-              <p className="font-heading text-sm font-semibold text-[var(--hub-ink)]">{hoveredNode.label}</p>
-              <p className="mt-0.5 text-xs text-[var(--hub-muted)]">{hoveredNode.description}</p>
-              <p className="mt-2 font-mono text-[0.625rem] uppercase tracking-[0.12em] text-[var(--hub-accent)]">{hoveredNode.status ?? 'Open workspace'}</p>
+              <p className="font-heading text-sm font-semibold text-[#E6F1FF]">{hoveredNode.label}</p>
+              <p className="mt-0.5 text-xs text-[#7A8BA6]">{hoveredNode.description}</p>
+              <p className="mt-2 font-mono text-[0.625rem] uppercase tracking-[0.12em] text-[#3BE8FF]">{hoveredNode.status ?? 'Open workspace'}</p>
             </div>
           )}
         </>

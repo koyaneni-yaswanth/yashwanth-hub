@@ -456,11 +456,11 @@ const DashboardHudShell: React.FC<ShellProps> = ({
     setTimeout(() => setWeeklyReviewNotice(null), 4000);
   };
 
-  let scenePref = false;
+  let scenePref = true;
   try {
-    scenePref = localStorage.getItem('yash_jarvis_scene') === 'on';
+    scenePref = localStorage.getItem('yash_jarvis_scene') !== 'off';
   } catch {
-    scenePref = false;
+    scenePref = true;
   }
 
   return (

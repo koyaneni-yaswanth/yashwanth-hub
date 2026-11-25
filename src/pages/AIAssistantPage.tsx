@@ -36,6 +36,7 @@ import type {
 import { generateId } from '../lib/utils';
 import { SUPPORTED_MODELS, normaliseModelId } from '../services/ai/aiModels';
 import { AIGateway } from '../services/ai/aiGateway';
+import { beginAiThinking, endAiThinking } from '../lib/aiActivity';
 import { Badge } from '../components/common/Badge';
 import type { AIToolSpec } from '../../api/_lib/aiTools';
 
@@ -266,6 +267,8 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
     setMessages(withUser);
     setInputMessage('');
     setIsProcessing(true);
+    beginAiThinking();
+    let responded = false;
 
     try {
       const activeAgentMeta = MODULAR_AGENTS.find((a) => a.id === selectedAgent);
@@ -312,6 +315,7 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
         response.tokensInput + response.tokensOutput,
         response.estimatedCostUSD
       );
+      responded = true;
     } catch (err: any) {
       const errorMsg: AIChatMessage = {
         id: generateId(),
@@ -321,6 +325,7 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
       };
       setMessages([...withUser, errorMsg]);
     } finally {
+      endAiThinking(responded);
       setIsProcessing(false);
     }
   };

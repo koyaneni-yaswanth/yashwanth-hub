@@ -24,12 +24,12 @@ const PREF_KEY = 'yash_jarvis_scene';
 const NO_TASKS: never[] = [];
 const NO_PROJECTS: never[] = [];
 
-// P1 keeps 3D initially off until P2 adds the custom shader core & reactive states.
+// Persist the user's 3D stage choice, defaulting ON so the Jarvis HUD core renders after first paint.
 function readPref(): boolean {
   try {
-    return localStorage.getItem(PREF_KEY) === 'on';
+    return localStorage.getItem(PREF_KEY) !== 'off';
   } catch {
-    return false;
+    return true;
   }
 }
 
