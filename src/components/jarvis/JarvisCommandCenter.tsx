@@ -120,7 +120,7 @@ export const JarvisCommandCenter: React.FC<{
   return (
     <section
       aria-labelledby="jarvis-cc-title"
-      className="relative flex flex-col w-full h-full min-h-[260px] md:min-h-[380px] overflow-hidden rounded-2xl border border-[rgba(59,232,255,0.18)] bg-[rgba(5,7,13,0.45)]"
+      className="relative flex flex-col w-full h-[42vh] min-h-[270px] max-h-[380px] md:h-full md:max-h-none md:min-h-[380px] overflow-hidden rounded-2xl border border-[rgba(59,232,255,0.18)] bg-[rgba(5,7,13,0.45)]"
     >
       {/* Subtle Top HUD Stage Controls */}
       <div className="relative z-20 flex items-center justify-between px-3.5 sm:px-5 pt-3">
@@ -159,7 +159,7 @@ export const JarvisCommandCenter: React.FC<{
       </div>
 
       {/* Main Center Stage (3D WebGL OR 2D Radial Orbital Layout) */}
-      <div className="relative flex-1 min-h-[220px] sm:min-h-[300px]">
+      <div className="relative flex-1 min-h-[190px] sm:min-h-[260px]">
         {expanded ? (
           ready ? (
             <Suspense fallback={renderFallback()}>

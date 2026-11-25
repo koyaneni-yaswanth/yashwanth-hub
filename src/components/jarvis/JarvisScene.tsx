@@ -52,6 +52,34 @@ function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
 }
 
+function readGpuInfo(renderer: import('three').WebGLRenderer): { gpuRenderer: string; isSoftwareGpu: boolean } {
+  try {
+    const gl = renderer.getContext();
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    const raw = dbg
+      ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || '')
+      : String(gl.getParameter(gl.RENDERER) || '');
+    const isSoftwareGpu = /swiftshader|llvmpipe|software|mesa offscreen|microsoft basic render/i.test(raw);
+    return { gpuRenderer: raw || 'webgl', isSoftwareGpu };
+  } catch {
+    return { gpuRenderer: 'webgl', isSoftwareGpu: false };
+  }
+}
+
+function publishMetrics(metrics: {
+  tier: string;
+  fps: number;
+  webglActive: boolean;
+  dpr: number;
+  gpuRenderer: string;
+  reducedMotion: boolean;
+  haloParticles: number;
+}) {
+  if (typeof window !== 'undefined') {
+    (window as Window & { __JARVIS_HUD_METRICS__?: typeof metrics }).__JARVIS_HUD_METRICS__ = metrics;
+  }
+}
+
 function radialTexture(THREE: typeof import('three'), inner: string, outer = 'rgba(0,0,0,0)', size = 128) {
   const c = document.createElement('canvas');
   c.width = c.height = size;
@@ -113,8 +141,10 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
   );
 
   const stageNodesRef = useRef(stageNodes);
+  const requestStaticRenderRef = useRef<() => void>(() => {});
   useEffect(() => {
     stageNodesRef.current = stageNodes;
+    requestStaticRenderRef.current();
   }, [stageNodes]);
 
   const api = useRef<{
@@ -133,6 +163,7 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
   const coreStateRef = useRef(hud?.coreState ?? DEFAULT_CORE);
   useEffect(() => {
     coreStateRef.current = hud?.coreState ?? DEFAULT_CORE;
+    requestStaticRenderRef.current();
   }, [hud?.coreState]);
 
   const setPerfRef = useRef(hud?.setPerf);
@@ -206,9 +237,14 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
       let width = mount.clientWidth || 800;
       let height = mount.clientHeight || 340;
       const reduced = prefersReducedMotion();
+      const gpuInfo = readGpuInfo(renderer);
+      const device = PerformanceManager.readDevice(width, reduced);
+      if (gpuInfo.isSoftwareGpu) {
+        device.cores = Math.min(device.cores, 2);
+      }
 
       let currentTierName: 'high' | 'medium' | 'low' = 'high';
-      const perf = new PerformanceManager(PerformanceManager.readDevice(width, reduced), (newTier, set) => {
+      const perf = new PerformanceManager(device, (newTier, set) => {
         currentTierName = newTier;
         const ratio = Math.min(MAX_DPR, window.devicePixelRatio, set.pixelRatioCap);
         renderer.setPixelRatio(ratio);
@@ -222,9 +258,17 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
       });
       const tier = perf.settings;
       currentTierName = perf.tier;
-      setPerfRef.current?.({ tier: perf.tier, fps: 60, webglActive: true });
-
       const initialRatio = Math.min(MAX_DPR, window.devicePixelRatio, tier.pixelRatioCap);
+      setPerfRef.current?.({ tier: perf.tier, fps: 60, webglActive: true });
+      publishMetrics({
+        tier: perf.tier,
+        fps: 60,
+        webglActive: true,
+        dpr: initialRatio,
+        gpuRenderer: gpuInfo.gpuRenderer,
+        reducedMotion: reduced,
+        haloParticles: perf.tier === 'low' ? LOW_HALO_PARTICLES : MAX_HALO_PARTICLES,
+      });
       renderer.setPixelRatio(initialRatio);
       renderer.setSize(width, height);
       renderer.setClearColor(0x05070d, 1);
@@ -615,6 +659,9 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
       });
       postFX.setPixelRatio(initialRatio);
       let needsRender = true;
+      requestStaticRenderRef.current = () => {
+        needsRender = true;
+      };
       const rig = new CinematicCameraRig(THREE, mount, { motion: !reduced, intro: true, onChange: () => (needsRender = true) });
 
       // Click -> smooth camera dolly towards the node, then open the workspace.
@@ -828,6 +875,15 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
             fpsFrames = 0;
             fpsElapsed = 0;
             setPerfRef.current?.({ tier: currentTierName, fps: measuredFps, webglActive: true });
+            publishMetrics({
+              tier: currentTierName,
+              fps: measuredFps,
+              webglActive: true,
+              dpr: renderer.getPixelRatio(),
+              gpuRenderer: gpuInfo.gpuRenderer,
+              reducedMotion: reduced,
+              haloParticles: haloParticles.count,
+            });
           }
 
           const spinFactor = 1 + coreUniforms.uEnergy.value * 0.85;
@@ -888,6 +944,16 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
         renderer.domElement.removeEventListener('pointerdown', onCanvasPointerDown);
         renderer.domElement.removeEventListener('pointerup', onCanvasPointerUp);
         setPerfRef.current?.({ tier: currentTierName, fps: 60, webglActive: false });
+        publishMetrics({
+          tier: currentTierName,
+          fps: 60,
+          webglActive: false,
+          dpr: renderer.getPixelRatio(),
+          gpuRenderer: gpuInfo.gpuRenderer,
+          reducedMotion: reduced,
+          haloParticles: 0,
+        });
+        requestStaticRenderRef.current = () => {};
         rig.dispose();
         postFX.dispose();
         lighting.dispose();
@@ -980,7 +1046,7 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
                   onFocus={() => focusNode(n.id)}
                   onBlur={() => focusNode(null)}
                   aria-label={`${n.label}${n.statusText ? `, ${n.statusText}` : ''}. Open workspace`}
-                  className="jarvis-node-label pointer-events-auto absolute left-0 top-0 inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 font-mono text-[0.625rem] uppercase tracking-[0.14em] text-[#E6F1FF] bg-[rgba(10,16,28,0.72)] border border-[rgba(59,232,255,0.22)] hover:border-[#3BE8FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3BE8FF] cursor-pointer transition-opacity duration-300 data-[depth=back]:opacity-45 hover:opacity-100 focus-visible:opacity-100"
+                  className="jarvis-node-label hidden md:inline-flex pointer-events-auto absolute left-0 top-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 font-mono text-[0.625rem] uppercase tracking-[0.14em] text-[#E6F1FF] bg-[rgba(10,16,28,0.72)] border border-[rgba(59,232,255,0.22)] hover:border-[#3BE8FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3BE8FF] cursor-pointer transition-opacity duration-300 data-[depth=back]:opacity-45 hover:opacity-100 focus-visible:opacity-100"
                 >
                   <span style={{ color: n.color }}>{renderWorkspaceGlyph(n.glyph, 'w-3 h-3 shrink-0')}</span>
                   <span>{n.shortLabel}</span>

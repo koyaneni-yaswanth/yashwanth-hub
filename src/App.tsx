@@ -524,7 +524,7 @@ function HubMain() {
           aria-label={TAB_TITLES[currentTab]}
           className={`flex-1 min-w-0 overflow-x-hidden focus:outline-none ${
             isHome
-              ? 'relative flex flex-col p-2.5 sm:p-4 pb-20 lg:pb-3'
+              ? 'relative flex flex-col p-2.5 sm:p-4 pb-24 md:pb-4 lg:pb-3'
               : 'p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8 safe-area-content-pb'
           }`}
         >
