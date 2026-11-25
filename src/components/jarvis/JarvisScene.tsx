@@ -23,6 +23,7 @@ import { LightingDirector } from '../momentum/cinema/LightingDirector';
 import { Atmosphere } from '../momentum/cinema/Atmosphere';
 import { PostFX } from '../momentum/cinema/PostFX';
 import { PerformanceManager } from '../momentum/cinema/PerformanceManager';
+import { createProceduralDetailMaps } from '../momentum/cinema/proceduralMaterials';
 import { NodeButtons } from './NodeButtons';
 import { renderWorkspaceGlyph } from './workspaceGlyph';
 import {
@@ -247,10 +248,16 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
       const perf = new PerformanceManager(device, (newTier, set) => {
         currentTierName = newTier;
         const ratio = Math.min(MAX_DPR, window.devicePixelRatio, set.pixelRatioCap);
+        lighting.setShadowQuality(set.shadowQuality);
         renderer.setPixelRatio(ratio);
         postFX.setPixelRatio(ratio);
         postFX.setSize(width, height);
-        postFX.setQuality({ bloom: newTier === 'low' ? false : set.bloom, grain: newTier === 'low' ? false : set.grain });
+        postFX.setQuality({
+          bloom: newTier === 'low' ? false : set.bloom,
+          grain: newTier === 'low' ? false : set.grain,
+          chromaticAberration: newTier === 'low' ? false : set.chromaticAberration,
+          renderScale: set.renderScale,
+        });
         if (!set.glassTransmission) toSheen();
         if (atmosphere.dust && set.dust === 0) atmosphere.dust.visible = false;
         haloParticles.count = newTier === 'low' ? LOW_HALO_PARTICLES : MAX_HALO_PARTICLES;
@@ -281,14 +288,24 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
 
       const scene = new THREE.Scene();
       scene.background = new THREE.Color('#05070D');
-      scene.fog = new THREE.FogExp2(0x05070d, 0.024);
 
-      const lighting = new LightingDirector(THREE, renderer, scene, mods.RoomEnvironment);
+      const lighting = new LightingDirector(THREE, renderer, scene, mods.RoomEnvironment, {
+        shadows: tier.shadowQuality,
+        keyColor: 0xe2f1ff,
+        rimColor: 0x8b6eff,
+        coreColor: 0x3be8ff,
+      });
+      const detailMaps = createProceduralDetailMaps(THREE);
       const disc = radialTexture(THREE, 'rgba(255,255,255,1)', 'rgba(255,255,255,0)', 64);
       const atmosphere = new Atmosphere(THREE, scene, disc, (i, o, s) => radialTexture(THREE, i, o, s), {
         starsFar: Math.round(tier.starsFar * 0.65),
         starsNear: Math.round(tier.starsNear * 0.65),
         dust: currentTierName === 'low' ? Math.round(tier.dust * 0.5) : tier.dust,
+      }, {
+        fogColor: 0x05070d,
+        fogDensity: 0.0185,
+        nebulaTints: ['rgba(59,232,255,0.42)', 'rgba(124,92,255,0.38)', 'rgba(148,163,184,0.28)'],
+        starColor: '#e2e8f0',
       });
 
       const camera = new THREE.PerspectiveCamera(CINEMA.camera.fov, width / height, 0.1, 400);
@@ -354,7 +371,10 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
       const shellMat = new THREE.MeshPhysicalMaterial({
         color: 0xffffff,
         metalness: 0.1,
-        roughness: 0.12,
+        roughness: 0.14,
+        roughnessMap: detailMaps.crystalRoughness,
+        bumpMap: detailMaps.crystalBump,
+        bumpScale: 0.006,
         transparent: true,
         opacity: 0.16,
         depthWrite: false,
@@ -363,6 +383,8 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
         envMapIntensity: 1.2,
       });
       const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(1.14, 1), shellMat);
+      shell.castShadow = true;
+      shell.receiveShadow = true;
       core.add(shell);
 
       const cageMat = new THREE.MeshBasicMaterial({
@@ -544,11 +566,16 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
           emissive: color,
           emissiveIntensity: 0.35 + n.activityLevel * 0.95,
           metalness: 0.35,
-          roughness: 0.18,
+          roughness: 0.2,
+          roughnessMap: detailMaps.crystalRoughness,
+          bumpMap: detailMaps.crystalBump,
+          bumpScale: 0.008,
           clearcoat: 1,
           flatShading: true,
         });
         const mesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.32, 0), mat);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
         mesh.userData = { hudNodeId: n.id };
         nodeGroup.add(mesh);
 
@@ -652,6 +679,8 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
       const postFX = new PostFX(THREE, mods, renderer, scene, camera, { width, height }, {
         bloom: currentTierName === 'low' ? false : tier.bloom,
         grain: currentTierName === 'low' ? false : tier.grain,
+        chromaticAberration: currentTierName === 'low' ? false : tier.chromaticAberration,
+        renderScale: tier.renderScale,
       });
       postFX.setPixelRatio(initialRatio);
       let needsRender = true;
@@ -958,12 +987,24 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
         postFX.dispose();
         lighting.dispose();
         atmosphere.dispose();
+        detailMaps.dispose();
         scene.traverse((o) => {
           const m = o as import('three').Mesh;
           m.geometry?.dispose?.();
           const mat = m.material as import('three').Material | import('three').Material[] | undefined;
           const d = (x: import('three').Material) => {
-            (x as import('three').Material & { map?: import('three').Texture | null }).map?.dispose?.();
+            const anyMat = x as import('three').Material & {
+              map?: import('three').Texture | null;
+              roughnessMap?: import('three').Texture | null;
+              bumpMap?: import('three').Texture | null;
+              normalMap?: import('three').Texture | null;
+              metalnessMap?: import('three').Texture | null;
+            };
+            anyMat.map?.dispose?.();
+            anyMat.roughnessMap?.dispose?.();
+            anyMat.bumpMap?.dispose?.();
+            anyMat.normalMap?.dispose?.();
+            anyMat.metalnessMap?.dispose?.();
             x.dispose();
           };
           if (Array.isArray(mat)) mat.forEach(d);

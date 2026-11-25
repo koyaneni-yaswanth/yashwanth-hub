@@ -7,6 +7,7 @@ import { LightingDirector } from './cinema/LightingDirector';
 import { Atmosphere } from './cinema/Atmosphere';
 import { PostFX } from './cinema/PostFX';
 import { PerformanceManager } from './cinema/PerformanceManager';
+import { createProceduralDetailMaps } from './cinema/proceduralMaterials';
 
 export interface SceneGoal {
   id: string;
@@ -248,7 +249,10 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
       mount.appendChild(renderer.domElement);
 
       const scene = new THREE.Scene();
-      const lighting = new LightingDirector(THREE, renderer, scene, mods.RoomEnvironment);
+      const lighting = new LightingDirector(THREE, renderer, scene, mods.RoomEnvironment, {
+        shadows: tierSet.shadowQuality,
+      });
+      const detailMaps = createProceduralDetailMaps(THREE);
 
       const accent = new THREE.Color(ACCENT);
       const world = new THREE.Group();
@@ -312,13 +316,27 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
           envMapIntensity: 1.2,
         })
       );
+      glass.castShadow = true;
+      glass.receiveShadow = true;
       core.add(glass);
-      const metal = new THREE.MeshStandardMaterial({ color: CINEMA.palette.metal, metalness: 1, roughness: 0.24, envMapIntensity: 1.3 });
+      const metal = new THREE.MeshStandardMaterial({
+        color: CINEMA.palette.metal,
+        metalness: 1,
+        roughness: 0.28,
+        roughnessMap: detailMaps.metalRoughness,
+        bumpMap: detailMaps.metalBump,
+        bumpScale: 0.008,
+        envMapIntensity: 1.35,
+      });
       const ringA = new THREE.Mesh(new THREE.TorusGeometry(coreR * 1.42, 0.04, 16, 180), metal);
       ringA.rotation.x = Math.PI / 2.15;
+      ringA.castShadow = true;
+      ringA.receiveShadow = true;
       core.add(ringA);
       const ringB = new THREE.Mesh(new THREE.TorusGeometry(coreR * 1.72, 0.022, 12, 180), metal);
       ringB.rotation.set(Math.PI / 2.6, 0.5, 0);
+      ringB.castShadow = true;
+      ringB.receiveShadow = true;
       core.add(ringB);
       const halo = new THREE.Sprite(
         new THREE.SpriteMaterial({ map: radialTexture(THREE, 'rgba(198,164,107,0.3)'), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })
@@ -382,7 +400,10 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
           new THREE.MeshPhysicalMaterial({
             color,
             metalness: 0.2,
-            roughness: 0.16,
+            roughness: 0.2,
+            roughnessMap: detailMaps.crystalRoughness,
+            bumpMap: detailMaps.crystalBump,
+            bumpScale: 0.01,
             clearcoat: 1,
             clearcoatRoughness: 0.06,
             iridescence: 0.55,
@@ -393,6 +414,8 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
             envMapIntensity: 1.3,
           })
         );
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
         mesh.userData = { goalId: g.id, title: g.title };
         anchor.add(mesh);
 
@@ -784,7 +807,12 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
       };
 
       // --- Post-processing: bloom on true highlights, ACES output, mild vignette + faint grain ---
-      const postFX = new PostFX(THREE, mods, renderer, scene, camera, { width, height }, { bloom: tierSet.bloom, grain: tierSet.grain });
+      const postFX = new PostFX(THREE, mods, renderer, scene, camera, { width, height }, {
+        bloom: tierSet.bloom,
+        grain: tierSet.grain,
+        chromaticAberration: tierSet.chromaticAberration,
+        renderScale: tierSet.renderScale,
+      });
       // --- Cinematic camera: reveal (first open only), scroll path, micro-parallax, idle breath ---
       const rig = new CinematicCameraRig(THREE, mount, {
         motion: !reducedMotion,
@@ -873,10 +901,16 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
       // Adaptive quality: PerformanceManager measures fps in 2 s windows and steps the tier down.
       function applyTier(tier: QualityTier, set: ReturnType<typeof tierSettings>) {
         const ratio = Math.min(window.devicePixelRatio, set.pixelRatioCap);
+        lighting.setShadowQuality(set.shadowQuality);
         renderer.setPixelRatio(ratio);
         postFX.setPixelRatio(ratio);
         postFX.setSize(width, height);
-        postFX.setQuality({ bloom: set.bloom, grain: set.grain });
+        postFX.setQuality({
+          bloom: set.bloom,
+          grain: set.grain,
+          chromaticAberration: set.chromaticAberration,
+          renderScale: set.renderScale,
+        });
         if (!set.glassTransmission) switchGlassToSheen();
         if (atmosphere.dust && tier === 'low') atmosphere.dust.visible = false;
         requestRender();
@@ -942,11 +976,16 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
             const N = tr.positions.length / 3;
             if (animate || tr.filled === 0) {
               tr.positions.copyWithin(3, 0, (N - 1) * 3);
-              tr.positions.set([tmp.x, tmp.y, tmp.z], 0);
+              tr.positions[0] = tmp.x;
+              tr.positions[1] = tmp.y;
+              tr.positions[2] = tmp.z;
               tr.filled = Math.min(N, tr.filled + 1);
               for (let k = 0; k < N; k++) {
                 const f = 1 - k / N;
-                tr.colors.set([tr.color.r * f, tr.color.g * f, tr.color.b * f], k * 3);
+                const k3 = k * 3;
+                tr.colors[k3] = tr.color.r * f;
+                tr.colors[k3 + 1] = tr.color.g * f;
+                tr.colors[k3 + 2] = tr.color.b * f;
               }
               tr.geo.setDrawRange(0, tr.filled);
               (tr.geo.attributes.position as import('three').BufferAttribute).needsUpdate = true;
@@ -997,13 +1036,24 @@ export const LifeConstellation: React.FC<LifeConstellationProps> = (props) => {
         rig.dispose();
         postFX.dispose();
         lighting.dispose();
+        detailMaps.dispose();
         scene.traverse((o) => {
           const m = o as import('three').Mesh;
           m.geometry?.dispose?.();
           const mat = m.material as import('three').Material | import('three').Material[] | undefined;
           const disposeMat = (x: import('three').Material) => {
-            const anyMat = x as import('three').Material & { map?: import('three').Texture | null };
+            const anyMat = x as import('three').Material & {
+              map?: import('three').Texture | null;
+              roughnessMap?: import('three').Texture | null;
+              bumpMap?: import('three').Texture | null;
+              normalMap?: import('three').Texture | null;
+              metalnessMap?: import('three').Texture | null;
+            };
             anyMat.map?.dispose?.();
+            anyMat.roughnessMap?.dispose?.();
+            anyMat.bumpMap?.dispose?.();
+            anyMat.normalMap?.dispose?.();
+            anyMat.metalnessMap?.dispose?.();
             x.dispose();
           };
           if (Array.isArray(mat)) mat.forEach(disposeMat);

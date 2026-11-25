@@ -24,36 +24,40 @@ export const CINEMA = {
     metal: 0xd9d3c7, // warm silver rings
   },
   renderer: {
-    exposure: 1.0,
+    exposure: 1.04,
     /** Device pixel ratio cap per quality tier (never above 2). */
     pixelRatio: { high: 2, medium: 1.5, low: 1 },
+    /** Dynamic internal composer resolution scale per quality tier. */
+    renderScale: { high: 1, medium: 0.9, low: 0.8 },
   },
   lighting: {
-    key: { color: 0xffe2b8, intensity: 1.7, position: [11, 9, 10] as const }, // warm, upper right front
-    rim: { color: 0x9db8d8, intensity: 2.1, position: [-13, 7, -15] as const }, // cool, behind left
-    fill: { sky: 0x2a3445, ground: 0x0a0c10, intensity: 0.32 }, // hemispheric, not uniform ambient
+    key: { color: 0xffe2b8, intensity: 1.75, position: [11, 9, 10] as const }, // warm, upper right front
+    rim: { color: 0x9db8d8, intensity: 2.15, position: [-13, 7, -15] as const }, // cool, behind left
+    fill: { sky: 0x2a3445, ground: 0x0a0c10, intensity: 0.34 }, // hemispheric, not uniform ambient
     core: { color: 0xe6c48a, intensity: 48, decay: 1.6 }, // practical light inside the core
-    environmentIntensity: 0.3,
+    environmentIntensity: 0.34,
+    shadowQuality: { high: 'high', medium: 'medium', low: 'off' } as const,
   },
   atmosphere: {
-    fogDensity: 0.0105,
+    fogDensity: 0.0115,
     nebulaOpacity: 0.2,
     dust: { high: 260, medium: 140, low: 0 }, // midground motes that sell depth
     stars: { far: { high: 1400, medium: 900, low: 500 }, near: { high: 320, medium: 200, low: 120 } },
   },
   post: {
-    bloom: { strength: 0.42, radius: 0.48, threshold: 0.62 },
-    vignette: 0.32, // 0 = off; darkens the corners only
+    bloom: { strength: 0.22, radius: 0.36, threshold: 0.64 },
+    vignette: 0.20, // 0 = off; darkens the corners only
     grain: 0.022, // 0 = off; very low
+    chromaticAberration: 0.0011, // edge-only spectral fringe at corners
   },
   camera: {
     fov: 40,
     /** First-open reveal: start this much further out (fraction of the framing distance)… */
-    introDolly: 0.38,
+    introDolly: 0.34,
     /** …and glide in over this many seconds (easeInOutCubic). */
-    introSeconds: 2.4,
-    /** Focus transitions: exponential settle rate (1/s). 2.9 settles ~95% in about 1 s. */
-    focusRate: 2.9,
+    introSeconds: 1.85,
+    /** Focus transitions: exponential settle rate (1/s). 3.1 settles ~95% in ~0.97 s. */
+    focusRate: 3.1,
     /** Scroll path: dolly (fraction of distance) and lift (world units) across the panel's scroll range. */
     scrollDolly: 0.08,
     scrollLift: 1.6,
@@ -61,8 +65,8 @@ export const CINEMA = {
     parallax: 0.55,
     parallaxRate: 3.2,
     /** Idle breathing: amplitude (world units) and period (seconds). */
-    breath: 0.12,
-    breathPeriod: 9,
+    breath: 0.11,
+    breathPeriod: 9.5,
   },
   performance: {
     /** Average fps below this (over a 2 s window) drops one quality tier. */
@@ -136,12 +140,81 @@ export function lowerTier(t: QualityTier): QualityTier {
   return t === 'high' ? 'medium' : 'low';
 }
 
+export type ShadowQuality = 'high' | 'medium' | 'off';
+
+export const CINEMA_SPRING = {
+  stiffness: 28,
+  dampingRatio: 1,
+} as const;
+
+export const SCROLL_CAMERA_STAGES = [
+  { id: 'hero', start: 0, end: 0.25, dolly: [0.06, 0.02], lift: [-0.55, -0.22], yaw: [-0.05, 0] },
+  { id: 'survey', start: 0.25, end: 0.55, dolly: [0.02, -0.02], lift: [-0.22, 0.12], yaw: [0, 0.05] },
+  { id: 'detail', start: 0.55, end: 0.85, dolly: [-0.02, -0.10], lift: [0.12, 0.72], yaw: [0.05, 0.08] },
+  { id: 'cta', start: 0.85, end: 1, dolly: [-0.10, -0.14], lift: [0.72, 1.15], yaw: [0.08, 0.03] },
+] as const;
+
+/**
+ * Critically-damped spring integrator (substepped for frame-rate independence).
+ * Converges smoothly without overshoot when dampingRatio >= 1.
+ */
+export function criticallyDampedStep(
+  value: number,
+  velocity: number,
+  target: number,
+  stiffness: number,
+  dt: number,
+  dampingRatio = 1,
+): [number, number] {
+  const clampedDt = Math.max(0, Math.min(0.1, dt));
+  if (clampedDt === 0) return [value, velocity];
+  const k = Math.max(0.01, stiffness);
+  const c = 2 * dampingRatio * Math.sqrt(k);
+  const steps = Math.max(1, Math.ceil(clampedDt / (1 / 120)));
+  const h = clampedDt / steps;
+  let v = value;
+  let vel = velocity;
+  for (let i = 0; i < steps; i++) {
+    const accel = k * (target - v) - c * vel;
+    vel += accel * h;
+    v += vel * h;
+  }
+  return [v, vel];
+}
+
+/**
+ * Maps normalized page scroll [0, 1] onto the four-act camera choreography:
+ * Hero reveal -> Midground orbital survey -> Detail close-up -> Confident ending rest.
+ */
+export function sectionCameraTimeline(progress: number): {
+  stage: 'hero' | 'survey' | 'detail' | 'cta';
+  dolly: number;
+  lift: number;
+  orbitYaw: number;
+} {
+  const p = Math.max(0, Math.min(1, progress));
+  const seg =
+    SCROLL_CAMERA_STAGES.find((s) => p <= s.end) ??
+    SCROLL_CAMERA_STAGES[SCROLL_CAMERA_STAGES.length - 1];
+  const span = Math.max(0.0001, seg.end - seg.start);
+  const local = easeInOutCubic((p - seg.start) / span);
+  return {
+    stage: seg.id,
+    dolly: seg.dolly[0] + (seg.dolly[1] - seg.dolly[0]) * local,
+    lift: seg.lift[0] + (seg.lift[1] - seg.lift[0]) * local,
+    orbitYaw: seg.yaw[0] + (seg.yaw[1] - seg.yaw[0]) * local,
+  };
+}
+
 /** What each tier turns on. One table so the fallback strategy is explicit. */
 export function tierSettings(t: QualityTier) {
   return {
     pixelRatioCap: CINEMA.renderer.pixelRatio[t],
+    renderScale: CINEMA.renderer.renderScale[t],
+    shadowQuality: CINEMA.lighting.shadowQuality[t] as ShadowQuality,
     bloom: t !== 'low',
     grain: t === 'high',
+    chromaticAberration: t === 'high',
     vignette: true,
     glassTransmission: t === 'high', // transmission costs an extra scene render
     dust: CINEMA.atmosphere.dust[t],

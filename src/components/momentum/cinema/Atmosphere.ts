@@ -10,6 +10,13 @@ import { CINEMA } from './cinemaConfig';
 
 export type RadialTexture = (inner: string, outer?: string, size?: number) => THREE_NS.Texture;
 
+export interface AtmosphereOptions {
+  fogColor?: number;
+  fogDensity?: number;
+  nebulaTints?: readonly [string, string, string];
+  starColor?: string | number;
+}
+
 export class Atmosphere {
   readonly nebulae: THREE_NS.Sprite[] = [];
   readonly starsFar: THREE_NS.Points;
@@ -23,13 +30,15 @@ export class Atmosphere {
     scene: THREE_NS.Scene,
     disc: THREE_NS.Texture,
     radial: RadialTexture,
-    counts: { starsFar: number; starsNear: number; dust: number }
+    counts: { starsFar: number; starsNear: number; dust: number },
+    opts?: AtmosphereOptions,
   ) {
     const A = CINEMA.atmosphere;
-    scene.fog = new THREE.FogExp2(CINEMA.palette.fog, A.fogDensity);
+    scene.fog = new THREE.FogExp2(opts?.fogColor ?? CINEMA.palette.fog, opts?.fogDensity ?? A.fogDensity);
 
     // Nebulae in the brand's warm/cool pair, desaturated and dim: colour in the black, not a wash.
-    const tints = ['rgba(198,164,107,0.5)', 'rgba(139,168,200,0.45)', 'rgba(96,104,120,0.4)'];
+    const tints = opts?.nebulaTints ?? ['rgba(198,164,107,0.5)', 'rgba(139,168,200,0.45)', 'rgba(96,104,120,0.4)'];
+    const starColor = opts?.starColor ?? CINEMA.palette.ivory;
     tints.forEach((c, i) => {
       const s = new THREE.Sprite(
         new THREE.SpriteMaterial({ map: radial(c, 'rgba(0,0,0,0)', 256), transparent: true, opacity: A.nebulaOpacity, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })
@@ -52,7 +61,7 @@ export class Atmosphere {
       geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
       const pts = new THREE.Points(
         geo,
-        new THREE.PointsMaterial({ map: disc, size, sizeAttenuation: true, color: CINEMA.palette.ivory, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })
+        new THREE.PointsMaterial({ map: disc, size, sizeAttenuation: true, color: starColor, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })
       );
       this.add(scene, pts);
       return pts;
@@ -71,7 +80,7 @@ export class Atmosphere {
       geo.setAttribute('position', new THREE.BufferAttribute(base.slice(), 3));
       this.dust = new THREE.Points(
         geo,
-        new THREE.PointsMaterial({ map: disc, size: 0.09, color: CINEMA.palette.ivory, transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending })
+        new THREE.PointsMaterial({ map: disc, size: 0.09, color: starColor, transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending })
       );
       this.dustBase = base;
       this.add(scene, this.dust);

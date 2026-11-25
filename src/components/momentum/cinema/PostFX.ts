@@ -21,6 +21,7 @@ const FinishShader = {
     tDiffuse: { value: null as THREE_NS.Texture | null },
     uVignette: { value: CINEMA.post.vignette },
     uGrain: { value: CINEMA.post.grain },
+    uAberration: { value: CINEMA.post.chromaticAberration },
     uTime: { value: 0 },
   },
   vertexShader: /* glsl */ `
@@ -31,14 +32,20 @@ const FinishShader = {
     uniform sampler2D tDiffuse;
     uniform float uVignette;
     uniform float uGrain;
+    uniform float uAberration;
     uniform float uTime;
     varying vec2 vUv;
     float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
     void main() {
-      vec4 c = texture2D(tDiffuse, vUv);
-      // Vignette: corners only (smoothstep keeps the centre untouched).
       vec2 d = vUv - 0.5;
+      // Corner mask: strictly 0 in the inner hero region so core & text remain optically sharp.
       float v = smoothstep(0.32, 0.82, length(d * vec2(1.1, 1.0)));
+      vec4 c = texture2D(tDiffuse, vUv);
+      if (uAberration > 0.0 && v > 0.0) {
+        vec2 shift = d * uAberration * v;
+        c.r = texture2D(tDiffuse, clamp(vUv + shift, vec2(0.0), vec2(1.0))).r;
+        c.b = texture2D(tDiffuse, clamp(vUv - shift, vec2(0.0), vec2(1.0))).b;
+      }
       c.rgb *= 1.0 - v * uVignette;
       // Grain: zero-mean, scaled down in the shadows so blacks stay clean.
       float g = hash(vUv * vec2(1931.0, 1171.0) + fract(uTime) * 61.0) - 0.5;
@@ -48,11 +55,20 @@ const FinishShader = {
   `,
 };
 
+export interface PostFXQuality {
+  bloom: boolean;
+  grain: boolean;
+  chromaticAberration?: boolean;
+  renderScale?: number;
+}
+
 export class PostFX {
   readonly composer: InstanceType<Mods['EffectComposer']>;
   private readonly bloom: InstanceType<Mods['UnrealBloomPass']>;
   private readonly finish: InstanceType<Mods['ShaderPass']>;
   private grainOn: boolean;
+  private basePixelRatio: number;
+  private renderScale: number;
 
   constructor(
     THREE: typeof import('three'),
@@ -61,10 +77,13 @@ export class PostFX {
     scene: THREE_NS.Scene,
     camera: THREE_NS.Camera,
     size: { width: number; height: number },
-    opts: { bloom: boolean; grain: boolean }
+    opts: PostFXQuality,
   ) {
     const B = CINEMA.post.bloom;
+    this.basePixelRatio = renderer.getPixelRatio();
+    this.renderScale = opts.renderScale ?? 1;
     this.composer = new mods.EffectComposer(renderer);
+    this.composer.setPixelRatio(Math.max(0.5, this.basePixelRatio * this.renderScale));
     this.composer.addPass(new mods.RenderPass(scene, camera));
     this.bloom = new mods.UnrealBloomPass(new THREE.Vector2(size.width, size.height), B.strength, B.radius, B.threshold);
     this.bloom.enabled = opts.bloom;
@@ -74,12 +93,20 @@ export class PostFX {
     this.composer.addPass(this.finish);
     this.grainOn = opts.grain;
     this.finish.uniforms.uGrain.value = opts.grain ? CINEMA.post.grain : 0;
+    this.finish.uniforms.uAberration.value =
+      (opts.chromaticAberration ?? opts.grain) ? CINEMA.post.chromaticAberration : 0;
   }
 
-  setQuality(opts: { bloom: boolean; grain: boolean }): void {
+  setQuality(opts: PostFXQuality): void {
     this.bloom.enabled = opts.bloom;
     this.grainOn = opts.grain;
     this.finish.uniforms.uGrain.value = opts.grain ? CINEMA.post.grain : 0;
+    this.finish.uniforms.uAberration.value =
+      (opts.chromaticAberration ?? opts.grain) ? CINEMA.post.chromaticAberration : 0;
+    if (opts.renderScale !== undefined && opts.renderScale !== this.renderScale) {
+      this.renderScale = opts.renderScale;
+      this.composer.setPixelRatio(Math.max(0.5, this.basePixelRatio * this.renderScale));
+    }
   }
 
   setSize(width: number, height: number): void {
@@ -87,7 +114,8 @@ export class PostFX {
   }
 
   setPixelRatio(ratio: number): void {
-    this.composer.setPixelRatio(ratio);
+    this.basePixelRatio = ratio;
+    this.composer.setPixelRatio(Math.max(0.5, this.basePixelRatio * this.renderScale));
   }
 
   render(t: number): void {

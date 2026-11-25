@@ -4,9 +4,9 @@
  * whenever a 2-second window averages below the floor.
  *
  * Fallback strategy:
- *   high   → DPR ≤ 2, bloom, grain, glass refraction, full stars, dust
- *   medium → DPR ≤ 1.5, bloom, no grain, glass becomes a cheap sheen, fewer stars, less dust
- *   low    → DPR 1, no bloom, no grain, no dust, minimum stars (vignette stays)
+ *   high   → DPR ≤ 2, 100% renderScale, high shadows, bloom, grain, edge aberration, glass refraction, full stars, dust
+ *   medium → DPR ≤ 1.5, 90% renderScale, medium shadows, bloom, no grain, sheen glass, fewer stars, less dust
+ *   low    → DPR 1, 80% renderScale, shadows off, no bloom, no grain, no dust, minimum stars (vignette stays)
  *   no WebGL → the component's text fallback (everything is also shown in the page panels)
  *   reduced motion → scene starts paused; no reveal, parallax, breathing or scroll movement
  */
