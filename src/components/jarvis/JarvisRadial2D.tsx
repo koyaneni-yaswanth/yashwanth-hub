@@ -36,7 +36,7 @@ export const JarvisRadial2D: React.FC<JarvisRadial2DProps> = ({
       <svg
         viewBox="0 0 100 100"
         preserveAspectRatio="none"
-        className="absolute inset-0 w-full h-full pointer-events-none"
+        className="hud-enter-rings absolute inset-0 w-full h-full pointer-events-none"
         aria-hidden="true"
       >
         <defs>

@@ -1031,7 +1031,7 @@ export const JarvisScene: React.FC<Props> = ({ nodes, onOpen, onOpenCore }) => {
       )}
       {status === 'ready' && (
         <>
-          <ul className="absolute inset-0 pointer-events-none" aria-label="Workspaces">
+          <ul className="hud-enter-nodes absolute inset-0 pointer-events-none" aria-label="Workspaces">
             {stageNodes.map((n) => (
               <li key={n.id}>
                 <button

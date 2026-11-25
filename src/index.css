@@ -744,12 +744,42 @@ header.sticky.is-scrolled {
   --hud-red: #ff4d6d;
   --hud-done: rgba(59, 232, 255, 0.12);
   --hud-done-border: rgba(59, 232, 255, 0.35);
+
+  /* Scoped overrides so reused widgets (TodayProgress, StatCard, Neo1, MomentumChip) match HUD dark glass */
+  --hub-bg: #05070d;
+  --hub-surface: rgba(10, 16, 28, 0.62);
+  --hub-surface-subtle: rgba(8, 13, 24, 0.72);
+  --hub-surface-hover: rgba(18, 28, 48, 0.8);
+  --hub-surface-raised: rgba(14, 22, 38, 0.86);
+  --hub-card: rgba(10, 16, 28, 0.62);
+  --hub-card-bg: rgba(10, 16, 28, 0.62);
+  --hub-card-hover: rgba(18, 28, 48, 0.8);
+  --hub-ink: #e6f1ff;
+  --hub-muted: #7a8ba6;
+  --hub-line: rgba(59, 232, 255, 0.18);
+  --hub-border: rgba(59, 232, 255, 0.18);
+  --hub-accent: #3be8ff;
+  --hub-accent-hover: #70f0ff;
+  --hub-accent-ink: #05070d;
+  --hub-accent-2: #7c5cff;
+  --hub-amber: #ffb547;
+  --hub-red: #ff4d6d;
+  --hub-done: rgba(59, 232, 255, 0.14);
+  --hub-done-border: rgba(59, 232, 255, 0.38);
+  --hub-glow: rgba(59, 232, 255, 0.14);
+  --hub-glow-2: rgba(124, 92, 255, 0.12);
+
   color-scheme: dark;
   color: var(--hud-ink);
   background:
     radial-gradient(64rem 42rem at 50% 42%, rgba(59, 232, 255, 0.08), transparent 64%),
     radial-gradient(48rem 34rem at 78% 18%, rgba(124, 92, 255, 0.08), transparent 62%),
     linear-gradient(180deg, #070b14 0%, #05070d 55%, #020306 100%);
+}
+
+.jarvis-hud :is(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid #3be8ff;
+  outline-offset: 2px;
 }
 
 .hud-glass {
@@ -815,14 +845,16 @@ header.sticky.is-scrolled {
   }
 }
 
-.hud-enter-core { animation: hud-core-ignite 360ms cubic-bezier(0.2, 0.7, 0.2, 1) 40ms backwards; }
-.hud-enter-rail { animation: hud-choreo-in 280ms cubic-bezier(0.2, 0.7, 0.2, 1) 120ms backwards; }
-.hud-enter-panel { animation: hud-choreo-in 320ms cubic-bezier(0.2, 0.7, 0.2, 1) 200ms backwards; }
-.hud-enter-dock { animation: hud-choreo-in 340ms cubic-bezier(0.2, 0.7, 0.2, 1) 280ms backwards; }
+.hud-enter-core { animation: hud-core-ignite 340ms cubic-bezier(0.2, 0.7, 0.2, 1) 40ms backwards; }
+.hud-enter-rings { animation: hud-choreo-in 300ms cubic-bezier(0.2, 0.7, 0.2, 1) 110ms backwards; }
+.hud-enter-rail { animation: hud-choreo-in 260ms cubic-bezier(0.2, 0.7, 0.2, 1) 140ms backwards; }
 .hud-enter-nodes { animation: hud-choreo-in 300ms cubic-bezier(0.2, 0.7, 0.2, 1) 180ms backwards; }
+.hud-enter-panel { animation: hud-choreo-in 320ms cubic-bezier(0.2, 0.7, 0.2, 1) 240ms backwards; }
+.hud-enter-dock { animation: hud-choreo-in 340ms cubic-bezier(0.2, 0.7, 0.2, 1) 300ms backwards; }
 
 @media (prefers-reduced-motion: reduce) {
   .hud-enter-core,
+  .hud-enter-rings,
   .hud-enter-rail,
   .hud-enter-panel,
   .hud-enter-dock,
