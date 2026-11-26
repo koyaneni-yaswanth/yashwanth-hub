@@ -42,6 +42,7 @@ import { beginAiThinking, endAiThinking } from '../lib/aiActivity';
 import { getSupabaseClient } from '../lib/supabase';
 import { toast } from '../lib/toast';
 import { guardActionExecution } from '../services/selfHealingService';
+import { SemanticMemoryService } from '../services/semanticMemoryService';
 import { Badge } from '../components/common/Badge';
 import type { AIToolSpec } from '../../api/_lib/aiTools';
 
@@ -275,8 +276,15 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
+    const streamMsgId = generateId();
     const withUser = [...messages, userMsg];
-    setMessages(withUser);
+    const streamingPlaceholder: AIChatMessage = {
+      id: streamMsgId,
+      role: 'assistant',
+      content: 'Thinking…',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+    setMessages([...withUser, streamingPlaceholder]);
     setInputMessage('');
     setIsProcessing(true);
     beginAiThinking();
@@ -284,21 +292,42 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
 
     try {
       const activeAgentMeta = MODULAR_AGENTS.find((a) => a.id === selectedAgent);
-      const response = await AIGateway.executePrompt(userText, {
-        provider: selectedProvider,
-        modelId: selectedModelId,
-        mode: selectedMode,
-        projectId: selectedProjectId || undefined,
-        history: withUser.slice(-8).map((m) => ({ role: m.role, content: m.content })),
-        systemPrompt: `Persona: ${activeAgentMeta?.name || 'Chief of Staff'} (${activeAgentMeta?.role || 'Executive Operating System'}).`,
-      });
+      const semanticHits = await SemanticMemoryService.searchSemantic(userText, {
+        limit: 4,
+        minSimilarity: 0.38,
+      }).catch(() => []);
+      const semanticContextNote =
+        semanticHits.length > 0
+          ? `\nSemantic Memory Matches:\n${semanticHits
+              .map((h) => `- [${h.entity_type.toUpperCase()} · ${Math.round(h.similarity * 100)}%] ${h.title}: ${h.content_excerpt}`)
+              .join('\n')}`
+          : '';
+
+      const response = await AIGateway.streamPrompt(
+        userText,
+        {
+          provider: selectedProvider,
+          modelId: selectedModelId,
+          mode: selectedMode,
+          projectId: selectedProjectId || undefined,
+          history: withUser.slice(-8).map((m) => ({ role: m.role, content: m.content })),
+          systemPrompt: `Persona: ${activeAgentMeta?.name || 'Chief of Staff'} (${activeAgentMeta?.role || 'Executive Operating System'}).${semanticContextNote}`,
+        },
+        {
+          onToken: (_delta, accumulated) => {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === streamMsgId ? { ...m, content: accumulated } : m))
+            );
+          },
+        }
+      );
 
       if (response.configuredProviders) {
         setConfiguredProviders(response.configuredProviders);
       }
 
       const assistantMsg: AIChatMessage = {
-        id: generateId(),
+        id: streamMsgId,
         role: 'assistant',
         content: response.providerNotice ? `${response.text}\n\n_${response.providerNotice}_` : response.text,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -330,7 +359,7 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
       responded = true;
     } catch (err: any) {
       const errorMsg: AIChatMessage = {
-        id: generateId(),
+        id: streamMsgId,
         role: 'assistant',
         content: `Chief of Staff Error: ${err?.message || 'Execution failed.'}`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),

@@ -52,6 +52,7 @@ const ENTITY_ICON_MAP: Record<SearchHit['entityType'], React.ElementType> = {
   note: FileText,
   document: FolderArchive,
   memory: Brain,
+  paper: FileText,
   robotics: Bot,
   meeting: Video,
   event: Calendar,
@@ -91,7 +92,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       setSearchHits([]);
       return;
     }
-    UniversalSearchService.searchAll(trimmed, 18).then((hits) => {
+    UniversalSearchService.searchHybrid(trimmed, 18).then((hits) => {
       if (active) setSearchHits(hits);
     });
     return () => {

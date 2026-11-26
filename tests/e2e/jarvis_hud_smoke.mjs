@@ -67,10 +67,12 @@ async function waitForHudReady(page) {
 async function main() {
   const port = 4173;
   const baseUrl = `http://127.0.0.1:${port}`;
-  const preview = spawn('cmd.exe', ['/c', `npx.cmd vite preview --host 127.0.0.1 --port ${port} --strictPort`], {
-    cwd: root,
-    stdio: 'pipe',
-  });
+  const viteBin = path.join(root, 'node_modules', 'vite', 'bin', 'vite.js');
+  const preview = spawn(
+    process.execPath,
+    [viteBin, 'preview', '--host', '127.0.0.1', '--port', String(port), '--strictPort'],
+    { cwd: root, stdio: 'pipe' }
+  );
 
   const edgePath = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
   const useEdge = fs.existsSync(edgePath);

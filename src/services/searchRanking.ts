@@ -11,6 +11,7 @@ export interface SearchHit {
     | 'note'
     | 'document'
     | 'memory'
+    | 'paper'
     | 'robotics'
     | 'meeting'
     | 'event'

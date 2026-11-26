@@ -16,10 +16,23 @@ import {
   Sparkles,
   ExternalLink,
   Plus,
+  Upload,
+  Usb,
+  Cpu,
 } from 'lucide-react';
 import { db } from '../db';
 import { Badge } from '../components/common/Badge';
 import { StatCard } from '../components/common/StatCard';
+import {
+  connectBenchWebSerial,
+  isWebSerialSupported,
+  parseTelemetryCsv,
+  SYNTHETIC_DEMO_CSV,
+  type StoredPvTelemetrySummary,
+} from '../lib/telemetryAnalyzer';
+import { generateId } from '../lib/utils';
+import { toast } from '../lib/toast';
+import { SyncQueueService } from '../services/sync/syncQueueService';
 import type { V3FAssessmentItem, V3FScore } from '../types';
 
 const INITIAL_V3F_DATA: V3FAssessmentItem[] = [
@@ -179,10 +192,17 @@ const BOM_DATA = [
 ];
 
 export const StartupCommandPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'v3f' | 'plan15' | 'bom' | 'risks' | 'roadmap'>('v3f');
+  const [activeTab, setActiveTab] = useState<'v3f' | 'telemetry' | 'plan15' | 'bom' | 'risks' | 'roadmap'>('v3f');
   const [assessmentItems, setAssessmentItems] = useState<V3FAssessmentItem[]>(INITIAL_V3F_DATA);
   const [filterCategory, setFilterCategory] = useState<string>('All');
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
+  const [csvInput, setCsvInput] = useState<string>('');
+  const [csvFileName, setCsvFileName] = useState<string>('');
+  const [rotorRadiusM, setRotorRadiusM] = useState<number>(0.45);
+  const [storedPv, setStoredPv] = useState<StoredPvTelemetrySummary | null>(null);
+  const [serialActive, setSerialActive] = useState(false);
+  const [serialError, setSerialError] = useState<string | null>(null);
+  const serialDisconnectRef = React.useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     db.settings.get('v3f_assessment_v2').then((saved) => {
@@ -190,7 +210,123 @@ export const StartupCommandPage: React.FC = () => {
         setAssessmentItems(saved.value as V3FAssessmentItem[]);
       }
     });
+    db.settings.get('pawan_pv_telemetry_v1').then((saved) => {
+      if (saved?.value && typeof saved.value === 'object') {
+        setStoredPv(saved.value as StoredPvTelemetrySummary);
+      }
+    });
+    return () => {
+      void serialDisconnectRef.current?.();
+    };
   }, []);
+
+  const parsedTelemetry = React.useMemo(
+    () => (csvInput.trim() ? parseTelemetryCsv(csvInput, { rotorRadiusM }) : null),
+    [csvInput, rotorRadiusM]
+  );
+
+  const handleCsvFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    setCsvFileName(file.name);
+    setCsvInput(text);
+  };
+
+  const handleToggleSerialStream = async () => {
+    if (serialActive && serialDisconnectRef.current) {
+      await serialDisconnectRef.current();
+      serialDisconnectRef.current = null;
+      setSerialActive(false);
+      return;
+    }
+    setSerialError(null);
+    if (!csvInput.trim()) {
+      setCsvFileName('live-usb-webserial.csv');
+      setCsvInput('time_s,wind_speed_ms,voltage_v,current_a,rpm');
+    }
+    try {
+      const conn = await connectBenchWebSerial({
+        baudRate: 115200,
+        onLine: (line) => {
+          setCsvInput((prev) => `${prev ? `${prev}\n` : 'time_s,wind_speed_ms,voltage_v,current_a,rpm\n'}${line}`);
+        },
+        onError: (err) => {
+          setSerialError(err.message);
+          setSerialActive(false);
+        },
+      });
+      serialDisconnectRef.current = conn.disconnect;
+      setSerialActive(true);
+    } catch (err: any) {
+      setSerialError(err?.message || 'Unable to connect WebSerial DAQ.');
+    }
+  };
+
+  const handleSaveTelemetryEvidence = async () => {
+    if (!parsedTelemetry || parsedTelemetry.sampleCount === 0) return;
+    const summary: StoredPvTelemetrySummary = {
+      capturedAt: new Date().toISOString(),
+      fileName: csvFileName || 'bench-daq-run.csv',
+      sampleCount: parsedTelemetry.sampleCount,
+      durationSec: parsedTelemetry.durationSec,
+      sampleRateHz: parsedTelemetry.sampleRateHz,
+      meetsV3f1HzRequirement: parsedTelemetry.meetsV3f1HzRequirement,
+      cutInWindSpeedMs: parsedTelemetry.cutInWindSpeedMs,
+      peakPowerW: parsedTelemetry.peakPowerW,
+      peakPowerWindMs: parsedTelemetry.peakPowerWindMs,
+      tipSpeedRatioAtPeak: parsedTelemetry.tipSpeedRatioAtPeak,
+      pvCurveBins: parsedTelemetry.pvCurveBins,
+    };
+
+    await db.settings.put({
+      key: 'pawan_pv_telemetry_v1',
+      value: summary,
+      updated_at: summary.capturedAt,
+    });
+    setStoredPv(summary);
+
+    const evidenceSummary = `Captured ${summary.sampleCount} samples (${summary.durationSec}s @ ${summary.sampleRateHz ?? 'unknown'} Hz, file ${summary.fileName}). Peak ${summary.peakPowerW} W at ${summary.peakPowerWindMs ?? '—'} m/s; cut-in ${summary.cutInWindSpeedMs ?? '—'} m/s.`;
+    const nextAssessment = assessmentItems.map((item) =>
+      item.id === 'v3f-2-2'
+        ? {
+            ...item,
+            score: (summary.meetsV3f1HzRequirement ? 3 : 2) as V3FScore,
+            status: (summary.meetsV3f1HzRequirement ? 'verified' : 'in_progress') as V3FAssessmentItem['status'],
+            evidence: evidenceSummary,
+          }
+        : item
+    );
+    setAssessmentItems(nextAssessment);
+    await db.settings.put({
+      key: 'v3f_assessment_v2',
+      value: nextAssessment,
+      updated_at: summary.capturedAt,
+    });
+
+    const expId = generateId();
+    const record = {
+      id: expId,
+      project: 'AgileX PiPER' as const,
+      title: `PAWAN SHAKTI Bench P-v Curve (${summary.fileName})`,
+      category: 'Test Run' as const,
+      status: (summary.meetsV3f1HzRequirement ? 'completed' : 'testing') as 'completed' | 'testing',
+      description: evidenceSummary,
+      parameters: {
+        sample_count: summary.sampleCount,
+        sample_rate_hz: summary.sampleRateHz ?? 'unverified',
+        peak_power_w: summary.peakPowerW,
+        cut_in_wind_ms: summary.cutInWindSpeedMs ?? 'n/a',
+        tip_speed_ratio: summary.tipSpeedRatioAtPeak ?? 'n/a',
+      },
+      tags: ['PAWAN_SHAKTI', 'P-v-Curve', 'DAQ'],
+      created_at: summary.capturedAt,
+      updated_at: summary.capturedAt,
+    };
+    await db.robotics_records.put(record);
+    SyncQueueService.enqueueChange('robotics_experiments', expId, 'INSERT', record).catch(() => {});
+    toast('Saved P-v telemetry run to V3F evidence & experiment log', 'success');
+  };
 
   const numericItems = assessmentItems.filter((i) => typeof i.score === 'number');
   const totalScore = numericItems.reduce((sum, item) => sum + (item.score as number), 0);
@@ -283,8 +419,12 @@ export const StartupCommandPage: React.FC = () => {
         />
         <StatCard
           label="P-v Telemetry Status"
-          value="Not Captured"
-          subtext="Need >= 1 Hz closed-loop CSV"
+          value={storedPv ? `${storedPv.peakPowerW} W Peak` : 'Not Captured'}
+          subtext={
+            storedPv
+              ? `${storedPv.sampleCount} samples · ${storedPv.sampleRateHz ?? '?'} Hz (${storedPv.meetsV3f1HzRequirement ? '>=1 Hz OK' : 'needs >=1 Hz'})`
+              : 'Need >= 1 Hz closed-loop CSV'
+          }
           icon={<Layers className="w-5 h-5 text-blue-700 dark:text-blue-300" />}
         />
         <StatCard
@@ -305,10 +445,11 @@ export const StartupCommandPage: React.FC = () => {
       <div className="flex items-center gap-2 border-b border-[var(--hub-line)] pb-2 overflow-x-auto">
         {[
           { id: 'v3f', label: 'V3F 6-Category Assessment (0-3 Rubric)', icon: ShieldCheck },
+          { id: 'telemetry', label: 'Bench P-v Telemetry & Serial DAQ', icon: Activity },
           { id: 'plan15', label: '15 Nov Submission Checklist', icon: Calendar },
           { id: 'bom', label: 'Bill of Materials (BOM) Economics', icon: IndianRupee },
           { id: 'risks', label: 'Risk Register & TRL 4 Protocol', icon: AlertTriangle },
-          { id: 'roadmap', label: '90-Day Engineering Roadmap', icon: Activity },
+          { id: 'roadmap', label: '90-Day Engineering Roadmap', icon: Cpu },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -457,6 +598,201 @@ export const StartupCommandPage: React.FC = () => {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: BENCH TELEMETRY & WEBSERIAL DAQ ANALYZER */}
+      {activeTab === 'telemetry' && (
+        <div className="space-y-4">
+          <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="font-heading font-bold text-base text-[var(--hub-ink)] flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-[var(--hub-accent)]" />
+                  <span>PAWAN SHAKTI Power Curve (P–v) Telemetry &amp; WebSerial DAQ</span>
+                </h3>
+                <p className="text-xs text-[var(--hub-muted)] mt-1">
+                  Upload closed-loop DAQ CSV logs or stream live USB serial packets (<code className="font-mono">time_s,wind_speed_ms,voltage_v,current_a,rpm</code>) to validate V3F item <code className="font-mono">v3f-2-2</code> (&gt;= 1 Hz).
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer">
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Import CSV</span>
+                  <input type="file" accept=".csv,.txt" onChange={handleCsvFileUpload} className="hidden" />
+                </label>
+                <button
+                  type="button"
+                  onClick={handleToggleSerialStream}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer ${
+                    serialActive
+                      ? 'bg-red-500/15 border-red-500/40 text-red-400'
+                      : 'border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)] hover:border-[var(--hub-accent)]'
+                  }`}
+                >
+                  <Usb className="w-3.5 h-3.5" />
+                  <span>{serialActive ? 'Stop USB Serial' : 'Connect USB Serial DAQ'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCsvFileName('demo-synthetic-format-template.csv');
+                    setCsvInput(SYNTHETIC_DEMO_CSV);
+                  }}
+                  className="px-3 py-1.5 rounded-lg border border-[var(--hub-line)] text-xs text-[var(--hub-muted)] hover:text-[var(--hub-ink)] cursor-pointer"
+                >
+                  Load Synthetic Format Sample
+                </button>
+              </div>
+            </div>
+
+            {!isWebSerialSupported() && (
+              <p className="text-[11px] text-[var(--hub-muted)]">
+                USB WebSerial requires Desktop Chrome or Edge over HTTPS/localhost. CSV upload &amp; paste work on every browser and mobile device.
+              </p>
+            )}
+
+            {serialError && (
+              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-500">
+                {serialError}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+              <div className="lg:col-span-5 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-[var(--hub-ink)]">
+                    Raw Bench CSV ({csvFileName || 'paste or upload CSV'})
+                  </span>
+                  <label className="flex items-center gap-1.5 text-[11px] text-[var(--hub-muted)]">
+                    <span>Rotor Radius (m):</span>
+                    <input
+                      type="number"
+                      step="0.05"
+                      min="0.1"
+                      max="5"
+                      value={rotorRadiusM}
+                      onChange={(e) => setRotorRadiusM(Number(e.target.value) || 0.45)}
+                      className="w-16 px-2 py-0.5 rounded border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)] font-mono"
+                    />
+                  </label>
+                </div>
+                <textarea
+                  rows={8}
+                  value={csvInput}
+                  onChange={(e) => setCsvInput(e.target.value)}
+                  placeholder={'time_s,wind_speed_ms,voltage_v,current_a,rpm\n0.0,2.4,2.1,0.3,72\n1.0,3.2,5.8,0.9,138'}
+                  className="w-full p-3 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-mono text-[var(--hub-ink)] focus:outline-none focus:ring-2 focus:ring-[var(--hub-accent)]"
+                />
+              </div>
+
+              <div className="lg:col-span-7 space-y-3">
+                {parsedTelemetry && parsedTelemetry.sampleCount > 0 ? (
+                  <>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+                      <div className="p-2.5 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)]">
+                        <div className="text-[10px] text-[var(--hub-muted)] uppercase">Sample Rate</div>
+                        <div className="font-mono font-bold text-[var(--hub-ink)]">
+                          {parsedTelemetry.sampleRateHz ?? '—'} Hz
+                        </div>
+                        <Badge variant={parsedTelemetry.meetsV3f1HzRequirement ? 'emerald' : 'amber'}>
+                          {parsedTelemetry.meetsV3f1HzRequirement ? '>= 1 Hz Verified' : 'Below V3F Gate'}
+                        </Badge>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)]">
+                        <div className="text-[10px] text-[var(--hub-muted)] uppercase">Peak Power</div>
+                        <div className="font-mono font-bold text-[var(--hub-ink)]">{parsedTelemetry.peakPowerW} W</div>
+                        <div className="text-[10px] text-[var(--hub-muted)]">@ {parsedTelemetry.peakPowerWindMs ?? '—'} m/s</div>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)]">
+                        <div className="text-[10px] text-[var(--hub-muted)] uppercase">Cut-In Speed</div>
+                        <div className="font-mono font-bold text-[var(--hub-ink)]">
+                          {parsedTelemetry.cutInWindSpeedMs !== null ? `${parsedTelemetry.cutInWindSpeedMs} m/s` : '—'}
+                        </div>
+                        <div className="text-[10px] text-[var(--hub-muted)]">P &gt;= 0.5 W</div>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)]">
+                        <div className="text-[10px] text-[var(--hub-muted)] uppercase">TSR (Peak)</div>
+                        <div className="font-mono font-bold text-[var(--hub-ink)]">
+                          {parsedTelemetry.tipSpeedRatioAtPeak ?? '—'}
+                        </div>
+                        <div className="text-[10px] text-[var(--hub-muted)]">
+                          Max {parsedTelemetry.maxRpm ?? '—'} RPM
+                        </div>
+                      </div>
+                    </div>
+
+                    {parsedTelemetry.pvCurveBins.length > 0 && (() => {
+                      const bins = parsedTelemetry.pvCurveBins;
+                      const maxW = Math.max(10, ...bins.map((b) => b.avgPowerW));
+                      const minWind = bins[0].windBinMs;
+                      const maxWind = Math.max(minWind + 1, bins[bins.length - 1].windBinMs);
+                      const pts = bins
+                        .map((b) => {
+                          const x = 35 + ((b.windBinMs - minWind) / (maxWind - minWind)) * 380;
+                          const y = 145 - (b.avgPowerW / maxW) * 120;
+                          return `${x.toFixed(1)},${y.toFixed(1)}`;
+                        })
+                        .join(' ');
+                      return (
+                        <div className="rounded-xl bg-[#05070D] border border-white/10 p-3">
+                          <div className="text-[11px] font-mono text-white/70 mb-1">
+                            Empirical Power Curve — Wind Speed (m/s) vs Electrical Power (W)
+                          </div>
+                          <svg viewBox="0 0 440 170" className="w-full h-40" role="img" aria-label="Power vs Wind Speed curve">
+                            <line x1="35" y1="145" x2="420" y2="145" stroke="#475569" strokeWidth="1" />
+                            <line x1="35" y1="20" x2="35" y2="145" stroke="#475569" strokeWidth="1" />
+                            <polyline fill="none" stroke="#3BE8FF" strokeWidth="2.5" points={pts} />
+                            {bins.map((b) => {
+                              const x = 35 + ((b.windBinMs - minWind) / (maxWind - minWind)) * 380;
+                              const y = 145 - (b.avgPowerW / maxW) * 120;
+                              return (
+                                <g key={b.windBinMs}>
+                                  <circle cx={x} cy={y} r="3.5" fill="#10b981" />
+                                  <text x={x} y="160" textAnchor="middle" fill="#94a3b8" fontSize="9">
+                                    {b.windBinMs}
+                                  </text>
+                                </g>
+                              );
+                            })}
+                            <text x="12" y="30" fill="#94a3b8" fontSize="9">{Math.round(maxW)}W</text>
+                          </svg>
+                        </div>
+                      );
+                    })()}
+
+                    {parsedTelemetry.warnings.length > 0 && (
+                      <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-500 space-y-0.5">
+                        {parsedTelemetry.warnings.map((w, i) => (
+                          <div key={i}>• {w}</div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-end gap-2">
+                      {csvFileName.includes('demo-synthetic') && (
+                        <span className="text-[11px] font-mono text-amber-500 mr-auto">
+                          DEMO TEMPLATE — replace with actual DAQ capture before V3F submission
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleSaveTelemetryEvidence}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Attach to V3F Evidence &amp; Save Run</span>
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="h-full min-h-[200px] flex items-center justify-center rounded-xl border border-dashed border-[var(--hub-line)] p-6 text-center text-xs text-[var(--hub-muted)]">
+                    Import a bench CSV file or connect a USB WebSerial Arduino/STM32 logger to analyze real power output, RPM, cut-in wind speed, and P–v curve binning.
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}

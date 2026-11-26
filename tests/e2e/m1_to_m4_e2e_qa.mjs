@@ -197,10 +197,12 @@ async function attachApiMocks(context) {
 async function main() {
   const port = 4174;
   const baseUrl = `http://127.0.0.1:${port}`;
-  const preview = spawn('cmd.exe', ['/c', `npx.cmd vite preview --host 127.0.0.1 --port ${port} --strictPort`], {
-    cwd: root,
-    stdio: 'pipe',
-  });
+  const viteBin = path.join(root, 'node_modules', 'vite', 'bin', 'vite.js');
+  const preview = spawn(
+    process.execPath,
+    [viteBin, 'preview', '--host', '127.0.0.1', '--port', String(port), '--strictPort'],
+    { cwd: root, stdio: 'pipe' }
+  );
 
   const edgePath = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
   const useEdge = fs.existsSync(edgePath);
@@ -280,7 +282,23 @@ async function main() {
     await page.waitForSelector('text=n8n / Make / Custom Webhook', { timeout: 10000 });
     report.verifiedFlows.push('Notifications live channel readiness & HMAC badge');
 
-    // Flow F: Command Palette Ctrl+K Jump
+    // Flow F: Pawan Shakti Bench P-v Telemetry & Serial DAQ Analyzer (M7)
+    await page.goto(`${baseUrl}/?tab=startup-command`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('button:has-text("Bench P-v Telemetry & Serial DAQ")', { timeout: 12000 });
+    await page.click('button:has-text("Bench P-v Telemetry & Serial DAQ")');
+    await page.waitForSelector('button:has-text("Load Synthetic Format Sample")', { timeout: 10000 });
+    await page.click('button:has-text("Load Synthetic Format Sample")');
+    await page.waitForSelector('text=>= 1 Hz Verified', { timeout: 10000 });
+    await page.click('button:has-text("Attach to V3F Evidence")');
+    await page.waitForSelector('text=W Peak', { timeout: 10000 });
+    report.verifiedFlows.push('Startup Command P-v CSV telemetry analyzer & V3F evidence persistence');
+
+    // Flow G: Knowledge Vault Semantic Index Trigger (M7)
+    await page.goto(`${baseUrl}/?tab=knowledge-memory`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('button:has-text("Index Semantic Vault")', { timeout: 12000 });
+    report.verifiedFlows.push('Knowledge Vault pgvector semantic indexing button rendered');
+
+    // Flow H: Command Palette Ctrl+K Jump
     await page.keyboard.press('Control+KeyK');
     await page.waitForSelector('input[aria-label="Search the hub"]', { timeout: 10000 });
     await page.fill('input[aria-label="Search the hub"]', 'System Health');

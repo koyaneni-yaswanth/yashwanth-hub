@@ -399,6 +399,182 @@ async function runGeminiWithTools(
   };
 }
 
+async function runGeminiStreamingWithTools(
+  apiKey: string,
+  modelId: string,
+  userPrompt: string,
+  history: Array<{ role: string; content: string }>,
+  systemPrompt: string,
+  snapshot: WorkspaceSnapshot,
+  fallbackModel: string | null = null,
+  onToken?: (delta: string) => void,
+  onTool?: (toolMeta: { tool: string; summary: string }) => void,
+  fetchImpl: typeof fetch = fetch
+) {
+  let activeModel = modelId;
+  const contents: any[] = [];
+  for (const msg of history.slice(-6)) {
+    contents.push({
+      role: msg.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: msg.content }],
+    });
+  }
+  contents.push({ role: 'user', parts: [{ text: userPrompt }] });
+
+  const toolCallsTrace: Array<{ tool: string; args: Record<string, any>; summary: string }> = [];
+  const proposedActions: ProposedActionPreview[] = [];
+  const citations = new Set<string>();
+  let totalIn = 0;
+  let totalOut = 0;
+  let finalText = '';
+
+  for (let round = 0; round < 4; round++) {
+    const payloadBody = JSON.stringify({
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents,
+      tools: [{ functionDeclarations: toGeminiFunctionDeclarations() }],
+    });
+
+    let resp = await fetchImpl(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(activeModel)}:streamGenerateContent?alt=sse`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
+        body: payloadBody,
+        signal: AbortSignal.timeout(28000),
+      }
+    );
+
+    if (!resp.ok && fallbackModel && activeModel !== fallbackModel && (resp.status === 404 || resp.status === 503 || resp.status === 400)) {
+      activeModel = fallbackModel;
+      resp = await fetchImpl(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(activeModel)}:streamGenerateContent?alt=sse`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
+          },
+          body: payloadBody,
+          signal: AbortSignal.timeout(28000),
+        }
+      );
+    }
+
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => ({}));
+      throw new Error(errData.error?.message || `Gemini HTTP ${resp.status}`);
+    }
+
+    const roundParts: any[] = [];
+    const fnCalls: any[] = [];
+    let roundText = '';
+
+    const reader = resp.body?.getReader();
+    if (reader) {
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split(/\r?\n/);
+        buffer = lines.pop() || '';
+        for (const rawLine of lines) {
+          const line = rawLine.trim();
+          if (!line.startsWith('data:')) continue;
+          const jsonStr = line.slice(5).trim();
+          if (!jsonStr || jsonStr === '[DONE]') continue;
+          try {
+            const chunk = JSON.parse(jsonStr);
+            if (chunk.usageMetadata) {
+              totalIn = Math.max(totalIn, chunk.usageMetadata.promptTokenCount || 0);
+              totalOut += chunk.usageMetadata.candidatesTokenCount || 0;
+            }
+            const parts = chunk.candidates?.[0]?.content?.parts || [];
+            for (const p of parts) {
+              roundParts.push(p);
+              if (p.functionCall) {
+                fnCalls.push(p);
+              } else if (typeof p.text === 'string' && p.text.length > 0) {
+                roundText += p.text;
+                onToken?.(p.text);
+              }
+            }
+          } catch {
+            /* ignore partial JSON SSE frames */
+          }
+        }
+      }
+    } else {
+      const data = await resp.json();
+      totalIn += data.usageMetadata?.promptTokenCount || 0;
+      totalOut += data.usageMetadata?.candidatesTokenCount || 0;
+      const parts = data.candidates?.[0]?.content?.parts || [];
+      for (const p of parts) {
+        roundParts.push(p);
+        if (p.functionCall) fnCalls.push(p);
+        else if (typeof p.text === 'string' && p.text.length > 0) {
+          roundText += p.text;
+          onToken?.(p.text);
+        }
+      }
+    }
+
+    if (fnCalls.length === 0) {
+      finalText = roundText.trim();
+      break;
+    }
+
+    contents.push({ role: 'model', parts: roundParts });
+    const responseParts: any[] = [];
+    for (const part of fnCalls) {
+      const fnName = part.functionCall.name;
+      const fnArgs = part.functionCall.args || {};
+      const exec = executeAiTool(fnName, fnArgs, snapshot);
+      toolCallsTrace.push({ tool: exec.tool, args: exec.args, summary: exec.summary });
+      exec.citations.forEach((c) => citations.add(c));
+      if (exec.proposedAction) proposedActions.push(exec.proposedAction);
+      onTool?.({ tool: exec.tool, summary: exec.summary });
+      responseParts.push({
+        functionResponse: {
+          name: fnName,
+          response: { summary: exec.summary, result: exec.data },
+        },
+      });
+    }
+    contents.push({ role: 'user', parts: responseParts });
+  }
+
+  return {
+    text: finalText || 'Unable to synthesize response.',
+    tokensIn: totalIn,
+    tokensOut: totalOut,
+    resolvedModelId: activeModel,
+    tool_calls: toolCallsTrace,
+    proposed_actions: proposedActions,
+    citations: Array.from(citations),
+  };
+}
+
+function writeSseEvent(res: any, payload: Record<string, any>) {
+  const chunk = `data: ${JSON.stringify(payload)}\n\n`;
+  if (typeof res.write === 'function') {
+    res.write(chunk);
+  }
+}
+
+function streamTextInChunks(res: any, fullText: string) {
+  const tokens = String(fullText || '').match(/\S+\s*/g) || [String(fullText || '')];
+  for (let i = 0; i < tokens.length; i += 4) {
+    const delta = tokens.slice(i, i + 4).join('');
+    writeSseEvent(res, { type: 'token', delta });
+  }
+}
+
 async function runOpenAiCompatibleWithTools(params: {
   providerLabel: string;
   endpoint: string;
@@ -657,7 +833,7 @@ async function generateTextEmbedding(
     const resp = await fetch('https://api.openai.com/v1/embeddings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiKey}` },
-      body: JSON.stringify({ model: 'text-embedding-3-small', input: text }),
+      body: JSON.stringify({ model: 'text-embedding-3-small', input: text, dimensions: 768 }),
       signal: AbortSignal.timeout(10000),
     });
     if (resp.ok) {
@@ -691,7 +867,10 @@ async function generateTextEmbedding(
   };
 }
 
-export function createAiChatHandler(dbClient: any = supabaseServer) {
+export function createAiChatHandler(
+  dbClient: any = supabaseServer,
+  fetchImpl: typeof fetch = fetch
+) {
   return async function handler(req: any, res: any) {
     applyCors(req, res, 'GET, POST, OPTIONS');
 
@@ -793,6 +972,20 @@ export function createAiChatHandler(dbClient: any = supabaseServer) {
       }`;
 
       const executionChain = buildProviderExecutionChain(requestedProvider, envProviders);
+      const wantsStream =
+        body.stream === true ||
+        (typeof req.headers?.accept === 'string' && req.headers.accept.includes('text/event-stream'));
+
+      if (wantsStream) {
+        if (typeof res.setHeader === 'function') {
+          res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+          res.setHeader('Cache-Control', 'no-cache, no-transform');
+          res.setHeader('Connection', 'keep-alive');
+          res.setHeader('X-Accel-Buffering', 'no');
+        }
+        res.statusCode = 200;
+      }
+
       let lastError: string | null = null;
 
       for (const candidateProvider of executionChain) {
@@ -800,20 +993,37 @@ export function createAiChatHandler(dbClient: any = supabaseServer) {
         try {
           let llmResult: any;
           let resolvedModelId = modelId;
+          let streamedInline = false;
 
           if (candidateProvider === 'gemini') {
             const geminiKey = (process.env.GEMINI_API_KEY || '').trim();
             const resolved = await resolveGeminiModel(geminiKey, modelId);
             resolvedModelId = resolved.primary;
-            llmResult = await runGeminiWithTools(
-              geminiKey,
-              resolved.primary,
-              prompt,
-              history,
-              systemPrompt,
-              snapshot,
-              resolved.fallback
-            );
+            if (wantsStream) {
+              streamedInline = true;
+              llmResult = await runGeminiStreamingWithTools(
+                geminiKey,
+                resolved.primary,
+                prompt,
+                history,
+                systemPrompt,
+                snapshot,
+                resolved.fallback,
+                (delta) => writeSseEvent(res, { type: 'token', delta }),
+                (toolMeta) => writeSseEvent(res, { type: 'tool', ...toolMeta }),
+                fetchImpl
+              );
+            } else {
+              llmResult = await runGeminiWithTools(
+                geminiKey,
+                resolved.primary,
+                prompt,
+                history,
+                systemPrompt,
+                snapshot,
+                resolved.fallback
+              );
+            }
             resolvedModelId = llmResult.resolvedModelId || resolvedModelId;
           } else if (candidateProvider === 'openrouter') {
             const orKey = (process.env.OPENROUTER_API_KEY || '').trim();
@@ -875,7 +1085,7 @@ export function createAiChatHandler(dbClient: any = supabaseServer) {
           }
 
           if (llmResult) {
-            return res.status(200).json({
+            const payload = {
               success: true,
               providerMode: 'server_llm',
               provider: candidateProvider,
@@ -892,7 +1102,13 @@ export function createAiChatHandler(dbClient: any = supabaseServer) {
               proposed_actions: llmResult.proposed_actions,
               citations: llmResult.citations,
               configuredProviders: envProviders,
-            });
+            };
+            if (wantsStream) {
+              if (!streamedInline) streamTextInChunks(res, payload.text);
+              writeSseEvent(res, { type: 'done', ...payload });
+              return res.end();
+            }
+            return res.status(200).json(payload);
           }
         } catch (err: any) {
           lastError = `${candidateProvider}: ${err?.message || 'error'}`;
@@ -901,7 +1117,7 @@ export function createAiChatHandler(dbClient: any = supabaseServer) {
 
       if (lastError) {
         const grounded = buildDeterministicGroundedResponse(prompt, snapshot, projectId);
-        return res.status(200).json({
+        const payload = {
           success: true,
           providerMode: 'grounded_fallback_after_error',
           providerError: lastError,
@@ -912,11 +1128,17 @@ export function createAiChatHandler(dbClient: any = supabaseServer) {
           tokensOutput: 0,
           latencyMs: Date.now() - startTime,
           configuredProviders: envProviders,
-        });
+        };
+        if (wantsStream) {
+          streamTextInChunks(res, payload.text);
+          writeSseEvent(res, { type: 'done', ...payload });
+          return res.end();
+        }
+        return res.status(200).json(payload);
       }
 
       const grounded = buildDeterministicGroundedResponse(prompt, snapshot, projectId);
-      return res.status(200).json({
+      const payload = {
         success: true,
         providerMode: 'grounded_deterministic',
         providerNotice:
@@ -928,7 +1150,13 @@ export function createAiChatHandler(dbClient: any = supabaseServer) {
         tokensOutput: 0,
         latencyMs: Date.now() - startTime,
         configuredProviders: envProviders,
-      });
+      };
+      if (wantsStream) {
+        streamTextInChunks(res, payload.text);
+        writeSseEvent(res, { type: 'done', ...payload });
+        return res.end();
+      }
+      return res.status(200).json(payload);
     } catch (err: any) {
       return res.status(500).json({
         error: 'AI Chief of Staff Error',

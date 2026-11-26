@@ -31,9 +31,12 @@ export function hasServiceRoleKey(): boolean {
   );
 }
 
+const supabaseUrl = rawUrl || 'https://sample-project.supabase.co';
+const supabaseKey = rawFallbackKey || 'service-role-placeholder';
+
 export function createUserScopedClient(userToken?: string) {
   if (!userToken) return supabaseServer;
-  return createClient(supabaseUrl, rawFallbackKey, {
+  return createClient(supabaseUrl, supabaseKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
@@ -45,9 +48,6 @@ export function createUserScopedClient(userToken?: string) {
     },
   });
 }
-
-const supabaseUrl = rawUrl || 'https://sample-project.supabase.co';
-const supabaseKey = rawFallbackKey || 'service-role-placeholder';
 
 export const supabaseServer = createClient(supabaseUrl, supabaseKey, {
   auth: {

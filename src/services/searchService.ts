@@ -5,10 +5,21 @@ import {
   type SearchHit,
   type SearchableCorpus,
 } from './searchRanking';
+import { SemanticMemoryService } from './semanticMemoryService';
+import { blendKeywordAndSemanticResults } from '../lib/semanticSearchCore';
 
 export { rankUniversalSearchCorpus, type SearchHit, type SearchableCorpus };
 
 export class UniversalSearchService {
+  public static async searchHybrid(query: string, limit = 25): Promise<SearchHit[]> {
+    const [keywordHits, semanticMatches] = await Promise.all([
+      this.searchAll(query, limit),
+      SemanticMemoryService.searchSemantic(query, { limit: 8, minSimilarity: 0.35 }).catch(() => []),
+    ]);
+    if (semanticMatches.length === 0) return keywordHits;
+    return blendKeywordAndSemanticResults(keywordHits, semanticMatches, limit);
+  }
+
   public static async searchAll(query: string, limit = 25): Promise<SearchHit[]> {
     const [
       tasks,

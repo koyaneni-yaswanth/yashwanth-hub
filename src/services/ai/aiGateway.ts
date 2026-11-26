@@ -536,6 +536,142 @@ export class AIGateway {
   }
 
   /**
+   * Streams real-time AI tokens via Server-Sent Events (`/api/ai/chat` with `stream: true`)
+   * and fires `onToken(delta, accumulated)` incrementally as chunks arrive.
+   * Gracefully falls back to `executePrompt` if the environment returns JSON or runs offline.
+   */
+  public static async streamPrompt(
+    userPrompt: string,
+    options: AISendOptions,
+    callbacks: {
+      onToken: (delta: string, accumulated: string) => void;
+      onTool?: (toolMeta: { tool: string; summary: string }) => void;
+    }
+  ): Promise<AIResponse> {
+    const startTime = performance.now();
+    const mode = options.mode || 'personal';
+    const complexity = options.complexity || 'moderate';
+    const selectedModel =
+      options.modelId
+        ? SUPPORTED_MODELS.find((m) => m.modelId === normaliseModelId(options.modelId)) || getRecommendedModel(mode, complexity)
+        : getRecommendedModel(mode, complexity);
+    const provider = options.provider || selectedModel.provider;
+    const workspaceSnapshot = await this.buildWorkspaceSnapshot(provider, options.projectId);
+
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream, application/json',
+      };
+      const jwt = await SupabaseAuthService.getAccessToken();
+      if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
+
+      const resp = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          prompt: userPrompt,
+          provider,
+          modelId: selectedModel.modelId,
+          mode,
+          projectId: options.projectId,
+          history: options.history || [],
+          systemPrompt: options.systemPrompt,
+          workspaceSnapshot,
+          stream: true,
+        }),
+      });
+
+      const contentType = resp.headers.get('content-type') || '';
+      if (resp.ok && contentType.includes('text/event-stream') && resp.body) {
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let accumulated = '';
+        let doneData: any = null;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split(/\r?\n/);
+          buffer = lines.pop() || '';
+          for (const rawLine of lines) {
+            const line = rawLine.trim();
+            if (!line.startsWith('data:')) continue;
+            try {
+              const ev = JSON.parse(line.slice(5).trim());
+              if (ev.type === 'token' && typeof ev.delta === 'string') {
+                accumulated += ev.delta;
+                callbacks.onToken(ev.delta, accumulated);
+              } else if (ev.type === 'tool') {
+                callbacks.onTool?.({ tool: ev.tool, summary: ev.summary });
+              } else if (ev.type === 'done') {
+                doneData = ev;
+              }
+            } catch {
+              /* ignore partial frame */
+            }
+          }
+        }
+
+        if (doneData) {
+          const tokensIn = Number(doneData.tokensInput || 0);
+          const tokensOut = Number(doneData.tokensOutput || 0);
+          const latencyMs = Number(doneData.latencyMs || Math.round(performance.now() - startTime));
+          const estimatedCost =
+            (tokensIn / 1000) * selectedModel.costPer1kInputTokensUSD +
+            (tokensOut / 1000) * selectedModel.costPer1kOutputTokensUSD;
+          const finalText = doneData.text || accumulated;
+          if (!accumulated && finalText) callbacks.onToken(finalText, finalText);
+
+          if (tokensIn > 0 || tokensOut > 0) {
+            await db.ai_logs
+              .add({
+                id: generateId(),
+                provider: (doneData.provider || provider) as AIProvider,
+                modelId: doneData.modelId || selectedModel.modelId,
+                taskMode: mode,
+                tokensInput: tokensIn,
+                tokensOutput: tokensOut,
+                latencyMs,
+                estimatedCostUSD: estimatedCost,
+                timestamp: new Date().toISOString(),
+              })
+              .catch(() => {});
+          }
+
+          return {
+            text: finalText,
+            provider: (doneData.provider || provider) as AIProvider,
+            modelId: doneData.modelId || selectedModel.modelId,
+            providerMode: doneData.providerMode,
+            providerNotice: doneData.failoverNotice || doneData.providerNotice || doneData.providerError,
+            latencyMs,
+            tokensInput: tokensIn,
+            tokensOutput: tokensOut,
+            estimatedCostUSD: estimatedCost,
+            toolCalls: doneData.tool_calls || [],
+            proposedActions: (doneData.proposed_actions || []) as AIProposedAction[],
+            citations: doneData.citations || [],
+            verifiedFacts: doneData.verified_facts,
+            estimates: doneData.estimates,
+            recommendations: doneData.recommendations,
+            unknowns: doneData.unknowns,
+            configuredProviders: doneData.configuredProviders,
+          };
+        }
+      }
+    } catch {
+      /* fall through cleanly to executePrompt */
+    }
+
+    const fallback = await this.executePrompt(userPrompt, options);
+    callbacks.onToken(fallback.text, fallback.text);
+    return fallback;
+  }
+
+  /**
    * Executes an approved Level-2 Action Preview cleanly in Dexie + SyncQueue
    * and verifies creation by immediate database readback.
    */

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Brain, FileText, Video, FolderArchive, Lightbulb, GitBranch } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Brain, FileText, Video, FolderArchive, Lightbulb, GitBranch, Sparkles, RefreshCw } from 'lucide-react';
 import type { Area, NavigationTab } from '../types';
 import { NeoMemoryCenterPage } from './NeoMemoryCenterPage';
 import { NotesPage } from './NotesPage';
@@ -7,6 +7,8 @@ import { MeetingsPage } from './MeetingsPage';
 import { FilesAndPhotosPage } from './FilesAndPhotosPage';
 import { JournalVault } from '../components/vault/JournalVault';
 import { KnowledgeGraphView } from '../components/vault/KnowledgeGraphView';
+import { SemanticMemoryService } from '../services/semanticMemoryService';
+import { toast } from '../lib/toast';
 
 interface KnowledgeMemoryPageProps {
   currentArea: string;
@@ -19,17 +21,52 @@ interface KnowledgeMemoryPageProps {
 
 export const KnowledgeMemoryPage: React.FC<KnowledgeMemoryPageProps> = (props) => {
   const [subTab, setSubTab] = useState<'journal' | 'graph' | 'neo_memory' | 'notes' | 'meetings' | 'documents'>('journal');
+  const [vectorCount, setVectorCount] = useState(0);
+  const [isIndexingSemantic, setIsIndexingSemantic] = useState(false);
+
+  useEffect(() => {
+    void SemanticMemoryService.getIndexStats().then((s) => setVectorCount(s.localVectorCount));
+  }, []);
+
+  const handleIndexSemanticVault = async () => {
+    setIsIndexingSemantic(true);
+    try {
+      const res = await SemanticMemoryService.indexWorkspaceKnowledge(15);
+      setVectorCount(res.totalStored);
+      if (res.indexed > 0) {
+        toast(`Indexed ${res.indexed} entries into semantic pgvector memory (${res.totalStored} total)`, 'success');
+      } else if (res.error) {
+        toast(res.error, 'info');
+      } else {
+        toast(`Semantic index up to date (${res.totalStored} vectors)`, 'info');
+      }
+    } finally {
+      setIsIndexingSemantic(false);
+    }
+  };
 
   return (
     <div className="space-y-6 pb-12">
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-[var(--hub-ink)] tracking-tight flex items-center gap-2">
-          <Brain className="w-6 h-6 text-[var(--hub-accent)] shrink-0" />
-          Knowledge &amp; Memory Vault
-        </h1>
-        <p className="text-sm text-[var(--hub-muted)] mt-1">
-          Reflections, entity Knowledge Graph, decisions, notes, meetings, documents, and Neo 1 memories.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-[var(--hub-ink)] tracking-tight flex items-center gap-2">
+            <Brain className="w-6 h-6 text-[var(--hub-accent)] shrink-0" />
+            Knowledge &amp; Memory Vault
+          </h1>
+          <p className="text-sm text-[var(--hub-muted)] mt-1">
+            Reflections, entity Knowledge Graph, decisions, notes, meetings, documents, and Neo 1 memories.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleIndexSemanticVault}
+          disabled={isIndexingSemantic}
+          className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-surface)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer disabled:opacity-50 self-start sm:self-auto"
+        >
+          {isIndexingSemantic ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 text-[var(--hub-accent)]" />}
+          <span>{isIndexingSemantic ? 'Indexing Vectors...' : `Index Semantic Vault (${vectorCount})`}</span>
+        </button>
       </div>
 
       {/* Navigation Sub-Tabs */}
