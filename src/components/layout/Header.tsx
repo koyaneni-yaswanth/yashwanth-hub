@@ -45,7 +45,7 @@ export const Header: React.FC<HeaderProps> = ({
   hudMode = false,
 }) => {
   const { isDark, toggleTheme } = useTheme();
-  const { status, queueCount, failedCount, statusMessage } = useSync();
+  const { status, queueCount, failedCount, signedIn, statusMessage, syncNow } = useSync();
   const [authState, setAuthState] = React.useState<AuthState>(() => SupabaseAuthService.getState());
 
   React.useEffect(() => {
@@ -110,18 +110,18 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header
-      className={`sticky top-0 z-30 backdrop-blur-md px-3 sm:px-6 py-2 safe-area-header transition-colors${
+      className={`sticky top-0 z-30 backdrop-blur-md px-2.5 sm:px-6 py-2 safe-area-header transition-colors${
         hudMode
           ? ' bg-[rgba(5,7,13,0.78)] border-b border-[rgba(59,232,255,0.18)] text-[#E6F1FF]'
           : ' bg-[var(--hub-surface)]/95 border-b border-[var(--hub-line)]'
       }${isScrolled ? ' is-scrolled' : ''}`}
     >
-      <div className={`flex items-center justify-between gap-2 sm:gap-3 ${hudMode ? 'w-full' : 'max-w-7xl mx-auto'}`}>
+      <div className={`flex items-center justify-between gap-1.5 sm:gap-3 ${hudMode ? 'w-full' : 'max-w-7xl mx-auto'}`}>
         {/* Left: Menu + Brand */}
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+        <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
           <button
             onClick={onOpenMobileMenu}
-            className="lg:hidden p-2 rounded-xl text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-bg)] cursor-pointer"
+            className="lg:hidden p-1.5 sm:p-2 rounded-xl text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-bg)] cursor-pointer shrink-0"
             aria-label="Open menu"
           >
             <Menu className="w-5 h-5" />
@@ -130,14 +130,14 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={() => onNavigate('dashboard')}
-            className="flex items-center gap-2.5 cursor-pointer text-left min-w-0"
+            className="flex items-center gap-2 sm:gap-2.5 cursor-pointer text-left min-w-0"
           >
-            <TurbineLogo size={32} durationSeconds={turbineDuration} />
+            <TurbineLogo size={26} durationSeconds={turbineDuration} />
             <div className="min-w-0">
-              <h1 className="text-base sm:text-lg font-bold font-heading text-[var(--hub-ink)] tracking-tight leading-tight truncate">
+              <h1 className="text-[14px] sm:text-lg font-bold font-heading text-[var(--hub-ink)] tracking-tight leading-tight whitespace-nowrap">
                 Yashwanth Hub
               </h1>
-              <div className="text-[11px] text-[var(--hub-muted)] font-medium leading-tight">
+              <div className="text-[10px] sm:text-[11px] text-[var(--hub-muted)] font-medium leading-tight">
                 {todayStr}
               </div>
             </div>
@@ -160,7 +160,7 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
 
         {/* Right: Essential Controls Only */}
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           {/* Mobile Search Icon */}
           <button
             onClick={onOpenCommandPalette}
@@ -204,30 +204,62 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {/* Subtle Account / Sync Status Pill (Desktop) */}
+          {/* Always-visible Account / Live Sync Pill (Mobile + Desktop) */}
           <button
-            onClick={() => onNavigate('integrations')}
+            type="button"
+            onClick={() => {
+              if (authState.configured && !signedIn && !authState.user) {
+                onNavigate('integrations');
+              } else if (status === 'error' || (authState.configured && signedIn)) {
+                void syncNow();
+              } else {
+                onNavigate('integrations');
+              }
+            }}
             title={
-              authState.configured && authState.user
-                ? `${authState.user.email || 'Signed in'} • ${syncInfo.title}`
-                : syncInfo.title
+              authState.configured && (signedIn || authState.user)
+                ? `${authState.user?.email || 'Signed in'} • ${statusMessage} (Click to sync now)`
+                : statusMessage || syncInfo.title
             }
-            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)]/60 text-xs font-medium text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:border-[var(--hub-accent)]/40 transition-colors cursor-pointer"
+            aria-label={
+              authState.configured && !signedIn && !authState.user
+                ? 'Sign in to sync across devices'
+                : status === 'syncing'
+                ? 'Syncing across devices'
+                : 'Cloud sync status — click to sync now'
+            }
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-medium transition-colors cursor-pointer ${
+              authState.configured && !signedIn && !authState.user && status !== 'offline'
+                ? 'border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300 hover:bg-amber-500/15'
+                : status === 'error'
+                ? 'border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300 hover:bg-amber-500/15'
+                : 'border-[var(--hub-line)] bg-[var(--hub-bg)]/60 text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:border-[var(--hub-accent)]/40'
+            }`}
           >
-            {authState.configured && status !== 'offline' && status !== 'error' ? (
-              authState.user ? (
-                <UserCheck className="w-3.5 h-3.5 text-teal-700 dark:text-teal-400" />
+            {authState.configured && status !== 'offline' && status !== 'error' && status !== 'syncing' ? (
+              signedIn || authState.user ? (
+                <UserCheck className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400 shrink-0" />
               ) : (
-                <LogIn className="w-3.5 h-3.5 text-amber-800 dark:text-amber-300" />
+                <LogIn className="w-3.5 h-3.5 text-amber-700 dark:text-amber-300 shrink-0" />
               )
             ) : (
               syncInfo.icon
             )}
-            <span className="max-w-[84px] truncate">
-              {authState.configured && status !== 'offline' && status !== 'error'
-                ? authState.user
-                  ? authState.user.email?.split('@')[0] || 'Account'
-                  : 'Sign In'
+            <span className="max-w-[96px] truncate hidden sm:inline">
+              {status === 'syncing'
+                ? 'Syncing'
+                : status === 'offline'
+                ? syncInfo.label
+                : status === 'error'
+                ? failedCount > 0
+                  ? `Retry · ${failedCount}`
+                  : 'Sync issue'
+                : authState.configured
+                ? signedIn || authState.user
+                  ? queueCount > 0
+                    ? `Syncing · ${queueCount}`
+                    : 'Synced'
+                  : 'Sign in'
                 : syncInfo.label}
             </span>
           </button>

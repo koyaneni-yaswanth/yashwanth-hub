@@ -15,7 +15,7 @@ export const HudFrameOverlay: React.FC<HudFrameOverlayProps> = ({
   perf,
   is3DEnabled,
 }) => {
-  const { status, queueCount, failedCount } = useSync();
+  const { status, queueCount, failedCount, signedIn, cloudConfigured } = useSync();
   const [clock, setClock] = useState(() =>
     new Intl.DateTimeFormat('en-GB', {
       hour: '2-digit',
@@ -39,7 +39,7 @@ export const HudFrameOverlay: React.FC<HudFrameOverlayProps> = ({
     return () => window.clearInterval(id);
   }, []);
 
-  const syncBadge = formatSyncHudStatus(status, queueCount, failedCount);
+  const syncBadge = formatSyncHudStatus(status, queueCount, failedCount, signedIn, cloudConfigured);
   const dotColor =
     syncBadge.tone === 'danger'
       ? 'bg-[#FF4D6D] shadow-[0_0_8px_#FF4D6D]'

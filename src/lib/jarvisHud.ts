@@ -621,7 +621,9 @@ export function collectDeadlines(input: {
 export function formatSyncHudStatus(
   status: 'local' | 'synced' | 'syncing' | 'offline' | 'error',
   queueCount: number,
-  failedCount: number
+  failedCount: number,
+  signedIn = true,
+  cloudConfigured = true
 ): { label: string; tone: 'cyan' | 'amber' | 'danger' } {
   if (status === 'error') {
     return {
@@ -639,6 +641,12 @@ export function formatSyncHudStatus(
     return {
       label: queueCount > 0 ? `SYNCING · ${queueCount}` : 'SYNCING STREAM',
       tone: 'cyan',
+    };
+  }
+  if (cloudConfigured && !signedIn && status === 'local') {
+    return {
+      label: queueCount > 0 ? `SYSTEMS NOMINAL · SIGN IN TO SYNC (${queueCount})` : 'SYSTEMS NOMINAL · SIGN IN TO SYNC',
+      tone: 'amber',
     };
   }
   if (status === 'synced') {

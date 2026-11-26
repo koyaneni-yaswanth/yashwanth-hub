@@ -17,8 +17,11 @@ import {
   ChevronDown,
   ChevronUp,
   HardDrive,
+  Cloud,
+  RefreshCw,
 } from 'lucide-react';
 import { db } from '../db';
+import { useSync } from '../context/SyncContext';
 import type { Area, Goal, GoalMilestone, Habit, HabitLog, GoalStatus } from '../types';
 import { generateId, getTodayISO } from '../lib/utils';
 import {
@@ -31,10 +34,12 @@ import {
 } from '../lib/habits';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
+import { toast } from '../lib/toast';
 
 interface GoalsHabitsPageProps {
   currentArea: string;
   areas: Area[];
+  onOpenSyncAccount?: () => void;
 }
 
 const nowIso = () => new Date().toISOString();
@@ -60,7 +65,8 @@ const targetLabel = (n: number) => (n >= 7 ? 'Every day' : `${n}× a week`);
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const GoalsHabitsPage: React.FC<GoalsHabitsPageProps> = ({ currentArea, areas }) => {
+export const GoalsHabitsPage: React.FC<GoalsHabitsPageProps> = ({ currentArea, areas, onOpenSyncAccount }) => {
+  const { status: syncStatus, signedIn, cloudConfigured, queueCount, syncNow } = useSync();
   const today = getTodayISO();
   const thisWeek = weekStart(today);
   const nextWeek = addDays(thisWeek, 7);
@@ -152,7 +158,18 @@ export const GoalsHabitsPage: React.FC<GoalsHabitsPageProps> = ({ currentArea, a
             Turn long-term goals into weekly milestones and small daily actions.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {cloudConfigured && signedIn && (
+            <button
+              type="button"
+              onClick={() => void syncNow()}
+              className={secondaryBtn}
+              title="Sync goals and habits across mobile and laptop"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${syncStatus === 'syncing' ? 'animate-spin text-[var(--hub-accent)]' : ''}`} />
+              <span>{syncStatus === 'syncing' ? 'Syncing…' : queueCount > 0 ? `Sync (${queueCount})` : 'Synced'}</span>
+            </button>
+          )}
           <button type="button" className={secondaryBtn} onClick={() => setHabitForm({ open: true })}>
             <Repeat className="w-4 h-4" />
             New habit
@@ -163,6 +180,26 @@ export const GoalsHabitsPage: React.FC<GoalsHabitsPageProps> = ({ currentArea, a
           </button>
         </div>
       </div>
+
+      {cloudConfigured && !signedIn && (
+        <div className="rounded-2xl border border-amber-500/35 bg-amber-500/10 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 text-xs sm:text-sm text-[var(--hub-ink)]">
+            <Cloud className="w-4 h-4 text-amber-600 dark:text-amber-300 shrink-0" />
+            <span>
+              Goals created right now are saved only on this device. Sign in to sync them automatically across mobile, tablet, and laptop.
+            </span>
+          </div>
+          {onOpenSyncAccount && (
+            <button
+              type="button"
+              onClick={onOpenSyncAccount}
+              className="px-3 py-1.5 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer shrink-0"
+            >
+              Sign in to sync
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Summary */}
       <dl className="grid grid-cols-3 gap-2 sm:gap-3">
@@ -304,8 +341,10 @@ export const GoalsHabitsPage: React.FC<GoalsHabitsPageProps> = ({ currentArea, a
           </section>
 
           <p className="flex items-center gap-1.5 text-xs text-[var(--hub-muted)]">
-            <HardDrive className="w-3.5 h-3.5" />
-            Goals and habits are saved on this device and work offline. They aren&apos;t synced to the cloud yet.
+            <HardDrive className="w-3.5 h-3.5 shrink-0" />
+            {signedIn
+              ? 'Goals, milestones, and habits save offline first and sync automatically across your signed-in devices.'
+              : 'Goals and habits are saved on this device for offline use. Sign in to sync automatically across mobile, tablet, and laptop.'}
           </p>
         </>
       )}
@@ -316,7 +355,14 @@ export const GoalsHabitsPage: React.FC<GoalsHabitsPageProps> = ({ currentArea, a
           areas={areas}
           defaultArea={currentArea !== 'All' ? currentArea : areas[0]?.name || 'Personal'}
           onClose={() => setGoalForm({ open: false })}
-          onSaved={(title, isNew) => setAnnouncement(isNew ? `Goal created: ${title}.` : `Goal updated: ${title}.`)}
+          onSaved={(title, isNew) => {
+            const msg = isNew ? `Goal created: ${title}.` : `Goal updated: ${title}.`;
+            setAnnouncement(msg);
+            toast(
+              signedIn ? `${msg} Syncing to cloud…` : `${msg} Sign in to sync across devices.`,
+              signedIn ? 'success' : 'info'
+            );
+          }}
         />
       )}
 

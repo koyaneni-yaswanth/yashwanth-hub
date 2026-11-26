@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../db';
-import type { EventItem, Note, Expense, Area } from '../../types';
+import type { EventItem, Note, Expense, Area, Goal } from '../../types';
 import { generateId, getTodayISO } from '../../lib/utils';
 import { SyncQueueService } from '../../services/sync/syncQueueService';
 import { TaskService } from '../../services/sync/taskService';
@@ -173,6 +173,17 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
           starred: parsed.priority === 'urgent' || parsed.priority === 'high',
           done: false,
         });
+      } else if (activeType === 'goal') {
+        const newGoal: Goal = {
+          id: generateId(),
+          title: finalTitle,
+          area: finalArea,
+          target_date: finalDate || undefined,
+          status: 'active',
+          created_at: nowISO,
+          updated_at: nowISO,
+        };
+        await db.goals.add(newGoal);
       } else if (activeType === 'event') {
         const newEvent: EventItem = {
           id: generateId(),
@@ -298,7 +309,7 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
           {/* Type Selector */}
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[11px] font-semibold text-[var(--hub-muted)] mr-1">Intent:</span>
-            {(['task', 'event', 'expense', 'note', 'idea'] as CaptureType[]).map((t) => (
+            {(['task', 'goal', 'event', 'expense', 'note', 'idea'] as CaptureType[]).map((t) => (
               <button
                 key={t}
                 type="button"

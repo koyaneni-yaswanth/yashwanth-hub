@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { isSupabaseConfigured, getSupabaseClient } from '../lib/supabase';
 import { db } from '../db';
+import { SupabaseAuthService } from '../services/auth/supabaseAuthService';
 import { SyncQueueService } from '../services/sync/syncQueueService';
+import { onCloudSyncCompleted, runFullCloudSync } from '../services/sync/cloudSyncCoordinator';
 
 export type SyncStatus = 'local' | 'synced' | 'syncing' | 'offline' | 'error';
 
@@ -9,6 +11,8 @@ interface SyncContextType {
   status: SyncStatus;
   isOnline: boolean;
   cloudConfigured: boolean;
+  signedIn: boolean;
+  userEmail: string | null;
   lastSyncTime: Date | null;
   queueCount: number;
   /** Queued changes whose last upload attempt failed (still safe on this device). */
@@ -23,6 +27,8 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [status, setStatus] = useState<SyncStatus>('local');
   const [cloudConfigured, setCloudConfigured] = useState<boolean>(false);
+  const [signedIn, setSignedIn] = useState<boolean>(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [queueCount, setQueueCount] = useState<number>(0);
   const [failedCount, setFailedCount] = useState<number>(0);
@@ -44,11 +50,15 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (!navigator.onLine) {
       setStatus('offline');
-      setStatusMessage('Device is offline');
+      setStatusMessage(
+        qCount > 0 ? `Offline · ${qCount} change${qCount === 1 ? '' : 's'} queued locally` : 'Device is offline'
+      );
       return;
     }
 
     if (!configured) {
+      setSignedIn(false);
+      setUserEmail(null);
       setStatus('local');
       setStatusMessage('Local IndexedDB (Persistent)');
       return;
@@ -56,18 +66,44 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const client = getSupabaseClient();
     if (!client) {
+      setSignedIn(false);
+      setUserEmail(null);
       setStatus('local');
       setStatusMessage('Local Mode');
       return;
     }
 
+    let user = SupabaseAuthService.getState().user;
+    if (!user) {
+      try {
+        const { data } = await client.auth.getSession();
+        user = data?.session?.user ?? null;
+      } catch {
+        user = null;
+      }
+    }
+
+    const isAuthed = Boolean(user);
+    setSignedIn(isAuthed);
+    setUserEmail(user?.email ?? null);
+
+    if (!isAuthed) {
+      setStatus('local');
+      setStatusMessage(
+        qCount > 0
+          ? `Sign in to sync across devices (${qCount} waiting locally)`
+          : 'Sign in to sync across mobile & desktop'
+      );
+      return;
+    }
+
     if (fCount > 0) {
       setStatus('error');
-      setStatusMessage(`${fCount} change${fCount === 1 ? '' : 's'} couldn't sync yet — safe on this device, will retry`);
+      setStatusMessage(`${fCount} change${fCount === 1 ? '' : 's'} couldn't sync yet — safe on this device, retrying automatically`);
       return;
     }
     setStatus('synced');
-    setStatusMessage(qCount > 0 ? `${qCount} change${qCount === 1 ? '' : 's'} waiting to sync` : 'All changes synced');
+    setStatusMessage(qCount > 0 ? `Syncing ${qCount} pending change${qCount === 1 ? '' : 's'}...` : 'All devices synced');
   }, []);
 
   useEffect(() => {
@@ -85,9 +121,17 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
     window.addEventListener('offline', handleOffline);
 
     refreshSyncState();
-    const interval = setInterval(refreshSyncState, 15000);
-    // Refresh immediately whenever the queue changes (enqueue or flush).
+    const interval = setInterval(refreshSyncState, 10000);
     const unsubscribeQueue = SyncQueueService.subscribe(() => {
+      refreshSyncState();
+    });
+    const unsubscribeAuth = SupabaseAuthService.subscribe(() => {
+      refreshSyncState();
+    });
+    const unsubscribeCloud = onCloudSyncCompleted((summary) => {
+      if (summary.status === 'synced' || summary.status === 'partial_error') {
+        setLastSyncTime(new Date(summary.timestamp));
+      }
       refreshSyncState();
     });
 
@@ -96,13 +140,15 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
       window.removeEventListener('offline', handleOffline);
       clearInterval(interval);
       unsubscribeQueue();
+      unsubscribeAuth();
+      unsubscribeCloud();
     };
   }, [refreshSyncState]);
 
   const syncNow = async () => {
     if (!isSupabaseConfigured()) {
       setStatus('local');
-      setStatusMessage('Supabase not configured in Settings');
+      setStatusMessage('Supabase not configured');
       return;
     }
 
@@ -113,32 +159,35 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     setStatus('syncing');
-    setStatusMessage('Syncing with Supabase...');
+    setStatusMessage('Syncing across devices...');
 
     try {
-      const client = getSupabaseClient();
-      if (!client) throw new Error('Client not initialized');
-
-      // Check auth session
-      const { data: sessionData, error: sessionErr } = await client.auth.getSession();
-      if (sessionErr || !sessionData.session) {
-        setStatus('error');
-        setStatusMessage('Cloud configured: Sign in needed for sync');
-        return;
-      }
-
-      // Upload through the same queue flush used everywhere else: rejected writes stay queued.
-      const { failed } = await SyncQueueService.flushQueue();
+      const summary = await runFullCloudSync();
       const [remaining, failedNow] = await Promise.all([db.sync_queue.count(), SyncQueueService.getFailedCount()]);
       setQueueCount(remaining);
       setFailedCount(failedNow);
-      setLastSyncTime(new Date());
-      if (failed > 0) {
+
+      if (summary.status === 'signed_out') {
+        setSignedIn(false);
+        setStatus('local');
+        setStatusMessage('Sign in needed to sync across devices');
+        return;
+      }
+
+      setLastSyncTime(new Date(summary.timestamp));
+      if (summary.status === 'partial_error') {
         setStatus('error');
-        setStatusMessage(`${failed} change${failed === 1 ? '' : 's'} couldn't sync — kept on this device and will retry`);
+        setStatusMessage(
+          `${summary.failed || summary.errors.length} change${(summary.failed || summary.errors.length) === 1 ? '' : 's'} couldn't sync yet — kept safely on this device`
+        );
       } else {
         setStatus('synced');
-        setStatusMessage('Cloud Synced');
+        const total = summary.uploaded + summary.pulled;
+        setStatusMessage(
+          total > 0
+            ? `Synced (${summary.uploaded} sent, ${summary.pulled} received)`
+            : 'All devices up to date'
+        );
       }
     } catch (err: any) {
       console.error('Sync failed:', err);
@@ -153,6 +202,8 @@ export const SyncProvider: React.FC<{ children: React.ReactNode }> = ({ children
         status,
         isOnline,
         cloudConfigured,
+        signedIn,
+        userEmail,
         lastSyncTime,
         queueCount,
         failedCount,

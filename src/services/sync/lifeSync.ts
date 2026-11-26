@@ -3,6 +3,8 @@ import { db } from '../../db';
 import { getSupabaseClient, isSupabaseConfigured } from '../../lib/supabase';
 import { SupabaseAuthService } from '../auth/supabaseAuthService';
 import { SyncQueueService } from './syncQueueService';
+import { installWorkspaceSyncHooks } from './workspaceSync';
+import { runFullCloudSync } from './cloudSyncCoordinator';
 import {
   LIFE_TABLES,
   applyMods,
@@ -125,7 +127,9 @@ export function reconcileLifeData(): Promise<LifeSyncResult> {
 async function doReconcile(): Promise<LifeSyncResult> {
   if (!isSupabaseConfigured()) return { status: 'skipped', reason: 'Supabase not configured' };
   if (typeof navigator !== 'undefined' && !navigator.onLine) return { status: 'skipped', reason: 'offline' };
-  const userId = currentUserId();
+  const client = getSupabaseClient();
+  const sessionRes = client ? await client.auth.getSession().catch(() => null) : null;
+  const userId = sessionRes?.data?.session?.user?.id ?? currentUserId();
   if (!userId) return { status: 'skipped', reason: 'signed out' };
 
   // Fetch everything first: if any table is missing (migration not applied yet), change nothing.
@@ -202,24 +206,18 @@ export async function applyLifeRealtime(table: LifeTable, payload: { eventType: 
 
 let triggersInstalled = false;
 
-/** Runs reconcile on start-up, sign-in, reconnect and return to foreground (at most every 2 min). */
+/** Runs full cloud sync on start-up, sign-in, reconnect, tab focus/visibility, and every 30s while visible. */
 export function startLifeSync(): void {
   installLifeSyncHooks();
+  installWorkspaceSyncHooks();
   if (triggersInstalled || typeof window === 'undefined') return;
   triggersInstalled = true;
   let lastRun = 0;
   let lastUser: string | null = null;
   const run = (force = false) => {
-    if (!force && Date.now() - lastRun < 120_000) return;
+    if (!force && Date.now() - lastRun < 4_000) return;
     lastRun = Date.now();
-    // Also retry anything left in the upload queue (failed earlier, or from a previous session),
-    // which includes backfilling task fields once the cloud has their columns.
-    SyncQueueService.flushQueue().catch((err) => console.warn('[sync] Queue flush failed:', err));
-    reconcileLifeData()
-      .then((r) => {
-        if (r.status === 'unavailable') console.info(`[lifeSync] Cloud tables not ready (${r.table}): ${r.error}. Data stays local and queued.`);
-      })
-      .catch((err) => console.warn('[lifeSync] Reconcile failed:', err));
+    runFullCloudSync().catch((err) => console.warn('[cloudSync] Sync cycle failed:', err));
   };
   SupabaseAuthService.subscribe((s) => {
     if (s.loading) return;
@@ -228,7 +226,13 @@ export function startLifeSync(): void {
     lastUser = id;
   });
   window.addEventListener('online', () => run(true));
+  window.addEventListener('focus', () => run());
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') run();
   });
+  window.setInterval(() => {
+    if (document.visibilityState === 'visible' && navigator.onLine) {
+      run(true);
+    }
+  }, 30_000);
 }

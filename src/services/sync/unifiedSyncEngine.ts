@@ -8,7 +8,7 @@ import { getSupabaseClient, isSupabaseConfigured } from '../../lib/supabase';
 import { db } from '../../db';
 import type { SyncEngineStatus, SyncHistoryRecord, SyncEngineState } from '../../types';
 import { generateId } from '../../lib/utils';
-import { SyncQueueService } from './syncQueueService';
+import { runFullCloudSync } from './cloudSyncCoordinator';
 
 export class UnifiedSyncEngine {
   private static isSyncing = false;
@@ -176,17 +176,27 @@ export class UnifiedSyncEngine {
         }
       }
 
-      // 2. Supabase PostgreSQL Cloud Sync (if configured)
+      // 2. Supabase PostgreSQL Bidirectional Cloud Sync (Goals, Habits, Tasks, Projects, Notes, etc.)
       if (isSupabaseConfigured()) {
         try {
           const client = getSupabaseClient();
           if (client) {
-            // The one upload path: checks errors, keeps failed changes queued, and applies the
-            // task column rules. (If a flush is already running, it covers these items.)
-            const { processed, failed } = await SyncQueueService.flushQueue();
-            if (failed > 0) errors.push(`Supabase: ${failed} change${failed === 1 ? '' : 's'} couldn't sync yet and will retry`);
-            syncedServices.push('Supabase Cloud');
-            await this.logSyncEvent('Supabase', 'Cloud Queue Sync', failed > 0 ? 'warning' : 'success', processed);
+            const summary = await runFullCloudSync();
+            if (summary.status === 'signed_out') {
+              errors.push('Supabase Cloud: Sign in required to sync across devices');
+            } else if (summary.failed > 0 || summary.errors.length > 0) {
+              errors.push(`Supabase: ${summary.failed} change(s) pending retry${summary.errors.length ? ` (${summary.errors[0]})` : ''}`);
+            }
+            if (summary.status !== 'signed_out') {
+              syncedServices.push('Supabase Cloud');
+            }
+            await this.logSyncEvent(
+              'Supabase',
+              'Bidirectional Cloud Sync',
+              summary.status === 'synced' ? 'success' : 'warning',
+              summary.uploaded + summary.pulled,
+              `↑${summary.uploaded} ↓${summary.pulled}`
+            );
           }
         } catch (sbErr: any) {
           errors.push(`Supabase: ${sbErr.message}`);

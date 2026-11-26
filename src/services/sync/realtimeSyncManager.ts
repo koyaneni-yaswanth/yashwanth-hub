@@ -1,25 +1,56 @@
 import { getSupabaseClient, isSupabaseConfigured } from '../../lib/supabase';
 import { db } from '../../db';
+import { SupabaseAuthService } from '../auth/supabaseAuthService';
 import { SyncQueueService } from './syncQueueService';
 import { resolveRemoteUpsert, resolveRemoteDelete } from './conflict';
 import { applyLifeRealtime } from './lifeSync';
 import { LIFE_TABLES } from './lifeSyncCore';
+import { applyWorkspaceRealtime } from './workspaceSync';
+import { WORKSPACE_LOCAL_TABLES, WORKSPACE_TABLE_SPECS } from './workspaceSyncCore';
 import { mergeRemoteTask } from '../../lib/taskModel';
 import { googleDeletedKey, googleStatusKey } from '../../lib/googleTaskSync';
 
 export class RealtimeSyncManager {
   private static channels: any[] = [];
   private static isSubscribed = false;
+  private static activeUserId: string | null = null;
+  private static authBound = false;
 
   /**
-   * Initializes real-time subscriptions across all synchronized operational tables.
+   * Initializes real-time subscriptions across all synchronized operational tables
+   * and re-subscribes cleanly when the signed-in Supabase user changes.
    */
   public static init(): void {
-    if (this.isSubscribed) return;
     if (!isSupabaseConfigured()) return;
 
     const client = getSupabaseClient();
     if (!client) return;
+
+    if (!this.authBound) {
+      this.authBound = true;
+      SupabaseAuthService.subscribe((s) => {
+        if (s.loading) return;
+        const nextUser = s.user?.id ?? null;
+        if (nextUser && nextUser !== this.activeUserId) {
+          this.destroy();
+          this.activeUserId = nextUser;
+          this.subscribeChannels(client);
+        } else if (!nextUser && this.activeUserId) {
+          this.activeUserId = null;
+          this.destroy();
+        }
+      });
+    }
+
+    const currentUser = SupabaseAuthService.getState().user?.id ?? null;
+    if (this.isSubscribed && currentUser === this.activeUserId) return;
+    if (!currentUser) return;
+    this.activeUserId = currentUser;
+    this.subscribeChannels(client);
+  }
+
+  private static subscribeChannels(client: NonNullable<ReturnType<typeof getSupabaseClient>>): void {
+    if (this.isSubscribed) return;
 
     try {
       // 1. Tasks Realtime Channel
@@ -84,26 +115,20 @@ export class RealtimeSyncManager {
         .subscribe();
       this.channels.push(tasksChannel);
 
-      // 2. Events / Calendar Realtime Channel
-      const eventsChannel = client
-        .channel('realtime_events_channel')
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'events' },
-          async (payload: any) => {
-            if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-              if (payload.new) {
-                await db.events.put(payload.new);
-              }
-            } else if (payload.eventType === 'DELETE') {
-              if (payload.old?.id) {
-                await db.events.delete(payload.old.id);
-              }
-            }
-          }
-        )
-        .subscribe();
-      this.channels.push(eventsChannel);
+      // 2. Core Workspace Tables Realtime Channels (events, projects, notes, meetings, expenses, contacts, travel, documents, robotics_experiments)
+      for (const localTable of WORKSPACE_LOCAL_TABLES) {
+        if (localTable === 'tasks') continue; // tasks has bespoke Google Tasks reconciliation above
+        const remoteTable = WORKSPACE_TABLE_SPECS[localTable].remoteTable;
+        const channel = client
+          .channel(`realtime_${remoteTable}_channel`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: remoteTable }, (payload: any) => {
+            applyWorkspaceRealtime(remoteTable, payload).catch((err) =>
+              console.warn(`[workspaceSync] Realtime ${remoteTable} failed:`, err)
+            );
+          })
+          .subscribe();
+        this.channels.push(channel);
+      }
 
       // 3. Memories (NeoSapien) Realtime Channel
       const memoriesChannel = client

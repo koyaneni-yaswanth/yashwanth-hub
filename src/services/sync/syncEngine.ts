@@ -10,6 +10,7 @@ import { GoogleContactsService } from '../google/googleContactsService';
 import { GmailService } from '../google/gmailService';
 import { GoogleDriveService } from '../google/googleDriveService';
 import { NeoSapienClient } from '../../integrations/neosapien';
+import { runFullCloudSync } from './cloudSyncCoordinator';
 
 export type SyncRecordState =
   | 'NOT_CONNECTED'
@@ -226,6 +227,20 @@ export class CoreSyncEngine {
     });
 
     try {
+      // 0. Supabase Cloud Bidirectional Sync (Goals, Habits, Tasks, Projects, Notes, Events, etc.)
+      try {
+        const cloudSummary = await runFullCloudSync();
+        if (cloudSummary.status === 'synced') {
+          syncedServices.push(`Supabase Cloud (↑${cloudSummary.uploaded} ↓${cloudSummary.pulled})`);
+        } else if (cloudSummary.status === 'signed_out') {
+          errors.push('Supabase Cloud: Sign in required to sync across devices');
+        } else if (cloudSummary.status === 'partial_error') {
+          errors.push(`Supabase Cloud: ${cloudSummary.failed} queued${cloudSummary.errors.length ? ` (${cloudSummary.errors[0]})` : ''}`);
+        }
+      } catch (e: any) {
+        errors.push(`Supabase Cloud: ${e.message}`);
+      }
+
       // 1. Google Calendar Two-Way Sync
       if (GoogleAuthService.isConnected()) {
         try {

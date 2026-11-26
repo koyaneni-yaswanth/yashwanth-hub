@@ -1,6 +1,7 @@
 import Dexie, { type Table } from 'dexie';
 import { createSingleFlight, runWithLock, type LockManagerLike } from '../lib/singleFlight';
 import { planSeedRepair, seedAreaId } from './seedRepair';
+import { runWithWorkspaceHooksSuppressed } from '../services/sync/workspaceSync';
 import type {
   Task,
   EventItem,
@@ -193,41 +194,42 @@ async function repairSeedDuplicates() {
 }
 
 async function runInitializeDatabase() {
-  try {
-    await repairSeedDuplicates();
+  return runWithWorkspaceHooksSuppressed(async () => {
+    try {
+      await repairSeedDuplicates();
 
-    const areaCount = await db.areas.count();
-    if (areaCount === 0) {
-      const now = new Date().toISOString();
-      const areasToInsert: Area[] = DEFAULT_AREAS.map((a) => ({
-        id: seedAreaId(a.name),
-        name: a.name,
-        color: a.color,
-        description: a.description,
-        created_at: now,
-        updated_at: now,
-      }));
-      await db.areas.bulkPut(areasToInsert);
-    }
+      const areaCount = await db.areas.count();
+      if (areaCount === 0) {
+        const now = new Date().toISOString();
+        const areasToInsert: Area[] = DEFAULT_AREAS.map((a) => ({
+          id: seedAreaId(a.name),
+          name: a.name,
+          color: a.color,
+          description: a.description,
+          created_at: now,
+          updated_at: now,
+        }));
+        await db.areas.bulkPut(areasToInsert);
+      }
 
-    // Seed projects if empty
-    const projectCount = await db.projects.count();
-    if (projectCount === 0) {
-      await seedProjects();
-    }
+      // Seed projects if empty
+      const projectCount = await db.projects.count();
+      if (projectCount === 0) {
+        await seedProjects();
+      }
 
-    // Seed sample notifications if empty
-    const notifCount = await db.notifications.count();
-    if (notifCount === 0) {
-      await seedNotifications();
-    }
+      // Seed sample notifications if empty
+      const notifCount = await db.notifications.count();
+      if (notifCount === 0) {
+        await seedNotifications();
+      }
 
-    // Check for legacy localStorage migration from "yash-hub-v1"
-    const legacyKey = 'yash-hub-v1';
-    const legacyRaw = typeof window !== 'undefined' ? localStorage.getItem(legacyKey) : null;
-    const migrationDone = await db.settings.get('legacy_migrated');
+      // Check for legacy localStorage migration from "yash-hub-v1"
+      const legacyKey = 'yash-hub-v1';
+      const legacyRaw = typeof window !== 'undefined' ? localStorage.getItem(legacyKey) : null;
+      const migrationDone = await db.settings.get('legacy_migrated');
 
-    if (legacyRaw && !migrationDone) {
+      if (legacyRaw && !migrationDone) {
       try {
         const legacy = JSON.parse(legacyRaw);
         const now = new Date().toISOString();
@@ -373,9 +375,24 @@ async function runInitializeDatabase() {
         await db.notifications.delete(notif.id);
       }
     }
+
+    if (!(await db.settings.get('starter_seed_ids'))) {
+      const seedIds = [
+        ...(await db.projects.toArray()).map((p) => p.id),
+        ...(await db.tasks.toArray()).map((t) => t.id),
+        ...(await db.meetings.toArray()).map((m) => m.id),
+        ...(await db.travel.toArray()).map((t) => t.id),
+        ...(await db.notes.toArray()).map((n) => n.id),
+        ...(await db.contacts.toArray()).map((c) => c.id),
+      ];
+      if (seedIds.length) {
+        await db.settings.put({ key: 'starter_seed_ids', value: seedIds, updated_at: new Date().toISOString() });
+      }
+    }
   } catch (error) {
     console.error('Database initialization error:', error);
   }
+  });
 }
 
 async function seedProjects() {

@@ -117,6 +117,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       title: 'System',
       items: [
         { id: 'integrations', label: 'Integrations & Sync', icon: Cloud },
+        { id: 'system-health', label: 'Sync Health & Devices', icon: Zap },
         { id: 'settings', label: 'Settings', icon: Settings },
       ],
     },
@@ -185,7 +186,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div className="flex items-center gap-3 min-w-0">
                 <Icon
                   className={`w-4 h-4 flex-none ${
-                    isActive ? 'text-white' : item.highlight ? 'text-teal-700 dark:text-teal-400' : ''
+                    isActive ? 'text-[var(--hub-accent-ink)]' : item.highlight ? 'text-teal-700 dark:text-teal-400' : ''
                   }`}
                 />
                 <span className="truncate">{item.label}</span>
@@ -267,7 +268,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         }`}
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
-                          <Icon className={`w-3.5 h-3.5 flex-none ${isActive ? 'text-white' : ''}`} />
+                          <Icon className={`w-3.5 h-3.5 flex-none ${isActive ? 'text-[var(--hub-accent-ink)]' : ''}`} />
                           <span className="truncate">{item.label}</span>
                         </div>
                       </button>

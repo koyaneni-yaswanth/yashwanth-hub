@@ -10,6 +10,8 @@ import {
   unionV3List,
   type V3ColumnCheck,
 } from '../../lib/taskModel';
+import { isLifeTable } from './lifeSyncCore';
+import { isWorkspaceLocalTable, resolveRemoteWorkspaceTable, toCloudWorkspaceRow } from './workspaceSyncCore';
 
 type Client = NonNullable<ReturnType<typeof getSupabaseClient>>;
 
@@ -189,6 +191,7 @@ export class SyncQueueService {
 
   /**
    * Enqueues an offline or online mutation to be reconciled with the cloud database.
+   * Coalesces multiple rapid edits (e.g. Dexie hooks + service calls) per (table, record_id).
    */
   public static async enqueueChange(
     tableName: string,
@@ -196,17 +199,53 @@ export class SyncQueueService {
     action: 'INSERT' | 'UPDATE' | 'DELETE' | 'PATCH',
     payload: any
   ): Promise<void> {
-    const item: SyncQueueItem = {
-      id: generateId(),
-      table_name: tableName,
-      record_id: recordId,
-      action,
-      payload,
-      created_at: new Date().toISOString(),
-      attempts: 0,
-    };
+    const existing = await db.sync_queue
+      .where('record_id')
+      .equals(recordId)
+      .filter((i) => i.table_name === tableName)
+      .toArray();
 
-    await db.sync_queue.put(item);
+    const now = new Date().toISOString();
+
+    if (action === 'DELETE') {
+      if (existing.length > 0) {
+        await db.sync_queue.bulkDelete(existing.map((e) => e.id));
+      }
+      const item: SyncQueueItem = {
+        id: generateId(),
+        table_name: tableName,
+        record_id: recordId,
+        action: 'DELETE',
+        payload,
+        created_at: now,
+        attempts: 0,
+      };
+      await db.sync_queue.put(item);
+    } else {
+      const sameSuperset = existing.find((e) => e.action === 'INSERT' || e.action === 'UPDATE');
+      if (sameSuperset && (action === 'INSERT' || action === 'UPDATE')) {
+        await db.sync_queue.update(sameSuperset.id, {
+          action: sameSuperset.action === 'INSERT' ? 'INSERT' : action,
+          payload,
+          created_at: now,
+          attempts: 0,
+          last_error: undefined,
+          last_attempt_at: undefined,
+        });
+      } else {
+        const item: SyncQueueItem = {
+          id: generateId(),
+          table_name: tableName,
+          record_id: recordId,
+          action,
+          payload,
+          created_at: now,
+          attempts: 0,
+        };
+        await db.sync_queue.put(item);
+      }
+    }
+
     const count = await db.sync_queue.count();
     this.notify(count);
 
@@ -236,14 +275,14 @@ export class SyncQueueService {
 
     // Every cloud table is per-user (row level security): without a signed-in session writes
     // fail and reads see nothing, which must not be mistaken for "deleted". Changes stay queued.
-    let signedIn = false;
+    let userId: string | null = null;
     try {
       const { data } = await client.auth.getSession();
-      signedIn = Boolean(data?.session);
+      userId = data?.session?.user?.id ?? null;
     } catch {
-      signedIn = false;
+      userId = null;
     }
-    if (!signedIn) {
+    if (!userId) {
       this.isFlushing = false;
       return { processed: 0, failed: 0 };
     }
@@ -258,6 +297,7 @@ export class SyncQueueService {
       const items = await db.sync_queue.orderBy('created_at').toArray();
 
       for (const item of items) {
+        const remoteTable = resolveRemoteWorkspaceTable(item.table_name);
         try {
           if (item.action === 'INSERT' || item.action === 'UPDATE') {
             let payload = item.payload;
@@ -271,15 +311,21 @@ export class SyncQueueService {
                 // These fields stay on this device for now; remember to upload them once the columns exist.
                 await this.markV3Unsynced(item.record_id);
               }
-              payload = toCloudTaskPayload(payload, state === 'yes');
+              payload = toCloudTaskPayload(toCloudWorkspaceRow('tasks', payload, payload?.user_id || userId), state === 'yes');
               uploadedV3 = state === 'yes';
+            } else if (isWorkspaceLocalTable(item.table_name) && payload) {
+              payload = toCloudWorkspaceRow(item.table_name, payload, payload?.user_id || userId);
+            } else if (payload && !payload.user_id) {
+              payload = { ...payload, user_id: userId };
             }
-            const { error } = await (client.from(item.table_name) as any).upsert(payload);
+            const { error } = isLifeTable(item.table_name)
+              ? await (client.from(remoteTable) as any).upsert(payload, { onConflict: 'user_id,id' })
+              : await (client.from(remoteTable) as any).upsert(payload);
             if (error) throw error;
             if (uploadedV3) await this.clearV3Unsynced(item.record_id);
           } else if (item.action === 'PATCH') {
             // Only the given columns, only on an existing row: never re-creates or overwrites a task.
-            const { data: rows, error } = await (client.from(item.table_name) as any)
+            const { data: rows, error } = await (client.from(remoteTable) as any)
               .update(item.payload)
               .eq('id', item.record_id)
               .select('id');
@@ -290,7 +336,7 @@ export class SyncQueueService {
               throw new Error('The row this change belongs to has not been uploaded yet; will retry.');
             }
           } else if (item.action === 'DELETE') {
-            const { error } = await (client.from(item.table_name) as any)
+            const { error } = await (client.from(remoteTable) as any)
               .delete()
               .eq('id', item.record_id);
             if (error) throw error;

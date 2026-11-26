@@ -24,6 +24,8 @@ import {
   generateId,
 } from '../lib/utils';
 import { IntegrationVaultService } from '../services/integrationVaultService';
+import { GoogleAuthService } from '../services/google/googleAuthService';
+import { useSync } from '../context/SyncContext';
 import { handOffFocusTask } from '../lib/focusHandoff';
 import { MomentumChip } from '../components/momentum/MomentumChip';
 import { TaskService } from '../services/sync/taskService';
@@ -83,6 +85,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const allProjects = useLiveQuery(() => db.projects.toArray(), []) ?? NO_ARR;
   const allNotes = useLiveQuery(() => db.notes.toArray(), []) ?? NO_ARR;
   const allHabits = useLiveQuery(() => db.habits.toArray(), []) ?? NO_ARR;
+  const allGoals = useLiveQuery(() => db.goals.toArray(), []) ?? NO_ARR;
+  const activeGoalsCount = allGoals.filter((g) => g.status !== 'achieved').length;
   const allHabitLogs = useLiveQuery(() => db.habit_logs.toArray(), []) ?? NO_ARR;
   const roboticsRecords = useLiveQuery(() => db.robotics_records.count(), []) ?? 0;
   const neoMemoriesCount = useLiveQuery(() => db.neo_memories.count(), []) ?? 0;
@@ -185,6 +189,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         allProjects={allProjects}
         pinnedNotes={pinnedNotes}
         deadlines={deadlines}
+        activeGoalsCount={activeGoalsCount}
       />
     </JarvisHudProvider>
   );
@@ -212,6 +217,7 @@ interface ShellProps {
   allProjects: any[];
   pinnedNotes: any[];
   deadlines: ReturnType<typeof collectDeadlines>;
+  activeGoalsCount: number;
 }
 
 const DashboardHudShell: React.FC<ShellProps> = ({
@@ -236,6 +242,7 @@ const DashboardHudShell: React.FC<ShellProps> = ({
   allProjects,
   pinnedNotes,
   deadlines,
+  activeGoalsCount,
 }) => {
   const hud = useJarvisHud()!;
   const taskInputRef = useRef<HTMLInputElement>(null);
@@ -259,10 +266,14 @@ const DashboardHudShell: React.FC<ShellProps> = ({
   const [weeklyReviewNotice, setWeeklyReviewNotice] = useState<string | null>(null);
   const [recommendationSkipIndex, setRecommendationSkipIndex] = useState(0);
 
+  const { syncNow } = useSync();
   const handleSyncNow = async () => {
     setIsSyncing(true);
     try {
-      await IntegrationVaultService.triggerSyncNow();
+      await syncNow();
+      if (GoogleAuthService.isConnected()) {
+        await IntegrationVaultService.triggerSyncNow().catch(() => {});
+      }
     } catch (err) {
       console.warn('[DashboardPage] Sync error:', err);
     } finally {
@@ -467,7 +478,7 @@ const DashboardHudShell: React.FC<ShellProps> = ({
       <HudFrameOverlay coreState={hud.coreState} perf={hud.perf} is3DEnabled={hud.is3DEnabled} />
 
       {/* Top Greeting & Status Strip */}
-      <div className="relative z-20 flex flex-wrap items-center justify-between gap-2 px-1 sm:pt-7">
+      <div className="relative z-20 flex flex-wrap items-center justify-between gap-2 px-1 sm:pt-4">
         <div className="min-w-0">
           <h2 className="text-lg sm:text-xl font-bold font-heading text-[#E6F1FF] tracking-tight truncate">
             {getGreeting('Yaswanth')}
@@ -486,6 +497,16 @@ const DashboardHudShell: React.FC<ShellProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onNavigate('goals')}
+            className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl hud-glass-pill text-xs font-semibold text-[#E6F1FF] hover:text-[#3BE8FF] transition-colors cursor-pointer"
+            title="Open Goals & Habits"
+          >
+            <Trophy className="w-3.5 h-3.5 text-[#FFB547]" />
+            <span>Goals</span>
+            <span className="hud-tabular text-[#3BE8FF]">{activeGoalsCount}</span>
+          </button>
           <MomentumChip onOpen={() => onNavigate('momentum')} />
           <button
             type="button"

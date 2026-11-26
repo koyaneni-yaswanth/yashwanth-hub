@@ -1,6 +1,6 @@
 import type { Area, Priority, Project } from '../types';
 
-export type CaptureType = 'task' | 'event' | 'note' | 'expense' | 'idea';
+export type CaptureType = 'task' | 'goal' | 'event' | 'note' | 'expense' | 'idea';
 
 export interface ParsedCaptureEntity {
   type: CaptureType;
@@ -76,6 +76,9 @@ export function parseQuickCaptureInput(
       type = 'event';
       typeAutoDetected = true;
     }
+  } else if (lower.startsWith('goal:') || lower.includes('new goal') || lower.includes('create goal')) {
+    type = 'goal';
+    typeAutoDetected = true;
   } else if (lower.startsWith('note:') || lower.startsWith('log:') || lower.includes('decision:')) {
     type = 'note';
     typeAutoDetected = true;
@@ -171,8 +174,8 @@ export function parseQuickCaptureInput(
   // 5. Clean Spoken Prefixes & Hashtags for Title
   title = title
     .replace(/#[a-zA-Z0-9_-]+/g, '')
-    .replace(/^(?:please\s+)?(?:create|add|make)\s+(?:a\s+)?(?:task|note|event)\s*(?:to|for|:)?\s*/i, '')
-    .replace(/^(?:note|idea|log|reminder)\s*:\s*/i, '')
+    .replace(/^(?:please\s+)?(?:create|add|make|set)\s+(?:a\s+)?(?:new\s+)?(?:task|note|event|goal)\s*(?:to|for|:)?\s*/i, '')
+    .replace(/^(?:note|idea|log|reminder|goal)\s*:\s*/i, '')
     .trim();
 
   if (title) {

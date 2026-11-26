@@ -21,6 +21,7 @@ import { QuickCaptureModal } from './components/common/QuickCaptureModal';
 import { PageErrorBoundary } from './components/common/PageErrorBoundary';
 import { repairTaskDueDates } from './services/sync/dueDateRepair';
 import { installLifeSyncHooks, startLifeSync } from './services/sync/lifeSync';
+import { installWorkspaceSyncHooks } from './services/sync/workspaceSync';
 import { PageSkeleton } from './components/common/PageSkeleton';
 import { TAB_TITLES, buildTabUrl, canonicalTab, documentTitleFor, readTabFromSearch } from './lib/navigation';
 import { Toaster } from './components/common/Toaster';
@@ -186,8 +187,9 @@ function HubMain() {
     });
 
     const initApp = async () => {
-      // Queue goals/habits/plans/focus writes for the cloud from the very first write.
+      // Queue goals/habits/plans/focus and workspace writes for the cloud from the very first write.
       installLifeSyncHooks();
+      installWorkspaceSyncHooks();
       await initializeDatabase();
       setIsDbReady(true);
 
@@ -405,7 +407,7 @@ function HubMain() {
       case 'learning-career':
         return <LearningCareerPage />;
       case 'goals':
-        return <GoalsHabitsPage currentArea={currentArea} areas={areas} />;
+        return <GoalsHabitsPage currentArea={currentArea} areas={areas} onOpenSyncAccount={() => setCurrentTab('integrations')} />;
       case 'focus':
         return <FocusPage />;
       case 'momentum':
