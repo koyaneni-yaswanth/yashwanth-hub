@@ -1,19 +1,42 @@
-// Vercel Serverless Function: Unified Integrations Synchronizer
+// Vercel Serverless Function: Unified Integrations Synchronizer & Live Connectors
 // Endpoint: /api/integrations/sync
-// Triggers an immediate bi-directional sync across Google Tasks and NeoSapien MCP.
+// - POST (auth required): Bidirectional sync across Google Tasks and NeoSapien MCP.
+// - GET ?action=research&q=...: Real zero-key arXiv + OpenAlex + Crossref academic feed.
+// - GET ?action=dev_status&repo=...: Real GitHub REST + Vercel deployment telemetry.
 
 import { isServerSupabaseConfigured, supabaseServer } from '../_lib/db.ts';
 import { getUserIdFromRequest, getAuthenticatedGoogleOAuthClient } from './google-tasks.ts';
 import { getNeoSapienToken, executeMcpJsonRpc } from './neosapien.ts';
 import { google } from 'googleapis';
 import { applyCors } from '../_lib/http.ts';
+import { fetchResearchIntelligence } from '../_lib/researchConnectors.ts';
+import { fetchDevMonitorReport } from '../_lib/devMonitor.ts';
 
-export default async function handler(req: any, res: any) {
-  applyCors(req, res, 'GET, POST, OPTIONS');
+export function createIntegrationsSyncHandler(fetchImpl: typeof fetch = fetch) {
+  return async function handler(req: any, res: any) {
+    applyCors(req, res, 'GET, POST, OPTIONS');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
+
+    const action = Array.isArray(req.query?.action) ? req.query.action[0] : req.query?.action;
+
+    if (req.method === 'GET' && action === 'research') {
+      const qParam = Array.isArray(req.query?.q) ? req.query.q[0] : req.query?.q;
+      const feed = await fetchResearchIntelligence(String(qParam || ''), fetchImpl);
+      return res.status(200).json(feed);
+    }
+
+    if (req.method === 'GET' && action === 'dev_status') {
+      const repoParam = Array.isArray(req.query?.repo) ? req.query.repo[0] : req.query?.repo;
+      const report = await fetchDevMonitorReport({
+        repo: repoParam ? String(repoParam) : undefined,
+        env: process.env,
+        fetchImpl,
+      });
+      return res.status(200).json({ success: true, ...report });
+    }
 
   if (!isServerSupabaseConfigured()) {
     return res.status(503).json({
@@ -174,10 +197,13 @@ export default async function handler(req: any, res: any) {
   }
 
   const bothDisconnected = !results.googleTasks?.connected && !results.neoSapien?.connected;
-  return res.status(bothDisconnected && results.errors.length > 0 ? 502 : 200).json({
-    success: results.errors.length === 0 || !bothDisconnected,
-    results,
-    durationMs: Date.now() - startTime,
-    timestamp: new Date().toISOString(),
-  });
+    return res.status(bothDisconnected && results.errors.length > 0 ? 502 : 200).json({
+      success: results.errors.length === 0 || !bothDisconnected,
+      results,
+      durationMs: Date.now() - startTime,
+      timestamp: new Date().toISOString(),
+    });
+  };
 }
+
+export default createIntegrationsSyncHandler();

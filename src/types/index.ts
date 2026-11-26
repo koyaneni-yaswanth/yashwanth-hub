@@ -630,7 +630,8 @@ export type NavigationTab =
   | 'system-health'
   | 'goals'
   | 'focus'
-  | 'momentum';
+  | 'momentum'
+  | 'research-feed';
 
 // ==========================================
 // REAL-TIME AI OPERATING SYSTEM SCHEMA (SUPABASE & DEXIE)

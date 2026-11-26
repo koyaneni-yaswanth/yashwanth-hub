@@ -116,6 +116,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     { label: 'Go to Calendar & Schedule', tab: 'calendar' as NavigationTab, icon: Calendar, category: 'Navigation' },
     { label: 'Go to Tasks Board', tab: 'tasks' as NavigationTab, icon: CheckSquare, category: 'Navigation' },
     { label: 'Go to Knowledge & Memory Hub', tab: 'knowledge-memory' as NavigationTab, icon: Brain, category: 'Navigation' },
+    { label: 'Go to Research Intelligence (arXiv, OpenAlex)', tab: 'research-feed' as NavigationTab, icon: FileText, category: 'Navigation' },
     { label: 'Go to Finance & Capital Hub', tab: 'finance' as NavigationTab, icon: IndianRupee, category: 'Navigation' },
     { label: 'Go to Health & Routine Check-In', tab: 'health-routine' as NavigationTab, icon: Heart, category: 'Navigation' },
     { label: 'Go to Integrations & Auth Vault', tab: 'integrations' as NavigationTab, icon: Cloud, category: 'Navigation' },

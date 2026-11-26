@@ -10,11 +10,16 @@ import {
   Download,
   ArrowRight,
   Split,
+  GitBranch,
+  ExternalLink,
 } from 'lucide-react';
 import { db } from '../db';
 import { GoogleAuthService } from '../services/google/googleAuthService';
 import { CoreSyncEngine, type SyncEngineStatus, type SyncConflictItem } from '../services/sync/syncEngine';
 import { NeoConnectionMonitor } from '../integrations/neosapien/connection';
+import { AIGateway } from '../services/ai/aiGateway';
+import type { ProviderHealthReport } from '../../api/_lib/aiProviderAdapters';
+import type { DevMonitorReport } from '../../api/_lib/devMonitor';
 import { Badge } from '../components/common/Badge';
 
 interface SystemHealthSyncCenterPageProps {
@@ -31,6 +36,9 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<SyncConflictItem[]>(() => CoreSyncEngine.getConflicts());
   const [neoStatus, setNeoStatus] = useState<any>(null);
+  const [aiProviders, setAiProviders] = useState<ProviderHealthReport[]>([]);
+  const [devReport, setDevReport] = useState<DevMonitorReport | null>(null);
+  const [isLoadingDev, setIsLoadingDev] = useState(false);
 
   // Live Database Queries
   const taskCount = useLiveQuery(() => db.tasks.count(), []) || 0;
@@ -41,12 +49,70 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
   const syncHistoryLogs = useLiveQuery(() => db.sync_history.orderBy('timestamp').reverse().limit(20).toArray(), []) || [];
   const googleConfig = GoogleAuthService.getConfig();
 
+  const loadDevMonitor = async () => {
+    setIsLoadingDev(true);
+    try {
+      const r = await fetch('/api/integrations/sync?action=dev_status');
+      if (r.ok && (r.headers.get('content-type') || '').includes('application/json')) {
+        const data = await r.json();
+        setDevReport(data);
+        return;
+      }
+      throw new Error('Server route unavailable');
+    } catch {
+      try {
+        const [repoR, comR] = await Promise.all([
+          fetch('https://api.github.com/repos/koyaneni-yaswanth/yashwanth-hub'),
+          fetch('https://api.github.com/repos/koyaneni-yaswanth/yashwanth-hub/commits?per_page=5'),
+        ]);
+        const repoJ = repoR.ok ? await repoR.json() : {};
+        const comJ = comR.ok ? await comR.json() : [];
+        setDevReport({
+          github: {
+            repo: 'koyaneni-yaswanth/yashwanth-hub',
+            configuredToken: false,
+            status: repoR.ok ? 'connected' : 'error',
+            openIssuesCount: repoJ.open_issues_count,
+            defaultBranch: repoJ.default_branch,
+            recentCommits: Array.isArray(comJ)
+              ? comJ.map((c: any) => ({
+                  sha: String(c?.sha || '').slice(0, 7),
+                  message: String(c?.commit?.message || '').split('\n')[0],
+                  author: String(c?.commit?.author?.name || ''),
+                  date: String(c?.commit?.author?.date || ''),
+                  url: String(c?.html_url || ''),
+                }))
+              : [],
+            openPullRequests: [],
+            recentWorkflowRuns: [],
+          },
+          vercel: {
+            project: 'yashwanth-hub',
+            tokenConfigured: false,
+            runtimeCommitSha: null,
+            runtimeCommitMessage: null,
+            runtimeCommitRef: null,
+            runtimeRegion: null,
+            latestDeployments: [],
+          },
+          checkedAt: new Date().toISOString(),
+        });
+      } catch {
+        // Offline or rate-limited
+      }
+    } finally {
+      setIsLoadingDev(false);
+    }
+  };
+
   useEffect(() => {
     const unsub = CoreSyncEngine.subscribe((status) => {
       setSyncStatus(status);
       setConflicts(CoreSyncEngine.getConflicts());
     });
     NeoConnectionMonitor.getStatus().then(setNeoStatus).catch(() => {});
+    AIGateway.healthCheck().then((h) => setAiProviders(h.providers)).catch(() => {});
+    loadDevMonitor();
     return unsub;
   }, []);
 
@@ -238,26 +304,133 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
           </span>
         </div>
 
-        {/* 4. Multi-Model AI Gateway Card */}
+        {/* 4. Multi-Model AI Gateway Card (Live Status) */}
         <div className="bg-[var(--hub-card-bg)] border border-[var(--hub-border)] rounded-2xl p-5 space-y-3">
           <div className="flex items-center justify-between">
             <span className="font-bold text-sm flex items-center gap-2 text-[var(--hub-ink)]">
               <Sparkles className="w-4 h-4 text-amber-800 dark:text-amber-300" />
               AI Gateway
             </span>
-            <Badge variant="emerald">Active</Badge>
+            <Badge variant={aiProviders.some((p) => p.status === 'connected') ? 'emerald' : 'amber'}>
+              {aiProviders.filter((p) => p.status === 'connected').length} Active
+            </Badge>
           </div>
 
           <div className="text-xs text-[var(--hub-muted)] space-y-1">
-            <div>Gemini: 2.5 Flash / Pro (BYOK)</div>
-            <div>OpenAI: GPT-4o (BYOK)</div>
-            <div>Claude: 3.5 Sonnet (BYOK)</div>
+            {aiProviders.length > 0 ? (
+              aiProviders.slice(0, 3).map((p) => (
+                <div key={p.id} className="flex items-center justify-between gap-2">
+                  <span className="truncate">{p.name}</span>
+                  <span className="font-mono text-[10px]">
+                    {p.status === 'connected' ? `${p.latencyMs ?? '?'}ms` : 'Unset'}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <div>Gemini · OpenRouter · OpenAI · Claude · HF · Ollama</div>
+            )}
           </div>
 
           <span className="text-[11px] text-[var(--hub-muted)] block pt-1">
-            RAG Context Over 16 Local Stores
+            Server-side tool routing across local &amp; cloud stores
           </span>
         </div>
+      </div>
+
+      {/* Live GitHub & Vercel Development Monitor */}
+      <div className="bg-[var(--hub-card-bg)] border border-[var(--hub-border)] rounded-2xl p-6 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <GitBranch className="w-5 h-5 text-[var(--hub-accent)]" />
+            <div>
+              <h2 className="text-base font-bold text-[var(--hub-ink)]">
+                GitHub &amp; Vercel Development Monitor
+              </h2>
+              <p className="text-xs text-[var(--hub-muted)]">
+                Live repository commits, open PRs, CI workflow status &amp; active Vercel runtime.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={loadDevMonitor}
+            disabled={isLoadingDev}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[var(--hub-border)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoadingDev ? 'animate-spin' : ''}`} />
+            <span>{isLoadingDev ? 'Checking...' : 'Refresh Monitor'}</span>
+          </button>
+        </div>
+
+        {devReport ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
+            <div className="rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-border)] p-4 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-[var(--hub-ink)]">GitHub · {devReport.github.repo}</span>
+                <Badge variant={devReport.github.status === 'connected' ? 'emerald' : 'amber'}>
+                  {devReport.github.status}
+                </Badge>
+              </div>
+              {devReport.github.error && (
+                <p className="text-amber-700 dark:text-amber-300">{devReport.github.error}</p>
+              )}
+              <div className="space-y-1.5">
+                {devReport.github.recentCommits.map((c) => (
+                  <a
+                    key={c.sha}
+                    href={c.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-between gap-2 py-1 border-b border-[var(--hub-border)]/60 last:border-0 hover:text-[var(--hub-accent)]"
+                  >
+                    <span className="truncate">
+                      <code className="font-mono text-[10px] text-[var(--hub-accent)] mr-1.5">{c.sha}</code>
+                      {c.message}
+                    </span>
+                    <ExternalLink className="w-3 h-3 shrink-0 opacity-60" />
+                  </a>
+                ))}
+              </div>
+              {devReport.github.recentWorkflowRuns.length > 0 && (
+                <div className="pt-1 text-[11px] text-[var(--hub-muted)]">
+                  Latest CI: {devReport.github.recentWorkflowRuns[0].name} (
+                  {devReport.github.recentWorkflowRuns[0].conclusion || devReport.github.recentWorkflowRuns[0].status})
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-border)] p-4 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-[var(--hub-ink)]">Vercel Deployment Runtime</span>
+                <Badge variant={devReport.vercel.tokenConfigured || devReport.vercel.runtimeCommitSha ? 'emerald' : 'amber'}>
+                  {devReport.vercel.tokenConfigured ? 'API Linked' : devReport.vercel.runtimeCommitSha ? 'Runtime Active' : 'Local Preview'}
+                </Badge>
+              </div>
+              <div className="space-y-1 text-[var(--hub-muted)]">
+                <div>Branch: <span className="text-[var(--hub-ink)] font-mono">{devReport.vercel.runtimeCommitRef || '—'}</span></div>
+                <div>Commit: <span className="text-[var(--hub-ink)] font-mono">{devReport.vercel.runtimeCommitSha || '—'}</span></div>
+                <div>Region: <span className="text-[var(--hub-ink)] font-mono">{devReport.vercel.runtimeRegion || '—'}</span></div>
+              </div>
+              {devReport.vercel.latestDeployments.length > 0 ? (
+                <div className="space-y-1 pt-1">
+                  {devReport.vercel.latestDeployments.slice(0, 3).map((d) => (
+                    <div key={d.uid} className="flex items-center justify-between gap-2">
+                      <span className="truncate font-mono text-[11px]">{d.url}</span>
+                      <Badge variant={d.state === 'READY' ? 'emerald' : 'amber'}>{d.state}</Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[11px] text-[var(--hub-muted)] pt-1">
+                  Add <code className="font-mono">VERCEL_TOKEN</code> in server env for multi-deployment build history.
+                </p>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-[var(--hub-muted)]">Loading repository and deployment telemetry...</p>
+        )}
       </div>
 
       {/* Conflict Resolution Workspace (if any conflicts exist) */}

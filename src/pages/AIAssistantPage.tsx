@@ -36,6 +36,7 @@ import type {
 import { generateId } from '../lib/utils';
 import { SUPPORTED_MODELS, normaliseModelId } from '../services/ai/aiModels';
 import { AIGateway } from '../services/ai/aiGateway';
+import { buildExecutiveDailyBriefing } from '../services/ai/executiveBriefing';
 import type { ProviderHealthReport } from '../../api/_lib/aiProviderAdapters';
 import { beginAiThinking, endAiThinking } from '../lib/aiActivity';
 import { Badge } from '../components/common/Badge';
@@ -104,6 +105,7 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
   const [healthReports, setHealthReports] = useState<ProviderHealthReport[]>([]);
   const [recommendedProviderNote, setRecommendedProviderNote] = useState<string>('');
   const [isCheckingProviders, setIsCheckingProviders] = useState(false);
+  const [isGeneratingBriefing, setIsGeneratingBriefing] = useState(false);
   const [selectedMode, setSelectedMode] = useState<AIMode>('personal');
   const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
     return localStorage.getItem('yash_ai_project_scope') || '';
@@ -339,6 +341,47 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
     await sendPromptText(inputMessage);
   };
 
+  const handleGenerateBriefing = async () => {
+    if (isGeneratingBriefing) return;
+    setIsGeneratingBriefing(true);
+    try {
+      let devReport: any = null;
+      try {
+        const dRes = await fetch('/api/integrations/sync?action=dev_status');
+        if (dRes.ok && (dRes.headers.get('content-type') || '').includes('application/json')) {
+          devReport = await dRes.json();
+        }
+      } catch {
+        /* non-fatal if static mode */
+      }
+      const briefing = await buildExecutiveDailyBriefing({
+        useAI: anyServerLlmConfigured,
+        devReport,
+      });
+      const convId = activeConversationId || generateId();
+      if (!activeConversationId) setActiveConversationId(convId);
+      const userMsg: AIChatMessage = {
+        id: generateId(),
+        role: 'user',
+        content: `Generate Executive Daily Briefing (${briefing.dateISO})`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      const assistantMsg: AIChatMessage = {
+        id: generateId(),
+        role: 'assistant',
+        content: briefing.summaryMarkdown,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        provider: briefing.aiEnhanced ? 'gemini' : 'local_heuristic',
+        modelId: briefing.providerUsed || 'executive-briefing-v3',
+      };
+      const nextMsgs = [...messages, userMsg, assistantMsg];
+      setMessages(nextMsgs);
+      await persistMessages(nextMsgs, convId, `Daily Briefing — ${briefing.dateISO}`, 0, 0);
+    } finally {
+      setIsGeneratingBriefing(false);
+    }
+  };
+
   const handleBenchmarkProviders = async () => {
     setIsCheckingProviders(true);
     try {
@@ -388,6 +431,17 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={handleGenerateBriefing}
+            disabled={isGeneratingBriefing}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-surface)] text-[var(--hub-ink)] text-xs font-semibold hover:border-[var(--hub-accent)]/50 transition-colors cursor-pointer disabled:opacity-50"
+            title="Synthesize verified Daily Executive Briefing"
+          >
+            <Calendar className="w-3.5 h-3.5 text-[var(--hub-accent)]" />
+            <span className="hidden sm:inline">{isGeneratingBriefing ? 'Briefing...' : 'Daily Briefing'}</span>
+          </button>
+
           <button
             onClick={handleStartNewConversation}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer shadow-xs"

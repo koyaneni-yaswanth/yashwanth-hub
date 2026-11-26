@@ -54,6 +54,7 @@ const pageLoaders = {
   FinancePage: () => import('./pages/FinancePage'),
   HealthRoutinePage: () => import('./pages/HealthRoutinePage'),
   KnowledgeMemoryPage: () => import('./pages/KnowledgeMemoryPage'),
+  ResearchIntelligencePage: () => import('./pages/ResearchIntelligencePage'),
   MyDayPage: () => import('./pages/MyDayPage'),
   LearningCareerPage: () => import('./pages/LearningCareerPage'),
   GoalsHabitsPage: () => import('./pages/GoalsHabitsPage'),
@@ -83,6 +84,7 @@ const RoboticsLabPage = lazy(() => pageLoaders.RoboticsLabPage().then((m) => ({ 
 const FinancePage = lazy(() => pageLoaders.FinancePage().then((m) => ({ default: m.FinancePage })));
 const HealthRoutinePage = lazy(() => pageLoaders.HealthRoutinePage().then((m) => ({ default: m.HealthRoutinePage })));
 const KnowledgeMemoryPage = lazy(() => pageLoaders.KnowledgeMemoryPage().then((m) => ({ default: m.KnowledgeMemoryPage })));
+const ResearchIntelligencePage = lazy(() => pageLoaders.ResearchIntelligencePage().then((m) => ({ default: m.ResearchIntelligencePage })));
 const MyDayPage = lazy(() => pageLoaders.MyDayPage().then((m) => ({ default: m.MyDayPage })));
 const LearningCareerPage = lazy(() => pageLoaders.LearningCareerPage().then((m) => ({ default: m.LearningCareerPage })));
 const GoalsHabitsPage = lazy(() => pageLoaders.GoalsHabitsPage().then((m) => ({ default: m.GoalsHabitsPage })));
@@ -452,11 +454,14 @@ function HubMain() {
           <KnowledgeMemoryPage
             currentArea={currentArea}
             areas={areas}
+            onNavigate={(tab) => setCurrentTab(tab)}
             onNavigateToTasks={() => setCurrentTab('tasks')}
             onNavigateToCalendar={() => setCurrentTab('calendar')}
             onNavigateToAI={() => setCurrentTab('ai-assistant')}
           />
         );
+      case 'research-feed':
+        return <ResearchIntelligencePage onNavigateToAI={() => setCurrentTab('ai-assistant')} />;
       case 'integrations':
         return <IntegrationsPage />;
       case 'system-health':
