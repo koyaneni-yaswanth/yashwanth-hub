@@ -9,6 +9,7 @@ import { applyWorkspaceRealtime } from './workspaceSync';
 import { WORKSPACE_LOCAL_TABLES, WORKSPACE_TABLE_SPECS } from './workspaceSyncCore';
 import { mergeRemoteTask } from '../../lib/taskModel';
 import { googleDeletedKey, googleStatusKey } from '../../lib/googleTaskSync';
+import { applyM3Realtime, M3_SYNC_TABLES } from './m3CloudStore';
 
 export class RealtimeSyncManager {
   private static channels: any[] = [];
@@ -194,6 +195,17 @@ export class RealtimeSyncManager {
           .channel(`realtime_${table}_channel`)
           .on('postgres_changes', { event: '*', schema: 'public', table }, (payload: any) => {
             applyLifeRealtime(table, payload).catch((err) => console.warn(`[lifeSync] Realtime ${table} failed:`, err));
+          })
+          .subscribe();
+        this.channels.push(channel);
+      }
+
+      // 6. M3 Knowledge Links, Research Bookmarks & Agent Execution Logs
+      for (const table of M3_SYNC_TABLES) {
+        const channel = client
+          .channel(`realtime_${table}_channel`)
+          .on('postgres_changes', { event: '*', schema: 'public', table }, (payload: any) => {
+            applyM3Realtime(table, payload).catch((err) => console.warn(`[m3Sync] Realtime ${table} failed:`, err));
           })
           .subscribe();
         this.channels.push(channel);

@@ -1,6 +1,14 @@
 import { db } from '../../db';
 import { getSupabaseClient } from '../../lib/supabase';
 import { generateId } from '../../lib/utils';
+import {
+  applyM3PayloadToArray,
+  M3_SYNC_TABLES,
+  type M3TableName,
+} from './m3RealtimeCore';
+
+export { M3_SYNC_TABLES, type M3TableName };
+export const M3_CLOUD_UPDATE_EVENT = 'yash_m3_cloud_update';
 
 export type KnowledgeEntityType = 'task' | 'goal' | 'note' | 'project' | 'paper' | 'habit' | 'area';
 
@@ -390,4 +398,32 @@ export async function recordExecutionLog(entry: {
   }
 
   return record;
+}
+
+const M3_SETTING_KEY_BY_TABLE: Record<M3TableName, string> = {
+  knowledge_links: LINKS_SETTING_KEY,
+  research_bookmarks: BOOKMARKS_SETTING_KEY,
+  agent_execution_logs: LOGS_SETTING_KEY,
+};
+
+const M3_MAX_ITEMS_BY_TABLE: Record<M3TableName, number> = {
+  knowledge_links: 250,
+  research_bookmarks: 200,
+  agent_execution_logs: MAX_LOCAL_LOGS,
+};
+
+export async function applyM3Realtime(
+  table: M3TableName,
+  payload: { eventType: string; new?: any; old?: any },
+): Promise<void> {
+  const key = M3_SETTING_KEY_BY_TABLE[table];
+  const maxItems = M3_MAX_ITEMS_BY_TABLE[table];
+  const current = await readSettingArray<any>(key);
+  const next = applyM3PayloadToArray(current, payload, maxItems);
+  if (next !== current) {
+    await writeSettingArray(key, next);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(M3_CLOUD_UPDATE_EVENT, { detail: { table } }));
+    }
+  }
 }

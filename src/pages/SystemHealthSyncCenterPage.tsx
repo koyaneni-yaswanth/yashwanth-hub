@@ -27,7 +27,7 @@ import {
   runLevel1SelfHealingDiagnostics,
   type SelfHealingDiagnosticReport,
 } from '../services/selfHealingService';
-import { loadExecutionLogs, type AgentExecutionLogRecord } from '../services/sync/m3CloudStore';
+import { loadExecutionLogs, M3_CLOUD_UPDATE_EVENT, type AgentExecutionLogRecord } from '../services/sync/m3CloudStore';
 import type { ProviderHealthReport } from '../../api/_lib/aiProviderAdapters';
 import type { DevMonitorReport } from '../../api/_lib/devMonitor';
 import { Badge } from '../components/common/Badge';
@@ -67,6 +67,14 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
 
   useEffect(() => {
     void loadExecutionLogs().then(setExecutionLogs);
+    const onCloudUpdate = (ev: Event) => {
+      const table = (ev as CustomEvent<{ table?: string }>)?.detail?.table;
+      if (!table || table === 'agent_execution_logs') {
+        void loadExecutionLogs().then(setExecutionLogs);
+      }
+    };
+    window.addEventListener(M3_CLOUD_UPDATE_EVENT, onCloudUpdate);
+    return () => window.removeEventListener(M3_CLOUD_UPDATE_EVENT, onCloudUpdate);
   }, []);
 
   // Live Database Queries

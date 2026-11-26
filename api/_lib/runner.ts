@@ -6,6 +6,14 @@ import { google } from 'googleapis';
 import { supabaseServer } from './db.ts';
 import { resolveGeminiModel } from './geminiModels.ts';
 import { GEMINI_AUTO } from './geminiRanking.ts';
+import { fetchResearchIntelligence } from './researchConnectors.ts';
+import { dispatchNotificationToChannels } from './notificationChannels.ts';
+import type { NotificationChannelId } from './channelTypes.ts';
+
+export interface RunnerExecutionOptions {
+  fetchImpl?: typeof fetch;
+  channelEnv?: Record<string, string | undefined>;
+}
 
 export interface AutomationJobInput {
   run_id: string;
@@ -33,7 +41,8 @@ export interface RunnerResult {
  */
 export async function executeAutomationRun(
   job: AutomationJobInput,
-  dbClient: any = supabaseServer
+  dbClient: any = supabaseServer,
+  options: RunnerExecutionOptions = {}
 ): Promise<RunnerResult> {
   const startTime = Date.now();
   const maxRetries = job.max_retries ?? 3;
@@ -55,7 +64,7 @@ export async function executeAutomationRun(
   // 2. Retry loop (0 when driven by durable automation_queue scheduler)
   while (retryCount <= maxRetries) {
     try {
-      const execResult = await dispatchActionHandler(job, dbClient);
+      const execResult = await dispatchActionHandler(job, dbClient, options);
       outputPayload = execResult.output;
       recordsAffected = execResult.recordsAffected || 0;
       runStatus = 'completed';
@@ -123,7 +132,8 @@ export async function executeAutomationRun(
  */
 async function dispatchActionHandler(
   job: AutomationJobInput,
-  dbClient: any = supabaseServer
+  dbClient: any = supabaseServer,
+  options: RunnerExecutionOptions = {}
 ): Promise<{ output: any; recordsAffected: number }> {
   const { action_type, user_id, action_config, input_payload } = job;
   const config = { ...action_config, ...input_payload };
@@ -143,11 +153,20 @@ async function dispatchActionHandler(
     case 'morning_briefing':
     case 'ai_briefing':
     case 'custom_agent': {
-      return await executeAIGatewayAction(user_id, config, dbClient);
+      return await executeAIGatewayAction(user_id, config, dbClient, options);
     }
 
     case 'task_deadline_scan': {
-      return await executeTaskDeadlineScanAction(user_id, config, dbClient);
+      return await executeTaskDeadlineScanAction(user_id, config, dbClient, options);
+    }
+
+    case 'research_digest':
+    case 'research_watchdog': {
+      return await executeResearchDigestAction(user_id, config, dbClient, options);
+    }
+
+    case 'self_healing_audit': {
+      return await executeSelfHealingAuditAction(user_id, config, dbClient, options);
     }
 
     case 'isolated_scheduled_check':
@@ -373,13 +392,42 @@ async function executeNeoSapienMcpAction(
   };
 }
 
+async function maybePushToConfiguredChannel(
+  config: any,
+  title: string,
+  message: string,
+  severity: 'info' | 'warning' | 'urgent',
+  options: RunnerExecutionOptions = {}
+) {
+  const rawChannel = String(config?.notify_channel || '').trim().toLowerCase();
+  if (!rawChannel || rawChannel === 'none') return undefined;
+  const channel: NotificationChannelId | 'all' =
+    rawChannel === 'telegram' || rawChannel === 'discord' || rawChannel === 'webhook'
+      ? rawChannel
+      : 'all';
+  return await dispatchNotificationToChannels(
+    {
+      channel,
+      title,
+      message,
+      severity,
+      webhookUrl: typeof config?.webhook_url === 'string' ? config.webhook_url : undefined,
+    },
+    {
+      env: options.channelEnv ?? process.env,
+      fetchImpl: options.fetchImpl ?? fetch,
+    }
+  );
+}
+
 /**
  * 3. AI GATEWAY (Morning Briefing & Executive Synthesis)
  */
 async function executeAIGatewayAction(
   userId: string,
   config: any,
-  dbClient: any = supabaseServer
+  dbClient: any = supabaseServer,
+  options: RunnerExecutionOptions = {}
 ) {
   const now = new Date();
   const todayStr = now.toISOString().split('T')[0];
@@ -443,12 +491,21 @@ Format as crisp bullet points with clear next actions.`;
     created_at: now.toISOString(),
   });
 
+  const channelResults = await maybePushToConfiguredChannel(
+    config,
+    `Executive Morning Briefing — ${todayStr}`,
+    aiSummary,
+    urgentTasks.length > 0 ? 'warning' : 'info',
+    options
+  );
+
   return {
     output: {
       date: todayStr,
       briefingSummary: aiSummary,
       tasksAnalyzed: tasks.length,
       meetingsCount: meetings.length,
+      channelResults,
     },
     recordsAffected: 1,
   };
@@ -460,7 +517,8 @@ Format as crisp bullet points with clear next actions.`;
 async function executeTaskDeadlineScanAction(
   userId: string,
   config: any,
-  dbClient: any = supabaseServer
+  dbClient: any = supabaseServer,
+  options: RunnerExecutionOptions = {}
 ) {
   const leadMinutes = config.lead_time_minutes || 45;
   const now = new Date();
@@ -512,14 +570,183 @@ async function executeTaskDeadlineScanAction(
     }
   }
 
+  const channelResults =
+    alertsCreated > 0
+      ? await maybePushToConfiguredChannel(
+          config,
+          `Deadline & Meeting Alert (${alertsCreated})`,
+          `${overdueTasks.length} overdue tasks and ${meetings.length} scheduled meetings scanned.`,
+          overdueTasks.length > 0 ? 'warning' : 'info',
+          options
+        )
+      : undefined;
+
   return {
     output: {
       tasksScanned: tasks.length,
       overdueTasksCount: overdueTasks.length,
       meetingsScanned: meetings.length,
       alertsCreated,
+      channelResults,
       scannedAt: now.toISOString(),
     },
     recordsAffected: alertsCreated,
+  };
+}
+
+/**
+ * 5. AUTONOMOUS RESEARCH INTELLIGENCE DIGEST (arXiv + OpenAlex + Crossref -> Bookmarks + Alerts)
+ */
+async function executeResearchDigestAction(
+  userId: string,
+  config: any,
+  dbClient: any = supabaseServer,
+  options: RunnerExecutionOptions = {}
+) {
+  const query = String(config?.query || 'archimedes wind turbine OR robotic manipulator');
+  const limit = Math.min(8, Math.max(1, Number(config?.max_bookmarks || 3)));
+  const feed = await fetchResearchIntelligence(query, options.fetchImpl ?? fetch);
+  const topPapers = feed.papers.slice(0, limit);
+  const nowIso = new Date().toISOString();
+
+  for (const paper of topPapers) {
+    const stableId = `${paper.source}:${paper.id}`
+      .toLowerCase()
+      .replace(/[^a-z0-9:._-]/g, '_')
+      .slice(0, 120);
+    const yearMatch = paper.publishedDate ? /^(\d{4})/.exec(paper.publishedDate) : null;
+
+    await dbClient.from('research_bookmarks').upsert({
+      id: stableId,
+      user_id: userId,
+      source: paper.source,
+      external_id: paper.id,
+      title: paper.title,
+      authors: paper.authors,
+      year: yearMatch ? Number(yearMatch[1]) : null,
+      url: paper.url || '',
+      summary: paper.summary || '',
+      topic: String(config?.topic || query),
+      tags: paper.matchedKeywords.slice(0, 5),
+      saved_at: nowIso,
+      updated_at: nowIso,
+    });
+  }
+
+  const summary =
+    topPapers.length > 0
+      ? `Ingested ${topPapers.length} top papers for "${query}":\n` +
+        topPapers.map((p, idx) => `${idx + 1}. [${p.source.toUpperCase()}] ${p.title}`).join('\n')
+      : `Scanned arXiv/OpenAlex/Crossref for "${query}"; 0 matching papers returned.`;
+
+  await dbClient.from('notifications').insert({
+    user_id: userId,
+    title: `Research Watchdog: ${topPapers.length} papers bookmarked`,
+    message: summary.slice(0, 280),
+    type: 'ai',
+    priority: 'low',
+    action_link: 'research-feed',
+    created_at: nowIso,
+  });
+
+  const channelResults =
+    topPapers.length > 0
+      ? await maybePushToConfiguredChannel(
+          config,
+          `Research Digest: ${query}`,
+          summary,
+          'info',
+          options
+        )
+      : undefined;
+
+  await dbClient.from('agent_execution_logs').insert({
+    id: `rwd_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    user_id: userId,
+    action_type: 'research_digest',
+    permission_level: 1,
+    status: 'executed',
+    summary: `Bookmarked ${topPapers.length} research papers for "${query}".`,
+    channel: String(config?.notify_channel || 'research'),
+    details: { query, count: topPapers.length, sourceStatus: feed.sourceStatus, channelResults },
+    created_at: nowIso,
+    updated_at: nowIso,
+  });
+
+  return {
+    output: {
+      query,
+      bookmarkedCount: topPapers.length,
+      papers: topPapers.map((p) => ({ id: p.id, title: p.title, source: p.source })),
+      channelResults,
+    },
+    recordsAffected: topPapers.length,
+  };
+}
+
+/**
+ * 6. LEVEL-1 SERVER SELF-HEALING AUDIT
+ */
+async function executeSelfHealingAuditAction(
+  userId: string,
+  config: any,
+  dbClient: any = supabaseServer,
+  options: RunnerExecutionOptions = {}
+) {
+  const nowIso = new Date().toISOString();
+  const todayStr = nowIso.split('T')[0];
+
+  const [tasksRes, runsRes] = await Promise.all([
+    dbClient.from('tasks').select('*').eq('user_id', userId).eq('done', false),
+    dbClient.from('automation_runs').select('*').eq('user_id', userId).eq('status', 'failed').limit(10),
+  ]);
+
+  const openTasks = tasksRes.data || [];
+  const overdueTasks = openTasks.filter((t: any) => t.due_date && t.due_date < todayStr);
+  const failedRuns = runsRes.data || [];
+
+  const summary = `Self-healing audit: ${overdueTasks.length} overdue tasks, ${failedRuns.length} failed automation runs.`;
+  let channelResults: any;
+
+  if (overdueTasks.length > 0 || failedRuns.length > 0) {
+    await dbClient.from('notifications').insert({
+      user_id: userId,
+      title: 'System Health & Self-Healing Notice',
+      message: summary,
+      type: 'system',
+      priority: 'high',
+      action_link: 'system-health',
+      created_at: nowIso,
+    });
+    channelResults = await maybePushToConfiguredChannel(
+      config,
+      'Self-Healing System Audit Notice',
+      summary,
+      'warning',
+      options
+    );
+  }
+
+  await dbClient.from('agent_execution_logs').insert({
+    id: `sha_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    user_id: userId,
+    action_type: 'self_healing_audit',
+    permission_level: 1,
+    status: 'executed',
+    summary,
+    channel: String(config?.notify_channel || 'diagnostics'),
+    details: { overdueCount: overdueTasks.length, failedRunsCount: failedRuns.length, channelResults },
+    created_at: nowIso,
+    updated_at: nowIso,
+  });
+
+  return {
+    output: {
+      overdueCount: overdueTasks.length,
+      failedRunsCount: failedRuns.length,
+      summary,
+      channelResults,
+    },
+    recordsAffected: overdueTasks.length + failedRuns.length,
   };
 }

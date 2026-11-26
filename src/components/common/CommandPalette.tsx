@@ -159,6 +159,18 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       icon: Sun,
       category: 'Quick Actions',
     },
+    {
+      label: 'System Health & Self-Healing Policy (Level 1 / 2 / 3)',
+      action: () => onNavigate('system-health'),
+      icon: Activity,
+      category: 'Quick Actions',
+    },
+    {
+      label: 'Open Knowledge Graph & Entity Links',
+      action: () => onNavigate('knowledge-memory'),
+      icon: Brain,
+      category: 'Quick Actions',
+    },
     ...areas.map((a) => ({
       label: `Switch Workspace Area: ${a.name}`,
       action: () => onSelectArea(a.name),

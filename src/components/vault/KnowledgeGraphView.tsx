@@ -12,6 +12,7 @@ import {
   deleteKnowledgeLink,
   loadKnowledgeLinks,
   loadResearchBookmarks,
+  M3_CLOUD_UPDATE_EVENT,
   type KnowledgeEntityType,
   type KnowledgeLinkRecord,
   type ResearchBookmarkRecord,
@@ -57,8 +58,13 @@ export const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({ onNaviga
   const [isSavingLink, setIsSavingLink] = useState(false);
 
   useEffect(() => {
-    void loadKnowledgeLinks().then(setCustomLinks);
-    void loadResearchBookmarks().then(setResearchBookmarks);
+    const refresh = () => {
+      void loadKnowledgeLinks().then(setCustomLinks);
+      void loadResearchBookmarks().then(setResearchBookmarks);
+    };
+    refresh();
+    window.addEventListener(M3_CLOUD_UPDATE_EVENT, refresh);
+    return () => window.removeEventListener(M3_CLOUD_UPDATE_EVENT, refresh);
   }, []);
 
   const projects = useLiveQuery(() => db.projects.toArray(), []) || [];

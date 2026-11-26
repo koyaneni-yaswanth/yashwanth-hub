@@ -36,9 +36,12 @@ import type {
 import { generateId } from '../lib/utils';
 import { SUPPORTED_MODELS, normaliseModelId } from '../services/ai/aiModels';
 import { AIGateway } from '../services/ai/aiGateway';
-import { buildExecutiveDailyBriefing } from '../services/ai/executiveBriefing';
+import { buildExecutiveDailyBriefing, type ExecutiveBriefingReport } from '../services/ai/executiveBriefing';
 import type { ProviderHealthReport } from '../../api/_lib/aiProviderAdapters';
 import { beginAiThinking, endAiThinking } from '../lib/aiActivity';
+import { getSupabaseClient } from '../lib/supabase';
+import { toast } from '../lib/toast';
+import { guardActionExecution } from '../services/selfHealingService';
 import { Badge } from '../components/common/Badge';
 import type { AIToolSpec } from '../../api/_lib/aiTools';
 
@@ -106,6 +109,9 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
   const [recommendedProviderNote, setRecommendedProviderNote] = useState<string>('');
   const [isCheckingProviders, setIsCheckingProviders] = useState(false);
   const [isGeneratingBriefing, setIsGeneratingBriefing] = useState(false);
+  const [lastBriefing, setLastBriefing] = useState<ExecutiveBriefingReport | null>(null);
+  const [briefingChannel, setBriefingChannel] = useState<'webhook' | 'telegram' | 'discord' | 'all'>('webhook');
+  const [isDispatchingBriefing, setIsDispatchingBriefing] = useState(false);
   const [selectedMode, setSelectedMode] = useState<AIMode>('personal');
   const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
     return localStorage.getItem('yash_ai_project_scope') || '';
@@ -376,9 +382,59 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
       };
       const nextMsgs = [...messages, userMsg, assistantMsg];
       setMessages(nextMsgs);
+      setLastBriefing(briefing);
       await persistMessages(nextMsgs, convId, `Daily Briefing — ${briefing.dateISO}`, 0, 0);
     } finally {
       setIsGeneratingBriefing(false);
+    }
+  };
+
+  const handleDispatchBriefing = async () => {
+    if (!lastBriefing || isDispatchingBriefing) return;
+    setIsDispatchingBriefing(true);
+    try {
+      await guardActionExecution({
+        actionType: `notify_${briefingChannel}`,
+        summary: `Dispatched Executive Daily Briefing (${lastBriefing.dateISO}) via ${briefingChannel}`,
+        approvedByHuman: true,
+        channel: briefingChannel,
+      });
+
+      const supa = getSupabaseClient();
+      const token = supa ? (await supa.auth.getSession()).data?.session?.access_token : undefined;
+      if (!token) {
+        toast('Sign in to Supabase Cloud Sync first to push briefings to external channels.', 'info');
+        return;
+      }
+
+      const webhookUrl =
+        typeof localStorage !== 'undefined' ? localStorage.getItem('yash_custom_n8n_webhook') || undefined : undefined;
+
+      const resp = await fetch('/api/automations/dispatch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          action: 'notify',
+          channel: briefingChannel,
+          title: `Executive Daily Briefing — ${lastBriefing.dateISO}`,
+          message: lastBriefing.summaryMarkdown,
+          severity: lastBriefing.verifiedCounts.overdueTasks > 0 ? 'warning' : 'info',
+          webhookUrl,
+        }),
+      });
+      const body = await resp.json().catch(() => ({}));
+      const sent = Array.isArray(body?.results) && body.results.some((r: any) => r.ok);
+      toast(
+        sent
+          ? `Briefing pushed to ${briefingChannel}`
+          : body?.results?.[0]?.error || body?.error || 'Channel not configured or dispatch skipped.',
+        sent ? 'success' : 'info'
+      );
+    } finally {
+      setIsDispatchingBriefing(false);
     }
   };
 
@@ -483,6 +539,43 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
       </div>
 
       {/* Collapsible Advanced Controls Drawer (Hidden by default for simplicity) */}
+      {lastBriefing && (
+        <div className="rounded-xl bg-[var(--hub-surface)] border border-[var(--hub-accent)]/35 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="min-w-0">
+            <span className="font-semibold text-[var(--hub-ink)]">Briefing Ready ({lastBriefing.dateISO}):</span>{' '}
+            <span className="text-[var(--hub-muted)]">{lastBriefing.headline}</span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <select
+              aria-label="Briefing push channel"
+              value={briefingChannel}
+              onChange={(e) => setBriefingChannel(e.target.value as any)}
+              className="px-2 py-1 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs text-[var(--hub-ink)]"
+            >
+              <option value="webhook">Webhook / n8n</option>
+              <option value="telegram">Telegram</option>
+              <option value="discord">Discord</option>
+              <option value="all">All Channels</option>
+            </select>
+            <button
+              type="button"
+              onClick={handleDispatchBriefing}
+              disabled={isDispatchingBriefing}
+              className="px-3 py-1 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] font-semibold cursor-pointer disabled:opacity-50"
+            >
+              {isDispatchingBriefing ? 'Sending...' : 'Push Briefing (L2)'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setLastBriefing(null)}
+              aria-label="Dismiss briefing dispatch bar"
+              className="text-[var(--hub-muted)] hover:text-[var(--hub-ink)] cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
       {isOptionsOpen && (
         <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-3.5 space-y-3 shadow-xs">
           <div className="flex flex-wrap items-center justify-between gap-2">

@@ -52,6 +52,8 @@ export const AutomationsPage: React.FC = () => {
   const [newName, setNewName] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [newActionType, setNewActionType] = useState('task_deadline_scan');
+  const [newResearchQuery, setNewResearchQuery] = useState('archimedes wind turbine OR robotic manipulator');
+  const [newNotifyChannel, setNewNotifyChannel] = useState<string>('');
   const [newTriggerType, setNewTriggerType] = useState<'cron' | 'one_time'>('cron');
   const [newCronExpr, setNewCronExpr] = useState('0 7 * * *');
   const [newScheduledFor, setNewScheduledFor] = useState('');
@@ -151,6 +153,14 @@ export const AutomationsPage: React.FC = () => {
     setIsCreating(true);
     setActionMessage(null);
     try {
+      const actionConfig: Record<string, any> = {};
+      if (newActionType === 'research_digest' && newResearchQuery.trim()) {
+        actionConfig.query = newResearchQuery.trim();
+      }
+      if (newNotifyChannel) {
+        actionConfig.notify_channel = newNotifyChannel;
+      }
+
       const res = await AutomationService.createSchedule({
         name: newName.trim(),
         description: newDescription.trim(),
@@ -163,6 +173,7 @@ export const AutomationsPage: React.FC = () => {
             : undefined,
         timezone: 'Asia/Kolkata',
         requires_approval: newRequiresApproval,
+        action_config: actionConfig,
       });
 
       if (res.success) {
@@ -170,6 +181,7 @@ export const AutomationsPage: React.FC = () => {
         setNewName('');
         setNewDescription('');
         setNewScheduledFor('');
+        setNewNotifyChannel('');
         setActionMessage(`Schedule "${res.automation?.name}" created on server.`);
         await loadData();
       } else {
@@ -263,6 +275,57 @@ export const AutomationsPage: React.FC = () => {
           <button onClick={() => setActionMessage(null)} className="text-xs hover:underline cursor-pointer">
             Dismiss
           </button>
+        </div>
+      )}
+
+      {/* Quick Pipeline Templates */}
+      {configured && authenticated && (
+        <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-xs">
+            <span className="font-bold text-[var(--hub-ink)]">1-Click Pipeline Presets:</span>{' '}
+            <span className="text-[var(--hub-muted)]">Pre-fill research watchdogs, daily executive briefings, or self-healing audits.</span>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs">
+            {[
+              {
+                label: 'Research Watchdog',
+                name: 'Daily Research Watchdog (arXiv + OpenAlex)',
+                desc: 'Monitors wind turbine & robotics literature and saves top bookmarks.',
+                actionType: 'research_digest',
+                cron: '30 7 * * *',
+              },
+              {
+                label: 'Morning Briefing',
+                name: 'Daily 7 AM Executive Briefing',
+                desc: 'Synthesizes tasks, meetings & blockers with optional channel push.',
+                actionType: 'morning_briefing',
+                cron: '0 7 * * *',
+              },
+              {
+                label: 'Self-Healing Audit',
+                name: 'Level-1 System & Deadline Audit',
+                desc: 'Checks overdue tasks & failed runs cleanly.',
+                actionType: 'self_healing_audit',
+                cron: '0 */4 * * *',
+              },
+            ].map((tpl) => (
+              <button
+                key={tpl.label}
+                type="button"
+                onClick={() => {
+                  setNewName(tpl.name);
+                  setNewDescription(tpl.desc);
+                  setNewActionType(tpl.actionType);
+                  setNewTriggerType('cron');
+                  setNewCronExpr(tpl.cron);
+                  setIsCreateOpen(true);
+                }}
+                className="px-2.5 py-1 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer font-medium"
+              >
+                + {tpl.label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -617,6 +680,8 @@ export const AutomationsPage: React.FC = () => {
                 >
                   <option value="task_deadline_scan">Task & Meeting Deadline Scan</option>
                   <option value="morning_briefing">AI Executive Briefing</option>
+                  <option value="research_digest">Research Watchdog (arXiv / OpenAlex / Crossref)</option>
+                  <option value="self_healing_audit">Self-Healing System Audit (Level 1)</option>
                   <option value="neosapien_mcp">NeoSapien Wearable MCP Sync</option>
                   <option value="google_calendar">Google Calendar Sync</option>
                   <option value="google_gmail">Google Gmail Scan</option>
@@ -635,6 +700,34 @@ export const AutomationsPage: React.FC = () => {
                   <option value="one_time">One-Time Scheduled Run</option>
                 </select>
               </div>
+            </div>
+
+            {newActionType === 'research_digest' && (
+              <div>
+                <label className="block font-bold text-[var(--hub-ink)] mb-1">Research Watchdog Query</label>
+                <input
+                  type="text"
+                  value={newResearchQuery}
+                  onChange={(e) => setNewResearchQuery(e.target.value)}
+                  placeholder="e.g., archimedes wind turbine OR robotic manipulator"
+                  className="w-full px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)]"
+                />
+              </div>
+            )}
+
+            <div>
+              <label className="block font-bold text-[var(--hub-ink)] mb-1">Optional Alert Channel Push (Server Env Required)</label>
+              <select
+                value={newNotifyChannel}
+                onChange={(e) => setNewNotifyChannel(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)]"
+              >
+                <option value="">In-App Notification Only</option>
+                <option value="webhook">n8n / Zapier / Make Webhook</option>
+                <option value="telegram">Telegram Bot</option>
+                <option value="discord">Discord Webhook</option>
+                <option value="all">All Configured Channels</option>
+              </select>
             </div>
 
             {newTriggerType === 'cron' ? (

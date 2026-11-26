@@ -22,6 +22,7 @@ import { generateId } from '../lib/utils';
 import { SyncQueueService } from '../services/sync/syncQueueService';
 import {
   loadResearchBookmarks,
+  M3_CLOUD_UPDATE_EVENT,
   removeResearchBookmark,
   saveResearchBookmark,
   type ResearchBookmarkRecord,
@@ -91,6 +92,14 @@ export const ResearchIntelligencePage: React.FC<ResearchIntelligencePageProps> =
   useEffect(() => {
     loadFeed(DEFAULT_RESEARCH_TOPICS[0].query);
     void loadResearchBookmarks().then(setBookmarks);
+    const onCloudUpdate = (ev: Event) => {
+      const table = (ev as CustomEvent<{ table?: string }>)?.detail?.table;
+      if (!table || table === 'research_bookmarks') {
+        void loadResearchBookmarks().then(setBookmarks);
+      }
+    };
+    window.addEventListener(M3_CLOUD_UPDATE_EVENT, onCloudUpdate);
+    return () => window.removeEventListener(M3_CLOUD_UPDATE_EVENT, onCloudUpdate);
   }, [loadFeed]);
 
   const handleToggleBookmark = async (paper: ResearchPaperItem) => {
