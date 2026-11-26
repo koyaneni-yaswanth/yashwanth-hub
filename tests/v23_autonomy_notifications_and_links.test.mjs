@@ -277,6 +277,8 @@ test('M3: Self-healing permission matrix & deduplicated Level-1 diagnostic scan'
 test('M3: Knowledge graph renders saved research bookmarks & user-created knowledge links', () => {
   const graph = buildKnowledgeGraph({
     projects: [{ id: 'p_wind', title: 'Pawan Shakti V3', area: 'PAWAN SHAKTI' }],
+    robotics: [{ id: 'r_piper', title: 'PiPER Arm Control', project: 'IvLabs', status: 'active' }],
+    documents: [{ id: 'doc_spec', title: 'Rotor Spec PDF', file_name: 'rotor.pdf', area: 'PAWAN SHAKTI' }],
     researchBookmarks: [
       {
         id: 'arxiv:2501.001',
@@ -296,15 +298,26 @@ test('M3: Knowledge graph renders saved research bookmarks & user-created knowle
         target_id: 'p_wind',
         relation: 'researched_by',
       },
+      {
+        id: 'link_2',
+        source_type: 'robotics',
+        source_id: 'r_piper',
+        target_type: 'document',
+        target_id: 'doc_spec',
+        relation: 'supports',
+      },
     ],
   });
 
   assert.equal(graph.stats.byKind.paper, 1);
-  assert.equal(graph.stats.userEdges, 1);
-  const edge = graph.edges.find((e) => e.kind === 'user_link');
+  assert.equal(graph.stats.userEdges, 2);
+  const edge = graph.edges.find((e) => e.customLinkId === 'link_1');
   assert.ok(edge);
   assert.equal(edge.label, 'researched_by');
   assert.equal(edge.customLinkId, 'link_1');
+  const roboEdge = graph.edges.find((e) => e.customLinkId === 'link_2');
+  assert.ok(roboEdge);
+  assert.equal(roboEdge.label, 'supports');
 });
 
 test('M3: Vercel serverless endpoint count remains <= 12', () => {

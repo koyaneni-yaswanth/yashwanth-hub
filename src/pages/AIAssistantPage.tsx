@@ -441,7 +441,7 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
   const handleBenchmarkProviders = async () => {
     setIsCheckingProviders(true);
     try {
-      const report = await AIGateway.healthCheck();
+      const report = await AIGateway.healthCheck({ includeLocalOllama: true });
       setHealthReports(report.providers);
       setRecommendedProviderNote(report.recommended.reason);
     } finally {

@@ -434,6 +434,7 @@ export const ResearchIntelligencePage: React.FC<ResearchIntelligencePageProps> =
                   <button
                     type="button"
                     onClick={() => handleToggleBookmark(paper)}
+                    aria-label="Toggle paper bookmark"
                     className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer"
                   >
                     <Bookmark

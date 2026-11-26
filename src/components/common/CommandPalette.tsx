@@ -230,6 +230,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           <Search className="w-5 h-5 text-[var(--hub-muted)] flex-none" />
           <input
             ref={inputRef}
+            autoFocus
             type="text"
             value={query}
             onChange={(e) => {

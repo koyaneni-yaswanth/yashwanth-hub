@@ -201,7 +201,9 @@ export class AIGateway {
    * Unified gateway contract: AIProvider.healthCheck()
    * Checks real server provider latency & model discovery, plus local browser Ollama if running on localhost.
    */
-  public static async healthCheck(): Promise<{
+  public static async healthCheck(
+    options: { includeLocalOllama?: boolean } = {}
+  ): Promise<{
     providers: ProviderHealthReport[];
     recommended: { provider: string; reason: string };
     checkedAt: string;
@@ -225,8 +227,16 @@ export class AIGateway {
       // Static vite preview without /api falls through gracefully
     }
 
-    // Check browser-local Ollama when running on localhost/desktop (never probes remote user IPs)
-    if (typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname)) {
+    const ollamaOptedIn =
+      options.includeLocalOllama === true ||
+      (typeof localStorage !== 'undefined' && localStorage.getItem('yash_enable_local_ollama') === '1');
+
+    // Check browser-local Ollama only when opted in or explicitly benchmarked on localhost
+    if (
+      ollamaOptedIn &&
+      typeof window !== 'undefined' &&
+      /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname)
+    ) {
       const t0 = performance.now();
       try {
         const localRes = await fetch('http://127.0.0.1:11434/api/tags', { signal: AbortSignal.timeout(1200) });

@@ -37,10 +37,7 @@ const KIND_COLOR: Record<KnowledgeNodeKind, string> = {
 const RELATION_OPTIONS = ['related_to', 'depends_on', 'supports', 'researched_by', 'milestone_for'];
 
 function mapNodeKindToEntityType(kind: KnowledgeNodeKind): KnowledgeEntityType {
-  if (kind === 'project' || kind === 'task' || kind === 'note' || kind === 'goal' || kind === 'habit' || kind === 'paper') {
-    return kind;
-  }
-  return 'note';
+  return kind;
 }
 
 interface KnowledgeGraphViewProps {
@@ -149,7 +146,12 @@ export const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({ onNaviga
         const peer = graph.nodes.find((n) => n.id === peerId);
         return peer ? { edge: e, peer } : null;
       })
-      .filter((x): x is { edge: typeof graph.edges[number]; peer: KnowledgeGraphNode } => x !== null);
+      .filter((x): x is { edge: typeof graph.edges[number]; peer: KnowledgeGraphNode } => x !== null)
+      .sort((a, b) => {
+        if (a.edge.kind === 'user_link' && b.edge.kind !== 'user_link') return -1;
+        if (a.edge.kind !== 'user_link' && b.edge.kind === 'user_link') return 1;
+        return 0;
+      });
   }, [graph, selectedNode]);
 
   // Radial preview coordinates for up to 12 neighbors around the selected hub node
@@ -336,6 +338,7 @@ export const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({ onNaviga
                       type="button"
                       disabled={isSavingLink}
                       onClick={handleAddCustomLink}
+                      aria-label="Create custom knowledge link"
                       className="inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer disabled:opacity-50 shrink-0"
                     >
                       <Plus className="w-3.5 h-3.5" />

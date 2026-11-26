@@ -10,7 +10,17 @@ import {
 export { M3_SYNC_TABLES, type M3TableName };
 export const M3_CLOUD_UPDATE_EVENT = 'yash_m3_cloud_update';
 
-export type KnowledgeEntityType = 'task' | 'goal' | 'note' | 'project' | 'paper' | 'habit' | 'area';
+export type KnowledgeEntityType =
+  | 'project'
+  | 'task'
+  | 'note'
+  | 'document'
+  | 'robotics'
+  | 'goal'
+  | 'habit'
+  | 'meeting'
+  | 'neo_memory'
+  | 'paper';
 
 export interface KnowledgeLinkRecord {
   id: string;
