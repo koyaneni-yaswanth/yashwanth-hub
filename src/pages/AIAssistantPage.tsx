@@ -36,6 +36,7 @@ import type {
 import { generateId } from '../lib/utils';
 import { SUPPORTED_MODELS, normaliseModelId } from '../services/ai/aiModels';
 import { AIGateway } from '../services/ai/aiGateway';
+import type { ProviderHealthReport } from '../../api/_lib/aiProviderAdapters';
 import { beginAiThinking, endAiThinking } from '../lib/aiActivity';
 import { Badge } from '../components/common/Badge';
 import type { AIToolSpec } from '../../api/_lib/aiTools';
@@ -95,11 +96,14 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
 
   const [selectedAgent, setSelectedAgent] = useState<ModularAgent>('orchestrator');
   const [selectedProvider, setSelectedProvider] = useState<AIProvider>(() => {
-    return (localStorage.getItem('yash_ai_provider') as AIProvider) || 'gemini';
+    return (localStorage.getItem('yash_ai_provider') as AIProvider) || 'auto';
   });
   const [selectedModelId, setSelectedModelId] = useState<string>(() => {
     return normaliseModelId(localStorage.getItem('yash_ai_model'));
   });
+  const [healthReports, setHealthReports] = useState<ProviderHealthReport[]>([]);
+  const [recommendedProviderNote, setRecommendedProviderNote] = useState<string>('');
+  const [isCheckingProviders, setIsCheckingProviders] = useState(false);
   const [selectedMode, setSelectedMode] = useState<AIMode>('personal');
   const [selectedProjectId, setSelectedProjectId] = useState<string>(() => {
     return localStorage.getItem('yash_ai_project_scope') || '';
@@ -335,13 +339,24 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
     await sendPromptText(inputMessage);
   };
 
+  const handleBenchmarkProviders = async () => {
+    setIsCheckingProviders(true);
+    try {
+      const report = await AIGateway.healthCheck();
+      setHealthReports(report.providers);
+      setRecommendedProviderNote(report.recommended.reason);
+    } finally {
+      setIsCheckingProviders(false);
+    }
+  };
+
   const handleRunComparison = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!comparePrompt.trim() || isComparing) return;
     setIsComparing(true);
     setComparisonResults([]);
     try {
-      const modelsToCompare = ['gemini-auto', 'gpt-4o-mini', 'claude-haiku-5-5'];
+      const modelsToCompare = ['gemini-auto', 'openrouter/auto', 'gpt-4o-mini', 'claude-haiku-5-5'];
       const results = await AIGateway.compareModels(comparePrompt.trim(), modelsToCompare);
       setComparisonResults(results);
     } finally {
@@ -562,20 +577,31 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
         </div>
       )}
 
-      {/* Provider Config Drawer */}
+      {/* Provider Config Drawer + Live Speed & Health Check */}
       {isConfigOpen && (
-        <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-4 space-y-3 shadow-xs text-xs">
-          <div className="flex items-center justify-between">
+        <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-4 space-y-4 shadow-xs text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="font-bold text-[var(--hub-ink)]">
-              Model Routing (Keys managed on Vercel server; local overrides live in Settings → AI)
+              Unified AI Provider Router (Server-Managed Env Keys + Browser Local Ollama)
             </span>
-            <button onClick={() => setIsConfigOpen(false)} className="text-[var(--hub-muted)] cursor-pointer">
-              Close
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleBenchmarkProviders}
+                disabled={isCheckingProviders}
+                className="px-3 py-1 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer disabled:opacity-50"
+              >
+                {isCheckingProviders ? 'Checking Latency...' : 'Check All Providers'}
+              </button>
+              <button onClick={() => setIsConfigOpen(false)} className="text-[var(--hub-muted)] cursor-pointer">
+                Close
+              </button>
+            </div>
           </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="block font-semibold text-[var(--hub-muted)] mb-1">Preferred Provider</label>
+              <label className="block font-semibold text-[var(--hub-muted)] mb-1">Routing Mode / Provider</label>
               <select
                 value={selectedProvider}
                 onChange={(e) => {
@@ -585,9 +611,13 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
                 }}
                 className="w-full px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)]"
               >
-                <option value="gemini">Google Gemini (Server GEMINI_API_KEY: {configuredProviders.gemini ? 'Set' : 'Unset'})</option>
-                <option value="openai">OpenAI (Server OPENAI_API_KEY: {configuredProviders.openai ? 'Set' : 'Unset'})</option>
-                <option value="anthropic">Anthropic Claude (Server ANTHROPIC_API_KEY: {configuredProviders.anthropic ? 'Set' : 'Unset'})</option>
+                <option value="auto">Smart Auto — Fastest Healthy Configured AI (Failover Enabled)</option>
+                <option value="gemini">Google Gemini ({configuredProviders.gemini ? 'Active' : 'Needs GEMINI_API_KEY'})</option>
+                <option value="openrouter">OpenRouter Multi-Model ({configuredProviders.openrouter ? 'Active' : 'Needs OPENROUTER_API_KEY'})</option>
+                <option value="openai">OpenAI ({configuredProviders.openai ? 'Active' : 'Needs OPENAI_API_KEY'})</option>
+                <option value="anthropic">Anthropic Claude ({configuredProviders.anthropic ? 'Active' : 'Needs ANTHROPIC_API_KEY'})</option>
+                <option value="huggingface">Hugging Face Router ({configuredProviders.huggingface ? 'Active' : 'Needs HF_TOKEN'})</option>
+                <option value="ollama">Ollama Local ({configuredProviders.ollama ? 'Server URL Set' : 'localhost:11434'})</option>
                 <option value="local_heuristic">Grounded Deterministic Only (Offline / Zero Cost)</option>
               </select>
             </div>
@@ -609,6 +639,47 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
               </select>
             </div>
           </div>
+
+          {recommendedProviderNote && (
+            <div className="p-2.5 rounded-lg bg-teal-500/10 border border-teal-500/25 text-[var(--hub-ink)]">
+              <span className="font-semibold text-teal-600 dark:text-teal-300">Fastest verified route: </span>
+              {recommendedProviderNote}
+            </div>
+          )}
+
+          {healthReports.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+              {healthReports.map((rep) => (
+                <div
+                  key={rep.id}
+                  className="p-2.5 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] space-y-1"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-[var(--hub-ink)]">{rep.name}</span>
+                    <Badge
+                      variant={
+                        rep.status === 'connected'
+                          ? 'emerald'
+                          : rep.status === 'degraded'
+                          ? 'amber'
+                          : 'gray'
+                      }
+                    >
+                      {rep.status === 'connected'
+                        ? `${rep.latencyMs ?? '?'} ms`
+                        : rep.status.replace('_', ' ')}
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] text-[var(--hub-muted)] leading-snug">{rep.note}</p>
+                  <div className="flex flex-wrap gap-1 pt-0.5 text-[10px] font-mono text-[var(--hub-muted)]">
+                    {rep.capabilities.tools && <span className="px-1.5 py-0.5 rounded bg-[var(--hub-surface)] border border-[var(--hub-line)]">Tools</span>}
+                    {rep.capabilities.embeddings && <span className="px-1.5 py-0.5 rounded bg-[var(--hub-surface)] border border-[var(--hub-line)]">Embed</span>}
+                    {rep.capabilities.localPrivate && <span className="px-1.5 py-0.5 rounded bg-[var(--hub-surface)] border border-[var(--hub-line)]">Local</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

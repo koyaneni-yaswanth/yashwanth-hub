@@ -13,6 +13,7 @@ import { db } from '../../db';
 import { generateId, getTodayISO } from '../../lib/utils';
 import { SUPPORTED_MODELS, getRecommendedModel, normaliseModelId } from './aiModels';
 import { chooseGeminiModels } from '../../../api/_lib/geminiRanking';
+import type { ProviderCapabilities, ProviderHealthReport } from '../../../api/_lib/aiProviderAdapters';
 import { NeoSapienMemoryService } from '../neoSapienMemoryService';
 import { SupabaseAuthService } from '../auth/supabaseAuthService';
 import { SyncQueueService } from '../sync/syncQueueService';
@@ -78,7 +79,9 @@ export class AIGateway {
         ? privacy.allowOpenAIAccess
         : provider === 'anthropic'
         ? privacy.allowClaudeAccess
-        : true;
+        : provider === 'local_heuristic' || provider === 'ollama'
+        ? true
+        : privacy.allowGeminiAccess && privacy.allowOpenAIAccess && privacy.allowClaudeAccess;
 
     const [tasks, projects, notes, meetings, events, documents, robotics, neoMemories] =
       await Promise.all([
@@ -114,11 +117,12 @@ export class AIGateway {
   }
 
   /**
-   * Discovers structured Chief of Staff tools and server LLM provider readiness.
+   * Discovers structured Chief of Staff tools, server LLM provider readiness & capabilities.
    */
   public static async discoverTools(): Promise<{
     tools: AIToolSpec[];
     configuredProviders: Record<string, boolean>;
+    providerCapabilities?: Record<string, { capabilities: ProviderCapabilities; name: string; strengthSummary: string }>;
     source: 'server' | 'local_manifest';
   }> {
     try {
@@ -131,6 +135,7 @@ export class AIGateway {
             return {
               tools: data.tools,
               configuredProviders: data.configuredProviders || {},
+              providerCapabilities: data.providerCapabilities,
               source: 'server',
             };
           }
@@ -142,8 +147,158 @@ export class AIGateway {
 
     return {
       tools: AI_TOOL_DEFINITIONS,
-      configuredProviders: { gemini: false, openai: false, anthropic: false },
+      configuredProviders: {
+        gemini: false,
+        openai: false,
+        anthropic: false,
+        openrouter: false,
+        huggingface: false,
+        ollama: false,
+      },
       source: 'local_manifest',
+    };
+  }
+
+  /** Unified gateway contract: AIProvider.generate() */
+  public static async generate(prompt: string, options: AISendOptions): Promise<AIResponse> {
+    return this.executePrompt(prompt, options);
+  }
+
+  /** Unified gateway contract: AIProvider.analyze() */
+  public static async analyze(
+    subjectPrompt: string,
+    options: Omit<AISendOptions, 'mode'> & { mode?: AIMode }
+  ): Promise<AIResponse> {
+    return this.executePrompt(subjectPrompt, {
+      ...options,
+      mode: options.mode || 'research',
+      complexity: options.complexity || 'complex',
+    });
+  }
+
+  /** Unified gateway contract: AIProvider.embed() with capability detection */
+  public static async embed(
+    text: string,
+    options: { provider?: AIProvider } = {}
+  ): Promise<{ success: boolean; unsupported?: boolean; provider?: string; model?: string; embedding?: number[]; error?: string }> {
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const jwt = await SupabaseAuthService.getAccessToken();
+      if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
+      const resp = await fetch('/api/ai/chat?action=embed', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ action: 'embed', text, provider: options.provider || 'auto' }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      return data;
+    } catch (err: any) {
+      return { success: false, unsupported: true, error: err?.message || 'Embedding request failed' };
+    }
+  }
+
+  /**
+   * Unified gateway contract: AIProvider.healthCheck()
+   * Checks real server provider latency & model discovery, plus local browser Ollama if running on localhost.
+   */
+  public static async healthCheck(): Promise<{
+    providers: ProviderHealthReport[];
+    recommended: { provider: string; reason: string };
+    checkedAt: string;
+  }> {
+    let serverProviders: ProviderHealthReport[] = [];
+    let recommended = {
+      provider: 'local_heuristic',
+      reason: 'Offline or preview mode without server API.',
+    };
+
+    try {
+      const resp = await fetch('/api/ai/chat?action=health');
+      if (resp.ok && (resp.headers.get('content-type') || '').includes('application/json')) {
+        const data = await resp.json();
+        if (Array.isArray(data.providers)) {
+          serverProviders = data.providers;
+          recommended = data.recommended || recommended;
+        }
+      }
+    } catch {
+      // Static vite preview without /api falls through gracefully
+    }
+
+    // Check browser-local Ollama when running on localhost/desktop (never probes remote user IPs)
+    if (typeof window !== 'undefined' && /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname)) {
+      const t0 = performance.now();
+      try {
+        const localRes = await fetch('http://127.0.0.1:11434/api/tags', { signal: AbortSignal.timeout(1200) });
+        if (localRes.ok) {
+          const data = await localRes.json().catch(() => ({}));
+          const models = Array.isArray(data.models) ? data.models.map((m: any) => String(m.name || '')) : [];
+          const ollamaEntry: ProviderHealthReport = {
+            id: 'ollama',
+            name: 'Ollama (Local Desktop)',
+            configured: true,
+            status: 'connected',
+            reachable: true,
+            latencyMs: Math.round(performance.now() - t0),
+            discoveredModelsCount: models.length,
+            sampleModels: models.slice(0, 5),
+            capabilities: { chat: true, tools: true, vision: false, embeddings: true, modelDiscovery: true, localPrivate: true },
+            note: `Local daemon active (${models.length} model(s) ready at 127.0.0.1:11434)`,
+          };
+          serverProviders = [
+            ...serverProviders.filter((p) => p.id !== 'ollama'),
+            ollamaEntry,
+          ];
+        }
+      } catch {
+        // Local Ollama not running; keep honest server report
+      }
+    }
+
+    return {
+      providers: serverProviders,
+      recommended,
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  /** Unified gateway contract: AIProvider.getUsage() */
+  public static async getUsage(): Promise<{
+    totalCalls: number;
+    totalTokens: number;
+    totalCostUSD: number;
+    byProvider: Record<string, { calls: number; tokens: number; avgLatencyMs: number; costUSD: number }>;
+  }> {
+    const logs = await db.ai_logs.toArray().catch(() => []);
+    const byProvider: Record<string, { calls: number; tokens: number; avgLatencyMs: number; costUSD: number }> = {};
+    let totalTokens = 0;
+    let totalCostUSD = 0;
+    const latencySums: Record<string, number> = {};
+
+    for (const l of logs) {
+      const key = l.provider || 'unknown';
+      const toks = (l.tokensInput || 0) + (l.tokensOutput || 0);
+      totalTokens += toks;
+      totalCostUSD += l.estimatedCostUSD || 0;
+      if (!byProvider[key]) {
+        byProvider[key] = { calls: 0, tokens: 0, avgLatencyMs: 0, costUSD: 0 };
+        latencySums[key] = 0;
+      }
+      byProvider[key].calls += 1;
+      byProvider[key].tokens += toks;
+      byProvider[key].costUSD += l.estimatedCostUSD || 0;
+      latencySums[key] += l.latencyMs || 0;
+    }
+
+    for (const key of Object.keys(byProvider)) {
+      byProvider[key].avgLatencyMs = Math.round(latencySums[key] / Math.max(1, byProvider[key].calls));
+    }
+
+    return {
+      totalCalls: logs.length,
+      totalTokens,
+      totalCostUSD,
+      byProvider,
     };
   }
 
@@ -238,7 +393,7 @@ export class AIGateway {
           provider: (data.provider || provider) as AIProvider,
           modelId: data.modelId || selectedModel.modelId,
           providerMode: data.providerMode,
-          providerNotice: data.providerNotice || data.providerError,
+          providerNotice: data.failoverNotice || data.providerNotice || data.providerError,
           latencyMs,
           tokensInput: tokensIn,
           tokensOutput: tokensOut,
@@ -255,6 +410,46 @@ export class AIGateway {
       }
     } catch {
       // Static Vite dev without Vercel API proxy falls through gracefully below
+    }
+
+    // 1b. Direct browser-local Ollama when running locally on localhost
+    if (
+      provider === 'ollama' &&
+      typeof window !== 'undefined' &&
+      /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname)
+    ) {
+      try {
+        const res = await fetch('http://127.0.0.1:11434/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: selectedModel.modelId || 'llama3.2',
+            messages: [
+              ...(options.systemPrompt ? [{ role: 'system', content: options.systemPrompt }] : []),
+              { role: 'user', content: userPrompt },
+            ],
+          }),
+          signal: AbortSignal.timeout(15000),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const text = data.choices?.[0]?.message?.content || '';
+          if (text) {
+            return {
+              text,
+              provider: 'ollama',
+              modelId: selectedModel.modelId || 'llama3.2',
+              providerMode: 'client_override',
+              latencyMs: Math.round(performance.now() - startTime),
+              tokensInput: data.usage?.prompt_tokens || 0,
+              tokensOutput: data.usage?.completion_tokens || 0,
+              estimatedCostUSD: 0,
+            };
+          }
+        }
+      } catch {
+        // Local Ollama not active; fall back cleanly below
+      }
     }
 
     // 2. Optional manual Settings override key (only if explicitly entered by user in Settings)

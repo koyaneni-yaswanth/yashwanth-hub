@@ -17,11 +17,11 @@ export const MobileNav: React.FC<MobileNavProps> = ({
 }) => {
   const leftItems = [
     { id: 'dashboard' as NavigationTab, label: 'Home', icon: Home },
-    { id: 'tasks' as NavigationTab, label: 'Tasks', icon: CheckSquare },
+    { id: 'tasks' as NavigationTab, label: 'Workspace', icon: CheckSquare },
   ];
 
   const rightItems = [
-    { id: 'ai-assistant' as NavigationTab, label: 'Ask AI', icon: Sparkles },
+    { id: 'ai-assistant' as NavigationTab, label: 'AI Studio', icon: Sparkles },
   ];
 
   return (

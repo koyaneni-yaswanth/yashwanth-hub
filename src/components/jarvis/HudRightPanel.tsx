@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Calendar,
   CalendarCheck,
@@ -7,6 +7,7 @@ import {
   ChevronRight,
   ChevronUp,
   ChevronDown,
+  Crosshair,
   FileText,
   Mic,
   Play,
@@ -22,6 +23,16 @@ import type { NavigationTab, Task } from '../../types';
 import type { HudWorkspaceSummary } from '../../lib/jarvisHud';
 import { TodayProgress } from '../home/TodayProgress';
 import { renderWorkspaceGlyph } from './workspaceGlyph';
+
+export interface HudFocusModeProps {
+  enabled: boolean;
+  workspaceLabel: string;
+  previewSummary: string;
+  openCount: number;
+  onExit: () => void;
+  onSwitchWorkspace: () => void;
+  onOpenWorkspace: () => void;
+}
 
 interface HudRightPanelProps {
   isOpen: boolean;
@@ -43,6 +54,7 @@ interface HudRightPanelProps {
   onSelectArea?: (area: string) => void;
   onPanelMouseEnter?: () => void;
   onPanelMouseLeave?: () => void;
+  focusMode?: HudFocusModeProps;
   tasks: Task[];
   today: string;
   currentArea: string;
@@ -68,10 +80,13 @@ export const HudRightPanel: React.FC<HudRightPanelProps> = ({
   onSelectArea,
   onPanelMouseEnter,
   onPanelMouseLeave,
+  focusMode,
   tasks,
   today,
   currentArea,
 }) => {
+  const [moreActionsOpen, setMoreActionsOpen] = useState(false);
+
   const openWorkspace = (ws: HudWorkspaceSummary) => {
     if (ws.target.area) onSelectArea?.(ws.target.area);
     onNavigate(ws.target.tab);
@@ -212,8 +227,102 @@ export const HudRightPanel: React.FC<HudRightPanelProps> = ({
         </button>
       </div>
     </div>
+  ) : focusMode?.enabled ? (
+    /* Focus Mode: One Workspace, One Priority, Essential Actions Only */
+    <div className="space-y-4">
+      <div className="p-3.5 rounded-xl bg-[rgba(124,92,255,0.12)] border border-[rgba(124,92,255,0.35)] space-y-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-[0.14em] text-[#3BE8FF]">
+            <Crosshair className="w-3.5 h-3.5" aria-hidden="true" />
+            <span>Active Workspace</span>
+          </span>
+          <span className="hud-tabular text-[10px] text-[#7A8BA6]">
+            {focusMode.openCount} open
+          </span>
+        </div>
+        <h3 className="font-heading text-sm font-bold text-[#E6F1FF]">
+          {focusMode.workspaceLabel}
+        </h3>
+        <p className="text-[11px] text-[#7A8BA6]">{focusMode.previewSummary}</p>
+      </div>
+
+      {activeRecommendation ? (
+        <div className="p-3.5 rounded-xl bg-[rgba(5,7,13,0.72)] border border-[rgba(59,232,255,0.3)] space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-[0.14em] text-[#3BE8FF]">
+              <Target className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>Your Next Move</span>
+            </span>
+            <span className="hud-tabular text-[10px] text-[#7A8BA6]">
+              {activeRecommendation.label}
+            </span>
+          </div>
+          <h4 className="font-heading text-sm font-bold text-[#E6F1FF] leading-snug">
+            {activeRecommendation.task.text}
+          </h4>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => onStartFocus(activeRecommendation.task)}
+              aria-label={`Start a focus session: ${activeRecommendation.task.text}`}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-[#3BE8FF] text-[#05070D] text-xs font-bold hover:bg-[#70f0ff] transition-colors cursor-pointer"
+            >
+              <Play className="w-3.5 h-3.5" />
+              <span>Start focus</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onCompleteTask(activeRecommendation.task)}
+              className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold text-[#3BE8FF] hover:bg-[#3BE8FF]/15 cursor-pointer"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>Done</span>
+            </button>
+            <button
+              type="button"
+              onClick={onSkipRecommendation}
+              aria-label="Next candidate task"
+              title="Skip to next priority"
+              className="p-2 rounded-xl bg-white/5 border border-white/10 text-[#7A8BA6] hover:text-[#E6F1FF] cursor-pointer"
+            >
+              <SkipForward className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="p-3.5 rounded-xl bg-[rgba(5,7,13,0.55)] border border-[rgba(59,232,255,0.16)] text-xs text-[#7A8BA6] space-y-2">
+          <p>No open tasks inside {focusMode.workspaceLabel}.</p>
+          <button
+            type="button"
+            onClick={onOpenQuickTask}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#3BE8FF] hover:underline cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add a priority task</span>
+          </button>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-2 pt-1">
+        <button
+          type="button"
+          onClick={focusMode.onOpenWorkspace}
+          className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 border border-[rgba(59,232,255,0.22)] text-xs font-semibold text-[#E6F1FF] hover:border-[#3BE8FF]/55 cursor-pointer"
+        >
+          <span>Open workspace</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={focusMode.onSwitchWorkspace}
+          className="px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-xs font-medium text-[#7A8BA6] hover:text-[#E6F1FF] cursor-pointer"
+        >
+          Switch focus
+        </button>
+      </div>
+    </div>
   ) : (
-    /* Default Chief-of-Staff Brief */
+    /* Default Calm Chief-of-Staff Brief (1 Next Priority + Progressive Disclosure for Secondary Tools) */
     <div className="space-y-3.5">
       {/* Up Next Focus Card */}
       {activeRecommendation ? (
@@ -221,7 +330,7 @@ export const HudRightPanel: React.FC<HudRightPanelProps> = ({
           <div className="flex items-center justify-between gap-2">
             <span className="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-[0.14em] text-[#3BE8FF]">
               <Target className="w-3.5 h-3.5" aria-hidden="true" />
-              <span>Up Next</span>
+              <span>Your Next Move</span>
             </span>
             <span className="hud-tabular text-[10px] text-[#7A8BA6]">
               {activeRecommendation.label} • {activeRecommendation.task.area}
@@ -265,69 +374,79 @@ export const HudRightPanel: React.FC<HudRightPanelProps> = ({
         </div>
       )}
 
-      {/* Existing TodayProgress (task ring + habit check-ins) */}
+      {/* Compact Today Progress */}
       <TodayProgress tasks={tasks} today={today} currentArea={currentArea} onNavigate={onNavigate} />
 
-      {/* Plan Day + Weekly Review */}
-      <div className="grid grid-cols-2 gap-2">
+      {/* Progressive Disclosure for Secondary Planning & Capture Controls */}
+      <div className="border-t border-[rgba(59,232,255,0.14)] pt-2">
         <button
           type="button"
-          onClick={onOpenPlanDay}
-          className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-[rgba(5,7,13,0.65)] border border-[rgba(59,232,255,0.18)] text-xs font-semibold text-[#E6F1FF] hover:border-[#3BE8FF]/50 transition-colors cursor-pointer"
+          onClick={() => setMoreActionsOpen((v) => !v)}
+          aria-expanded={moreActionsOpen}
+          className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-[11px] font-medium text-[#7A8BA6] hover:text-[#E6F1FF] hover:bg-white/5 transition-colors cursor-pointer"
         >
-          <CalendarCheck className="w-3.5 h-3.5 text-[#3BE8FF]" />
-          <span>Plan Day</span>
+          <span>Planning &amp; quick actions</span>
+          {moreActionsOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
         </button>
-        <button
-          type="button"
-          onClick={onOpenWeeklyReview}
-          className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-[rgba(5,7,13,0.65)] border border-[rgba(124,92,255,0.28)] text-xs font-semibold text-[#E6F1FF] hover:border-[#7C5CFF]/60 transition-colors cursor-pointer"
-        >
-          <Trophy className="w-3.5 h-3.5 text-[#7C5CFF]" />
-          <span>Weekly Review</span>
-        </button>
-      </div>
 
-      {/* Quick Actions Row */}
-      <div className="space-y-1.5">
-        <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-[#7A8BA6]">
-          Quick Actions
-        </div>
-        <div className="grid grid-cols-4 gap-1.5">
-          <button
-            type="button"
-            onClick={onOpenQuickTask}
-            className="flex flex-col items-center gap-1 py-2 px-1 rounded-xl bg-[rgba(5,7,13,0.65)] border border-[rgba(59,232,255,0.16)] hover:border-[#3BE8FF]/50 text-[11px] font-medium text-[#E6F1FF] cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5 text-[#3BE8FF]" />
-            <span>Task</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigate('calendar')}
-            className="flex flex-col items-center gap-1 py-2 px-1 rounded-xl bg-[rgba(5,7,13,0.65)] border border-[rgba(59,232,255,0.16)] hover:border-[#3BE8FF]/50 text-[11px] font-medium text-[#E6F1FF] cursor-pointer"
-          >
-            <Calendar className="w-3.5 h-3.5 text-[#7C5CFF]" />
-            <span>Schedule</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigate('notes')}
-            className="flex flex-col items-center gap-1 py-2 px-1 rounded-xl bg-[rgba(5,7,13,0.65)] border border-[rgba(59,232,255,0.16)] hover:border-[#3BE8FF]/50 text-[11px] font-medium text-[#E6F1FF] cursor-pointer"
-          >
-            <FileText className="w-3.5 h-3.5 text-[#FFB547]" />
-            <span>Note</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => (onOpenQuickCapture ? onOpenQuickCapture() : onOpenQuickTask())}
-            title="Capture (Ctrl+Q)"
-            className="flex flex-col items-center gap-1 py-2 px-1 rounded-xl bg-[rgba(5,7,13,0.65)] border border-[rgba(59,232,255,0.16)] hover:border-[#3BE8FF]/50 text-[11px] font-medium text-[#E6F1FF] cursor-pointer"
-          >
-            <Mic className="w-3.5 h-3.5 text-[#3BE8FF]" />
-            <span>Capture</span>
-          </button>
-        </div>
+        {moreActionsOpen && (
+          <div className="mt-2.5 space-y-2.5">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={onOpenPlanDay}
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-[rgba(5,7,13,0.65)] border border-[rgba(59,232,255,0.18)] text-xs font-semibold text-[#E6F1FF] hover:border-[#3BE8FF]/50 transition-colors cursor-pointer"
+              >
+                <CalendarCheck className="w-3.5 h-3.5 text-[#3BE8FF]" />
+                <span>Plan Day</span>
+              </button>
+              <button
+                type="button"
+                onClick={onOpenWeeklyReview}
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-[rgba(5,7,13,0.65)] border border-[rgba(124,92,255,0.28)] text-xs font-semibold text-[#E6F1FF] hover:border-[#7C5CFF]/60 transition-colors cursor-pointer"
+              >
+                <Trophy className="w-3.5 h-3.5 text-[#7C5CFF]" />
+                <span>Weekly Review</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-4 gap-1.5">
+              <button
+                type="button"
+                onClick={onOpenQuickTask}
+                className="flex flex-col items-center gap-1 py-2 px-1 rounded-xl bg-[rgba(5,7,13,0.65)] border border-[rgba(59,232,255,0.16)] hover:border-[#3BE8FF]/50 text-[11px] font-medium text-[#E6F1FF] cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5 text-[#3BE8FF]" />
+                <span>Task</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onNavigate('calendar')}
+                className="flex flex-col items-center gap-1 py-2 px-1 rounded-xl bg-[rgba(5,7,13,0.65)] border border-[rgba(59,232,255,0.16)] hover:border-[#3BE8FF]/50 text-[11px] font-medium text-[#E6F1FF] cursor-pointer"
+              >
+                <Calendar className="w-3.5 h-3.5 text-[#7C5CFF]" />
+                <span>Schedule</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onNavigate('notes')}
+                className="flex flex-col items-center gap-1 py-2 px-1 rounded-xl bg-[rgba(5,7,13,0.65)] border border-[rgba(59,232,255,0.16)] hover:border-[#3BE8FF]/50 text-[11px] font-medium text-[#E6F1FF] cursor-pointer"
+              >
+                <FileText className="w-3.5 h-3.5 text-[#FFB547]" />
+                <span>Note</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => (onOpenQuickCapture ? onOpenQuickCapture() : onOpenQuickTask())}
+                title="Capture (Ctrl+Q)"
+                className="flex flex-col items-center gap-1 py-2 px-1 rounded-xl bg-[rgba(5,7,13,0.65)] border border-[rgba(59,232,255,0.16)] hover:border-[#3BE8FF]/50 text-[11px] font-medium text-[#E6F1FF] cursor-pointer"
+              >
+                <Mic className="w-3.5 h-3.5 text-[#3BE8FF]" />
+                <span>Capture</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

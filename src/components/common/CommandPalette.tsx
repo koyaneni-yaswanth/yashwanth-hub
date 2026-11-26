@@ -31,6 +31,8 @@ import {
 } from 'lucide-react';
 import type { NavigationTab, Area } from '../../types';
 import { useTheme } from '../../context/ThemeContext';
+import { useFocusMode } from '../../context/FocusModeContext';
+import { FOCUS_WORKSPACES, HUB_DESTINATIONS } from '../../lib/hubArchitecture';
 import { UniversalSearchService, type SearchHit } from '../../services/searchService';
 
 interface CommandPaletteProps {
@@ -71,6 +73,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const { toggleTheme } = useTheme();
+  const focus = useFocusMode();
 
   useEffect(() => {
     if (isOpen) {
@@ -128,6 +131,27 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   ];
 
   const actionItems = [
+    {
+      label: focus.enabled ? `Exit Focus Mode (${focus.workspace.shortLabel})` : 'Choose Focus Mode Workspace',
+      action: () => (focus.enabled ? focus.disableFocusMode() : focus.openPicker()),
+      icon: Target,
+      category: 'Focus Mode',
+    },
+    ...FOCUS_WORKSPACES.map((ws) => ({
+      label: `Enter Focus Mode: ${ws.label}`,
+      action: () => {
+        focus.enableFocusMode(ws.id);
+        onNavigate('dashboard');
+      },
+      icon: Target,
+      category: 'Focus Mode',
+    })),
+    ...HUB_DESTINATIONS.map((d) => ({
+      label: `Destination ${d.code}: ${d.label} (${d.tagline})`,
+      action: () => onNavigate(d.defaultTab),
+      icon: ArrowRight,
+      category: '6 Destinations',
+    })),
     {
       label: 'Toggle Light / Dark Mode',
       action: () => toggleTheme(),

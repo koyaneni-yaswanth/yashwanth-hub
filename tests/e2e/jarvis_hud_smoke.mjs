@@ -173,11 +173,23 @@ async function main() {
     await waitForHudReady(page);
     await page.waitForSelector('section[aria-labelledby="jarvis-cc-title"] canvas', { timeout: 15000 });
 
+    // Test Focus Mode enter -> Mission Dock hides cleanly -> Exit Focus restores dock
+    await page.getByRole('button', { name: /Focus Mode/i }).first().click();
+    const focusDialog = page.getByRole('dialog', { name: /Focus Mode/i });
+    await focusDialog.waitFor({ state: 'visible', timeout: 5000 });
+    await focusDialog.getByRole('button', { name: 'Enter Focus Mode', exact: true }).click();
+    await page.waitForSelector('section[aria-label="Mission Dock"]', { state: 'detached', timeout: 5000 });
+    const focusShot = path.join(artifactDir, 'hud_focus_mode.png');
+    await page.screenshot({ path: focusShot });
+    report.screenshots.push(focusShot);
+    await page.getByRole('button', { name: 'Exit Focus', exact: true }).first().click();
+    await page.waitForSelector('section[aria-label="Mission Dock"]', { state: 'visible', timeout: 5000 });
+
     // ------------------------------------------------------------------
-    // 2. 10x Navigation WebGL Disposal / Leak Test
+    // 2. 10x Navigation WebGL Disposal / Leak Test (via Workspace 6-destination rail)
     // ------------------------------------------------------------------
     for (let i = 0; i < 10; i++) {
-      await page.getByRole('button', { name: /^Tasks/i }).first().click();
+      await page.getByRole('button', { name: /^Workspace/i }).first().click();
       await page.waitForFunction(() => document.querySelectorAll('section[aria-labelledby="jarvis-cc-title"] canvas').length === 0, null, {
         timeout: 10000,
       });

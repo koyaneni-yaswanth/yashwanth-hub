@@ -1,31 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import {
   Home,
-  Calendar,
-  CheckSquare,
-  FileText,
-  FolderArchive,
-  IndianRupee,
+  Compass,
   Sparkles,
-  BarChart3,
-  Settings,
-  FolderKanban,
-  Cloud,
-  X,
+  Layers,
   Brain,
-  Zap,
-  Wind,
-  Bot,
-  Heart,
+  SlidersHorizontal,
+  Settings,
+  X,
   Search,
+  Crosshair,
   ChevronDown,
   ChevronRight,
-  GraduationCap,
   Grid,
-  Target,
-  Timer,
-  Compass,
 } from 'lucide-react';
+import {
+  HUB_DESTINATIONS,
+  destinationForTab,
+  type HubDestinationId,
+} from '../../lib/hubArchitecture';
+import { useFocusMode } from '../../context/FocusModeContext';
 import type { NavigationTab } from '../../types';
 
 interface SidebarProps {
@@ -41,98 +35,39 @@ interface SidebarProps {
   compactRail?: boolean;
 }
 
-interface NavItem {
-  id: NavigationTab;
-  label: string;
-  icon: React.ElementType;
-  badge?: number | string;
-  highlight?: boolean;
-}
-
-interface NavGroup {
-  title: string;
-  items: NavItem[];
-}
+const DESTINATION_ICONS: Record<HubDestinationId, React.ElementType> = {
+  home: Home,
+  command: Compass,
+  'ai-studio': Sparkles,
+  workspace: Layers,
+  intelligence: Brain,
+  system: SlidersHorizontal,
+};
 
 export const Sidebar: React.FC<SidebarProps> = ({
   currentTab,
   onSelectTab,
   openTasksCount = 0,
   activeProjectsCount = 0,
+  unreadNotifsCount = 0,
   isOpenMobile = false,
   onCloseMobile,
   onOpenCommandPalette,
   compactRail = false,
 }) => {
-  // Core 7 primary everyday views
-  const primaryItems: NavItem[] = [
-    { id: 'dashboard', label: 'Home', icon: Home },
-    {
-      id: 'tasks',
-      label: 'Tasks',
-      icon: CheckSquare,
-      badge: openTasksCount > 0 ? openTasksCount : undefined,
-    },
-    { id: 'goals', label: 'Goals & Habits', icon: Target },
-    { id: 'momentum', label: 'Momentum', icon: Sparkles },
-    { id: 'calendar', label: 'Calendar', icon: Calendar },
-    {
-      id: 'projects',
-      label: 'Projects',
-      icon: FolderKanban,
-      badge: activeProjectsCount > 0 ? activeProjectsCount : undefined,
-    },
-    { id: 'ai-assistant', label: 'Ask AI', icon: Sparkles, highlight: true },
-  ];
-
-  const groupedTools: NavGroup[] = [
-    {
-      title: 'Daily & Notes',
-      items: [
-        { id: 'my-day', label: 'My Day', icon: Compass },
-        { id: 'focus', label: 'Deep Work', icon: Timer },
-        { id: 'notes', label: 'Notes', icon: FileText },
-        { id: 'documents', label: 'Files & Docs', icon: FolderArchive },
-        { id: 'knowledge-memory', label: 'Memory Vault', icon: Brain },
-      ],
-    },
-    {
-      title: 'Workspaces',
-      items: [
-        { id: 'startup-command', label: 'Pawan Shakti', icon: Wind },
-        { id: 'robotics-lab', label: 'Robotics Lab', icon: Bot },
-        { id: 'learning-career', label: 'Learning & Career', icon: GraduationCap },
-      ],
-    },
-    {
-      title: 'Life & Ops',
-      items: [
-        { id: 'finance', label: 'Finance', icon: IndianRupee },
-        { id: 'health-routine', label: 'Routine & Health', icon: Heart },
-        { id: 'automations', label: 'Automations', icon: Zap },
-        { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-      ],
-    },
-    {
-      title: 'System',
-      items: [
-        { id: 'integrations', label: 'Integrations & Sync', icon: Cloud },
-        { id: 'system-health', label: 'Sync Health & Devices', icon: Zap },
-        { id: 'settings', label: 'Settings', icon: Settings },
-      ],
-    },
-  ];
-
-  const allSecondaryIds = groupedTools.flatMap((g) => g.items.map((i) => i.id));
-  const isCurrentInMore = allSecondaryIds.includes(currentTab);
-  const [isMoreExpanded, setIsMoreExpanded] = useState<boolean>(isCurrentInMore);
+  const focus = useFocusMode();
+  const activeDest = destinationForTab(currentTab);
+  const [expandedDestId, setExpandedDestId] = useState<HubDestinationId>(activeDest.id);
+  const [showSecondaryInDrawer, setShowSecondaryInDrawer] = useState<boolean>(false);
   const [flyoutOpen, setFlyoutOpen] = useState(false);
 
   useEffect(() => {
-    if (isCurrentInMore) {
-      setIsMoreExpanded(true);
-    }
-  }, [currentTab, isCurrentInMore]);
+    setExpandedDestId(activeDest.id);
+    const currentIsSecondary = activeDest.routes.some(
+      (r) => r.tab === currentTab && r.tier === 'secondary'
+    );
+    if (currentIsSecondary) setShowSecondaryInDrawer(true);
+  }, [activeDest.id, activeDest.routes, currentTab]);
 
   useEffect(() => {
     if (!flyoutOpen) return;
@@ -149,13 +84,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
     if (onCloseMobile) onCloseMobile();
   };
 
+  const badgeForDestination = (id: HubDestinationId): number | undefined => {
+    if (id === 'workspace' && openTasksCount > 0) return openTasksCount;
+    if (id === 'command' && activeProjectsCount > 0) return activeProjectsCount;
+    if (id === 'system' && unreadNotifsCount > 0) return unreadNotifsCount;
+    return undefined;
+  };
+
   const navContent = (
     <div className="flex flex-col h-full py-4 px-3">
       {/* Mobile Drawer Header */}
       <div className="flex items-center justify-between px-3 pb-3 mb-2 border-b border-[var(--hub-line)] lg:hidden">
-        <span className="font-heading font-bold text-base text-[var(--hub-ink)]">
-          Yashwanth Hub
-        </span>
+        <div>
+          <span className="font-heading font-bold text-base text-[var(--hub-ink)]">
+            Yashwanth Hub
+          </span>
+          <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--hub-muted)]">
+            6 Destinations · System Online
+          </div>
+        </div>
         <button
           onClick={onCloseMobile}
           aria-label="Close menu"
@@ -165,128 +112,169 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </button>
       </div>
 
-      {/* Nav List */}
-      <nav className="flex-1 space-y-1 overflow-y-auto pr-1" aria-label="Primary navigation">
-        {primaryItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = currentTab === item.id;
+      {/* 6 Primary Destinations */}
+      <nav className="flex-1 space-y-1.5 overflow-y-auto pr-1" aria-label="Primary navigation">
+        {HUB_DESTINATIONS.map((dest) => {
+          const Icon = DESTINATION_ICONS[dest.id];
+          const isActiveDest = activeDest.id === dest.id;
+          const badge = badgeForDestination(dest.id);
+          const isOpenGroup = expandedDestId === dest.id;
+          const primaryRoutes = dest.routes.filter((r) => r.tier === 'primary');
+          const secondaryRoutes = dest.routes.filter((r) => r.tier === 'secondary');
+          const visibleRoutes =
+            focus.enabled
+              ? primaryRoutes.slice(0, 2)
+              : isActiveDest && showSecondaryInDrawer
+              ? dest.routes
+              : primaryRoutes;
+
           return (
-            <button
-              key={item.id}
-              onClick={() => handleNavClick(item.id)}
-              aria-current={isActive ? 'page' : undefined}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 cursor-pointer text-left ${
-                isActive
-                  ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] shadow-xs font-semibold'
-                  : item.highlight
-                  ? 'text-teal-700 dark:text-teal-300 bg-teal-500/10 hover:bg-teal-500/15'
-                  : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-bg)]'
-              }`}
-            >
-              <div className="flex items-center gap-3 min-w-0">
-                <Icon
-                  className={`w-4 h-4 flex-none ${
-                    isActive ? 'text-[var(--hub-accent-ink)]' : item.highlight ? 'text-teal-700 dark:text-teal-400' : ''
-                  }`}
-                />
-                <span className="truncate">{item.label}</span>
-              </div>
-              {item.badge !== undefined && (
-                <span
-                  className={`text-[11px] px-2 py-0.5 rounded-full font-bold flex-none ${
-                    isActive
-                      ? 'bg-white/20 text-white'
-                      : 'bg-[var(--hub-bg)] border border-[var(--hub-line)] text-[var(--hub-ink)]'
+            <div key={dest.id} className="space-y-1">
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setExpandedDestId(dest.id);
+                    handleNavClick(dest.defaultTab);
+                  }}
+                  aria-current={isActiveDest ? 'page' : undefined}
+                  className={`flex-1 flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 cursor-pointer text-left ${
+                    isActiveDest
+                      ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] shadow-xs font-semibold'
+                      : dest.id === 'ai-studio'
+                      ? 'text-teal-700 dark:text-teal-300 bg-teal-500/10 hover:bg-teal-500/15'
+                      : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-bg)]'
                   }`}
                 >
-                  {item.badge}
-                </span>
-              )}
-            </button>
-          );
-        })}
-
-        {/* Quick Search shortcut inside drawer */}
-        {onOpenCommandPalette && (
-          <button
-            onClick={() => {
-              onOpenCommandPalette();
-              if (onCloseMobile) onCloseMobile();
-            }}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-bg)] transition-colors cursor-pointer text-left"
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <Search className="w-4 h-4 flex-none" />
-              <span className="truncate">Search</span>
-            </div>
-            <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-[var(--hub-bg)] border border-[var(--hub-line)] rounded text-[var(--hub-muted)]">
-              Ctrl K
-            </kbd>
-          </button>
-        )}
-
-        {/* Collapsible All Tools Section */}
-        <div className="pt-3 mt-2 border-t border-[var(--hub-line)]/70">
-          <button
-            onClick={() => setIsMoreExpanded(!isMoreExpanded)}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer text-left ${
-              isCurrentInMore
-                ? 'text-[var(--hub-ink)]'
-                : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
-            }`}
-          >
-            <span className="flex items-center gap-2">
-              <Grid className="w-3.5 h-3.5" />
-              <span>All Tools</span>
-            </span>
-            {isMoreExpanded ? (
-              <ChevronDown className="w-4 h-4" />
-            ) : (
-              <ChevronRight className="w-4 h-4" />
-            )}
-          </button>
-
-          {isMoreExpanded && (
-            <div className="mt-1 space-y-3 pb-2">
-              {groupedTools.map((group) => (
-                <div key={group.title} className="space-y-0.5">
-                  <div className="px-3 pt-1 text-[10px] font-bold uppercase tracking-wider text-[var(--hub-muted)]">
-                    {group.title}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Icon
+                      className={`w-4 h-4 flex-none ${
+                        isActiveDest
+                          ? 'text-[var(--hub-accent-ink)]'
+                          : dest.id === 'ai-studio'
+                          ? 'text-teal-700 dark:text-teal-400'
+                          : ''
+                      }`}
+                    />
+                    <span className="truncate">{dest.label}</span>
                   </div>
-                  {group.items.map((item) => {
-                    const Icon = item.icon;
-                    const isActive = currentTab === item.id;
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {badge !== undefined && (
+                      <span
+                        className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${
+                          isActiveDest
+                            ? 'bg-white/20 text-white'
+                            : 'bg-[var(--hub-bg)] border border-[var(--hub-line)] text-[var(--hub-ink)]'
+                        }`}
+                      >
+                        {badge}
+                      </span>
+                    )}
+                  </div>
+                </button>
+
+                {dest.routes.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setExpandedDestId((prev) => (prev === dest.id ? ('' as HubDestinationId) : dest.id))}
+                    aria-label={isOpenGroup ? `Collapse ${dest.label}` : `Expand ${dest.label}`}
+                    aria-expanded={isOpenGroup}
+                    className="p-2 rounded-lg text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-bg)] cursor-pointer shrink-0"
+                  >
+                    {isOpenGroup ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                  </button>
+                )}
+              </div>
+
+              {/* Contextual sub-routes inside the active/expanded destination */}
+              {isOpenGroup && dest.routes.length > 1 && (
+                <div className="ml-4 pl-3 border-l border-[var(--hub-line)] space-y-0.5 py-0.5">
+                  {visibleRoutes.map((route) => {
+                    const routeActive = currentTab === route.tab;
                     return (
                       <button
-                        key={item.id}
-                        onClick={() => handleNavClick(item.id)}
-                        aria-current={isActive ? 'page' : undefined}
-                        className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 cursor-pointer text-left ${
-                          isActive
-                            ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] font-semibold'
+                        key={route.tab}
+                        type="button"
+                        onClick={() => handleNavClick(route.tab)}
+                        aria-current={routeActive ? 'page' : undefined}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors cursor-pointer truncate ${
+                          routeActive
+                            ? 'bg-[var(--hub-accent)]/14 text-[var(--hub-accent)] font-semibold'
                             : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-bg)]'
                         }`}
                       >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <Icon className={`w-3.5 h-3.5 flex-none ${isActive ? 'text-[var(--hub-accent-ink)]' : ''}`} />
-                          <span className="truncate">{item.label}</span>
-                        </div>
+                        {route.label}
                       </button>
                     );
                   })}
+                  {!focus.enabled && secondaryRoutes.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowSecondaryInDrawer((v) => !v)}
+                      className="w-full text-left px-2.5 py-1 text-[11px] font-medium text-[var(--hub-muted)] hover:text-[var(--hub-accent)] cursor-pointer"
+                    >
+                      {showSecondaryInDrawer ? 'Less options' : `+ ${secondaryRoutes.length} more`}
+                    </button>
+                  )}
                 </div>
-              ))}
+              )}
             </div>
+          );
+        })}
+
+        {/* Quick Focus Mode & Global Search */}
+        <div className="pt-3 mt-2 border-t border-[var(--hub-line)]/70 space-y-1">
+          <button
+            type="button"
+            onClick={() => {
+              focus.toggleFocusMode();
+              if (onCloseMobile) onCloseMobile();
+            }}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer text-left ${
+              focus.enabled
+                ? 'bg-[var(--hub-accent)]/14 text-[var(--hub-accent)] border border-[var(--hub-accent)]/35'
+                : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-bg)]'
+            }`}
+          >
+            <span className="flex items-center gap-2.5 min-w-0">
+              <Crosshair className="w-4 h-4 shrink-0" />
+              <span className="truncate">
+                {focus.enabled ? `Focus: ${focus.workspace.shortLabel}` : 'Focus Mode'}
+              </span>
+            </span>
+            <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-[var(--hub-bg)] border border-[var(--hub-line)] rounded text-[var(--hub-muted)]">
+              {focus.enabled ? 'ON' : '1x'}
+            </kbd>
+          </button>
+
+          {onOpenCommandPalette && (
+            <button
+              type="button"
+              onClick={() => {
+                onOpenCommandPalette();
+                if (onCloseMobile) onCloseMobile();
+              }}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-bg)] transition-colors cursor-pointer text-left"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <Search className="w-4 h-4 flex-none" />
+                <span className="truncate">Search</span>
+              </div>
+              <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-[var(--hub-bg)] border border-[var(--hub-line)] rounded text-[var(--hub-muted)]">
+                Ctrl K
+              </kbd>
+            </button>
           )}
         </div>
       </nav>
 
-      {/* Minimal Settings shortcut in Footer */}
+      {/* Footer */}
       <div className="pt-3 mt-auto border-t border-[var(--hub-line)] flex items-center justify-between px-2">
         <span className="text-[11px] font-medium text-[var(--hub-muted)]">
-          Jarvis OS v4
+          Jarvis OS 3.0
         </span>
         <button
+          type="button"
           onClick={() => handleNavClick('settings')}
           className="p-1.5 rounded-lg text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-bg)] cursor-pointer"
           title="Settings"
@@ -301,34 +289,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <>
       {compactRail ? (
-        /* 64px Glass Icon Rail on Home (Desktop) */
+        /* 64px Glass Icon Rail on Home (Desktop): 6 Primary Destinations + Focus Mode + Browse + Search */
         <aside
           aria-label="HUD Quick Rail"
           className="hud-enter-rail hidden lg:flex flex-col items-center w-16 flex-none relative z-30 border-r border-[rgba(59,232,255,0.18)] bg-[rgba(10,16,28,0.55)] backdrop-blur-xl py-3 gap-1.5"
         >
           <nav className="flex-1 flex flex-col items-center gap-1.5 w-full px-2" aria-label="Primary HUD navigation">
-            {primaryItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = currentTab === item.id;
+            {HUB_DESTINATIONS.map((dest) => {
+              const Icon = DESTINATION_ICONS[dest.id];
+              const isActive = activeDest.id === dest.id;
+              const badge = badgeForDestination(dest.id);
               return (
-                <div key={item.id} className="relative group w-full flex justify-center">
+                <div key={dest.id} className="relative group w-full flex justify-center">
                   <button
                     type="button"
-                    onClick={() => handleNavClick(item.id)}
-                    aria-label={item.label}
+                    onClick={() => handleNavClick(dest.defaultTab)}
+                    aria-label={dest.label}
                     aria-current={isActive ? 'page' : undefined}
                     className={`relative w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3BE8FF] ${
                       isActive
                         ? 'bg-[#3BE8FF]/18 text-[#3BE8FF] border border-[#3BE8FF]/55 shadow-[0_0_16px_-2px_rgba(59,232,255,0.5)]'
-                        : item.highlight
+                        : dest.id === 'ai-studio'
                         ? 'text-[#7C5CFF] bg-[#7C5CFF]/12 border border-[#7C5CFF]/30 hover:bg-[#7C5CFF]/22'
                         : 'text-[#7A8BA6] hover:text-[#E6F1FF] hover:bg-white/5 border border-transparent'
                     }`}
                   >
                     <Icon className="w-4.5 h-4.5" aria-hidden="true" />
-                    {item.badge !== undefined && (
+                    {badge !== undefined && !focus.enabled && (
                       <span className="hud-tabular absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#3BE8FF] text-[#05070D] text-[9px] font-bold flex items-center justify-center">
-                        {item.badge}
+                        {badge}
                       </span>
                     )}
                   </button>
@@ -336,14 +325,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     role="tooltip"
                     className="pointer-events-none opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150 absolute left-14 top-1/2 -translate-y-1/2 whitespace-nowrap px-2.5 py-1 rounded-lg hud-glass-pill text-[11px] font-medium text-[#E6F1FF] z-50 shadow-lg"
                   >
-                    {item.label}
+                    {dest.code} · {dest.label}
                   </span>
                 </div>
               );
             })}
 
+            {/* Focus Mode Trigger */}
+            <div className="relative group w-full flex justify-center mt-1 pt-2 border-t border-[rgba(59,232,255,0.12)]">
+              <button
+                type="button"
+                onClick={focus.toggleFocusMode}
+                aria-pressed={focus.enabled}
+                aria-label={focus.enabled ? 'Exit Focus Mode' : 'Enter Focus Mode'}
+                className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3BE8FF] ${
+                  focus.enabled
+                    ? 'bg-[#7C5CFF]/25 text-[#E6F1FF] border border-[#7C5CFF]/60 shadow-[0_0_14px_rgba(124,92,255,0.45)]'
+                    : 'text-[#7A8BA6] hover:text-[#3BE8FF] hover:bg-white/5 border border-transparent'
+                }`}
+              >
+                <Crosshair className="w-4 h-4" aria-hidden="true" />
+              </button>
+              <span
+                role="tooltip"
+                className="pointer-events-none opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150 absolute left-14 top-1/2 -translate-y-1/2 whitespace-nowrap px-2.5 py-1 rounded-lg hud-glass-pill text-[11px] font-medium text-[#E6F1FF] z-50"
+              >
+                {focus.enabled ? `Exit Focus (${focus.workspace.shortLabel})` : 'Focus Mode (Ctrl+Shift+F)'}
+              </span>
+            </div>
+
             {onOpenCommandPalette && (
-              <div className="relative group w-full flex justify-center mt-1 pt-2 border-t border-[rgba(59,232,255,0.12)]">
+              <div className="relative group w-full flex justify-center">
                 <button
                   type="button"
                   onClick={() => {
@@ -364,15 +376,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             )}
 
-            {/* All Tools Flyout Trigger */}
+            {/* All Destinations Flyout Trigger */}
             <div className="relative group w-full flex justify-center">
               <button
                 type="button"
                 onClick={() => setFlyoutOpen((v) => !v)}
                 aria-expanded={flyoutOpen}
-                aria-label="All tools"
+                aria-label="Browse all pages"
                 className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3BE8FF] ${
-                  flyoutOpen || isCurrentInMore
+                  flyoutOpen
                     ? 'bg-[#3BE8FF]/15 text-[#3BE8FF] border border-[#3BE8FF]/45'
                     : 'text-[#7A8BA6] hover:text-[#E6F1FF] hover:bg-white/5 border border-transparent'
                 }`}
@@ -384,7 +396,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   role="tooltip"
                   className="pointer-events-none opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150 absolute left-14 top-1/2 -translate-y-1/2 whitespace-nowrap px-2.5 py-1 rounded-lg hud-glass-pill text-[11px] font-medium text-[#E6F1FF] z-50"
                 >
-                  All tools
+                  All views
                 </span>
               )}
 
@@ -393,43 +405,44 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <div className="fixed inset-0 z-40" onClick={() => setFlyoutOpen(false)} aria-hidden="true" />
                   <div
                     role="dialog"
-                    aria-label="All tools navigation"
+                    aria-label="Browse all destinations"
                     className="hud-glass fixed left-[72px] top-[76px] z-50 w-72 max-h-[calc(100vh-110px)] overflow-y-auto p-3.5 space-y-3 shadow-2xl"
                   >
                     <div className="flex items-center justify-between border-b border-[rgba(59,232,255,0.14)] pb-2">
                       <span className="font-heading text-xs font-bold uppercase tracking-wider text-[#E6F1FF]">
-                        All Tools
+                        All 6 Destinations
                       </span>
                       <button
                         type="button"
                         onClick={() => setFlyoutOpen(false)}
-                        aria-label="Close tools menu"
+                        aria-label="Close views menu"
                         className="p-1 rounded-lg text-[#7A8BA6] hover:text-[#E6F1FF] cursor-pointer"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                    {groupedTools.map((group) => (
-                      <div key={group.title} className="space-y-1">
+                    {HUB_DESTINATIONS.filter((d) => d.id !== 'home').map((dest) => (
+                      <div key={dest.id} className="space-y-1">
                         <div className="px-2 text-[10px] font-mono uppercase tracking-[0.14em] text-[#7A8BA6]">
-                          {group.title}
+                          {dest.code} · {dest.label}
                         </div>
-                        {group.items.map((item) => {
-                          const Icon = item.icon;
-                          const isActive = currentTab === item.id;
+                        {dest.routes.map((route) => {
+                          const routeActive = currentTab === route.tab;
                           return (
                             <button
-                              key={item.id}
+                              key={`${dest.id}-${route.tab}`}
                               type="button"
-                              onClick={() => handleNavClick(item.id)}
-                              className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer text-left ${
-                                isActive
+                              onClick={() => handleNavClick(route.tab)}
+                              className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer text-left ${
+                                routeActive
                                   ? 'bg-[#3BE8FF]/18 text-[#3BE8FF]'
                                   : 'text-[#E6F1FF]/85 hover:bg-white/5 hover:text-[#E6F1FF]'
                               }`}
                             >
-                              <Icon className="w-3.5 h-3.5 shrink-0 text-[#3BE8FF]/80" />
-                              <span className="truncate">{item.label}</span>
+                              <span className="truncate">{route.label}</span>
+                              {route.tier === 'secondary' && (
+                                <span className="text-[9px] font-mono uppercase text-[#7A8BA6]">More</span>
+                              )}
                             </button>
                           );
                         })}
@@ -460,7 +473,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </aside>
       ) : (
-        /* Standard Expanded Desktop Sidebar for non-Home pages */
+        /* Standard Expanded Desktop Sidebar for non-Home destinations */
         <aside className="hidden lg:block w-60 flex-none bg-[var(--hub-surface)] border-r border-[var(--hub-line)] min-h-[calc(100vh-57px)]">
           {navContent}
         </aside>

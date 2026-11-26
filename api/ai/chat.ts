@@ -16,11 +16,22 @@ import {
 import { isServerSupabaseConfigured, resolveAuthenticatedUser, supabaseServer } from '../_lib/db.ts';
 import { listGeminiModels, resolveGeminiModel } from '../_lib/geminiModels.ts';
 import { chooseGeminiModels, GEMINI_AUTO, GEMINI_AUTO_PRO } from '../_lib/geminiRanking.ts';
+import {
+  AI_PROVIDER_REGISTRY,
+  buildProviderExecutionChain,
+  detectConfiguredProviders,
+  probeAllProviders,
+  selectRecommendedProvider,
+  type CloudOrLocalProviderId,
+} from '../_lib/aiProviderAdapters.ts';
 import { applyCors } from '../_lib/http.ts';
 
-/** Non-Gemini defaults are configurable in Vercel so no dated id is baked in for good. */
+/** Provider model defaults — configurable via Vercel env vars so ids never go stale. */
 const OPENAI_DEFAULT_MODEL = () => (process.env.OPENAI_MODEL || 'gpt-4o-mini').trim();
 const ANTHROPIC_DEFAULT_MODEL = () => (process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5').trim();
+const OPENROUTER_DEFAULT_MODEL = () => (process.env.OPENROUTER_MODEL || 'openrouter/auto').trim();
+const HF_DEFAULT_MODEL = () => (process.env.HUGGINGFACE_MODEL || 'Qwen/Qwen2.5-72B-Instruct').trim();
+const OLLAMA_DEFAULT_MODEL = () => (process.env.OLLAMA_MODEL || 'llama3.2').trim();
 
 function toOpenAiTools() {
   return AI_TOOL_DEFINITIONS.map((t) => ({
@@ -388,14 +399,31 @@ async function runGeminiWithTools(
   };
 }
 
-async function runOpenAiWithTools(
-  apiKey: string,
-  modelId: string,
-  userPrompt: string,
-  history: Array<{ role: string; content: string }>,
-  systemPrompt: string,
-  snapshot: WorkspaceSnapshot
-) {
+async function runOpenAiCompatibleWithTools(params: {
+  providerLabel: string;
+  endpoint: string;
+  apiKey?: string;
+  extraHeaders?: Record<string, string>;
+  modelId: string;
+  userPrompt: string;
+  history: Array<{ role: string; content: string }>;
+  systemPrompt: string;
+  snapshot: WorkspaceSnapshot;
+  allowToolFallback?: boolean;
+}) {
+  const {
+    providerLabel,
+    endpoint,
+    apiKey,
+    extraHeaders,
+    modelId,
+    userPrompt,
+    history,
+    systemPrompt,
+    snapshot,
+    allowToolFallback = false,
+  } = params;
+
   const messages: any[] = [{ role: 'system', content: systemPrompt }];
   for (const m of history.slice(-6)) {
     messages.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content });
@@ -408,26 +436,37 @@ async function runOpenAiWithTools(
   let totalIn = 0;
   let totalOut = 0;
   let finalText = '';
+  let includeTools = true;
 
   for (let round = 0; round < 4; round++) {
-    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    const reqBody: Record<string, any> = {
+      model: modelId,
+      messages,
+    };
+    if (includeTools) {
+      reqBody.tools = toOpenAiTools();
+      reqBody.tool_choice = 'auto';
+    }
+
+    const resp = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        ...extraHeaders,
       },
-      body: JSON.stringify({
-        model: modelId,
-        messages,
-        tools: toOpenAiTools(),
-        tool_choice: 'auto',
-      }),
-      signal: AbortSignal.timeout(15000),
+      body: JSON.stringify(reqBody),
+      signal: AbortSignal.timeout(16000),
     });
 
     if (!resp.ok) {
       const errData = await resp.json().catch(() => ({}));
-      throw new Error(errData.error?.message || `OpenAI API returned HTTP ${resp.status}`);
+      if (includeTools && allowToolFallback && (resp.status === 400 || resp.status === 422)) {
+        // Retry once without OpenAI tools schema for open-weight endpoints that reject tool_choice
+        includeTools = false;
+        continue;
+      }
+      throw new Error(errData.error?.message || `${providerLabel} API returned HTTP ${resp.status}`);
     }
 
     const data = await resp.json();
@@ -558,6 +597,100 @@ async function runAnthropicWithTools(
   };
 }
 
+function modelForProvider(providerId: CloudOrLocalProviderId, requestedModel: string): string {
+  const req = requestedModel.trim();
+  if (providerId === 'gemini') {
+    return req.startsWith('gemini-') || !req || req === 'auto-fastest'
+      ? req === 'auto-fastest'
+        ? (process.env.GEMINI_MODEL || GEMINI_AUTO).trim()
+        : req || (process.env.GEMINI_MODEL || GEMINI_AUTO).trim()
+      : (process.env.GEMINI_MODEL || GEMINI_AUTO).trim();
+  }
+  if (providerId === 'openrouter') {
+    return req.includes('/') ? req : OPENROUTER_DEFAULT_MODEL();
+  }
+  if (providerId === 'openai') {
+    return /^(gpt-|o[134])/.test(req) ? req : OPENAI_DEFAULT_MODEL();
+  }
+  if (providerId === 'anthropic') {
+    return req.startsWith('claude-') ? req : ANTHROPIC_DEFAULT_MODEL();
+  }
+  if (providerId === 'huggingface') {
+    return req.includes('/') ? req : HF_DEFAULT_MODEL();
+  }
+  if (providerId === 'ollama') {
+    return req && !req.startsWith('gemini-') && !req.startsWith('claude-') && !req.startsWith('gpt-') && req !== 'auto-fastest'
+      ? req
+      : OLLAMA_DEFAULT_MODEL();
+  }
+  return req;
+}
+
+async function generateTextEmbedding(
+  text: string,
+  requestedProvider: string,
+  env: Record<string, string | undefined>
+): Promise<{ ok: true; provider: string; model: string; embedding: number[] } | { ok: false; error: string }> {
+  const geminiKey = (env.GEMINI_API_KEY || '').trim();
+  const openaiKey = (env.OPENAI_API_KEY || '').trim();
+  const ollamaUrl = (env.OLLAMA_BASE_URL || '').trim().replace(/\/$/, '');
+
+  if ((requestedProvider === 'gemini' || requestedProvider === 'auto' || !requestedProvider) && geminiKey) {
+    const resp = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
+        body: JSON.stringify({ content: { parts: [{ text }] } }),
+        signal: AbortSignal.timeout(10000),
+      }
+    );
+    if (resp.ok) {
+      const data = await resp.json();
+      if (Array.isArray(data.embedding?.values)) {
+        return { ok: true, provider: 'gemini', model: 'text-embedding-004', embedding: data.embedding.values };
+      }
+    }
+  }
+
+  if ((requestedProvider === 'openai' || requestedProvider === 'auto' || !requestedProvider) && openaiKey) {
+    const resp = await fetch('https://api.openai.com/v1/embeddings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiKey}` },
+      body: JSON.stringify({ model: 'text-embedding-3-small', input: text }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      const vec = data.data?.[0]?.embedding;
+      if (Array.isArray(vec)) {
+        return { ok: true, provider: 'openai', model: 'text-embedding-3-small', embedding: vec };
+      }
+    }
+  }
+
+  if ((requestedProvider === 'ollama' || requestedProvider === 'auto') && ollamaUrl) {
+    const resp = await fetch(`${ollamaUrl}/api/embed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: process.env.OLLAMA_EMBED_MODEL || 'nomic-embed-text', input: text }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      const vec = data.embeddings?.[0];
+      if (Array.isArray(vec)) {
+        return { ok: true, provider: 'ollama', model: process.env.OLLAMA_EMBED_MODEL || 'nomic-embed-text', embedding: vec };
+      }
+    }
+  }
+
+  return {
+    ok: false,
+    error: `Embeddings unavailable for provider "${requestedProvider || 'auto'}". Configure GEMINI_API_KEY, OPENAI_API_KEY, or OLLAMA_BASE_URL.`,
+  };
+}
+
 export function createAiChatHandler(dbClient: any = supabaseServer) {
   return async function handler(req: any, res: any) {
     applyCors(req, res, 'GET, POST, OPTIONS');
@@ -566,13 +699,22 @@ export function createAiChatHandler(dbClient: any = supabaseServer) {
       return res.status(200).end();
     }
 
-    const envProviders = {
-      gemini: Boolean((process.env.GEMINI_API_KEY || '').trim()),
-      openai: Boolean((process.env.OPENAI_API_KEY || '').trim()),
-      anthropic: Boolean((process.env.ANTHROPIC_API_KEY || '').trim()),
-    };
+    const envProviders = detectConfiguredProviders(process.env);
+    const actionParam = Array.isArray(req.query?.action) ? req.query.action[0] : req.query?.action;
 
     if (req.method === 'GET') {
+      if (actionParam === 'health') {
+        const reports = await probeAllProviders(process.env);
+        const recommendation = selectRecommendedProvider(reports);
+        return res.status(200).json({
+          success: true,
+          configuredProviders: envProviders,
+          providers: reports,
+          recommended: recommendation,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
       const geminiKeyForList = (process.env.GEMINI_API_KEY || '').trim();
       const available = geminiKeyForList ? await listGeminiModels(geminiKeyForList) : null;
       const flash = chooseGeminiModels(available, (process.env.GEMINI_MODEL || GEMINI_AUTO).trim());
@@ -582,12 +724,16 @@ export function createAiChatHandler(dbClient: any = supabaseServer) {
         success: true,
         tools: AI_TOOL_DEFINITIONS,
         configuredProviders: envProviders,
+        providerCapabilities: AI_PROVIDER_REGISTRY,
         defaultGeminiModel,
         supportedModels: [
           { provider: 'gemini', modelId: GEMINI_AUTO, resolvesTo: flash.primary, displayName: 'Gemini Flash (best available)', isDefault: true },
           { provider: 'gemini', modelId: GEMINI_AUTO_PRO, resolvesTo: pro.primary, displayName: 'Gemini Pro (best available)' },
+          { provider: 'openrouter', modelId: OPENROUTER_DEFAULT_MODEL(), displayName: 'OpenRouter Auto (OPENROUTER_API_KEY)' },
           { provider: 'openai', modelId: OPENAI_DEFAULT_MODEL(), displayName: 'OpenAI (OPENAI_MODEL)' },
           { provider: 'anthropic', modelId: ANTHROPIC_DEFAULT_MODEL(), displayName: 'Claude (ANTHROPIC_MODEL)' },
+          { provider: 'huggingface', modelId: HF_DEFAULT_MODEL(), displayName: 'Hugging Face Router (HF_TOKEN)' },
+          { provider: 'ollama', modelId: OLLAMA_DEFAULT_MODEL(), displayName: 'Ollama Local (OLLAMA_BASE_URL)' },
         ],
         availableGeminiModels: available,
         timestamp: new Date().toISOString(),
@@ -602,6 +748,23 @@ export function createAiChatHandler(dbClient: any = supabaseServer) {
 
     try {
       const body = req.body || {};
+
+      if (body.action === 'embed' || actionParam === 'embed') {
+        const auth = await resolveAuthenticatedUser(req, dbClient);
+        if (!auth.authenticated) {
+          return res.status(401).json({ error: 'Sign in to generate embeddings.', code: 'auth_required' });
+        }
+        const embedText = String(body.text || body.prompt || '').trim();
+        if (!embedText) {
+          return res.status(400).json({ error: 'Text is required for embeddings.' });
+        }
+        const embedRes = await generateTextEmbedding(embedText, String(body.provider || 'auto'), process.env);
+        if (!embedRes.ok) {
+          return res.status(422).json({ success: false, unsupported: true, error: embedRes.error });
+        }
+        return res.status(200).json({ success: true, ...embedRes, latencyMs: Date.now() - startTime });
+      }
+
       const prompt = String(body.prompt || '').trim();
       if (!prompt) {
         return res.status(400).json({ error: 'Prompt is required.' });
@@ -620,7 +783,7 @@ export function createAiChatHandler(dbClient: any = supabaseServer) {
       const mode = String(body.mode || 'personal');
       const snapshot = await enrichSnapshotFromServer(body.workspaceSnapshot, auth.userId, dbClient);
 
-      const requestedProvider = String(body.provider || 'gemini');
+      const requestedProvider = String(body.provider || 'auto');
       const requestedModel = String(body.modelId || '');
       const projectScopeNote = projectId
         ? `\nFocused Project ID: ${projectId}. Prioritize this project when resolving context.`
@@ -629,92 +792,127 @@ export function createAiChatHandler(dbClient: any = supabaseServer) {
         body.systemPrompt ? `\nAdditional Instructions: ${body.systemPrompt}` : ''
       }`;
 
-      const geminiKey = (process.env.GEMINI_API_KEY || '').trim();
-      const openaiKey = (process.env.OPENAI_API_KEY || '').trim();
-      const anthropicKey = (process.env.ANTHROPIC_API_KEY || '').trim();
-      // Gemini: GEMINI_MODEL (if set and usable) else the best model this key can call.
-      const defaultGeminiModel = (process.env.GEMINI_MODEL || GEMINI_AUTO).trim();
+      const executionChain = buildProviderExecutionChain(requestedProvider, envProviders);
+      let lastError: string | null = null;
 
-      let chosenProvider: 'gemini' | 'openai' | 'anthropic' | null = null;
-      let apiKey = '';
-      let modelId = requestedModel;
-
-      if (requestedProvider === 'openai' && openaiKey) {
-        chosenProvider = 'openai';
-        apiKey = openaiKey;
-        if (!modelId) modelId = OPENAI_DEFAULT_MODEL();
-      } else if (requestedProvider === 'anthropic' && anthropicKey) {
-        chosenProvider = 'anthropic';
-        apiKey = anthropicKey;
-        if (!modelId) modelId = ANTHROPIC_DEFAULT_MODEL();
-      } else if (requestedProvider === 'gemini' && geminiKey) {
-        chosenProvider = 'gemini';
-        apiKey = geminiKey;
-        if (!modelId) modelId = defaultGeminiModel;
-      } else if (requestedProvider !== 'local_heuristic') {
-        if (geminiKey) {
-          chosenProvider = 'gemini';
-          apiKey = geminiKey;
-          modelId = defaultGeminiModel;
-        } else if (openaiKey) {
-          chosenProvider = 'openai';
-          apiKey = openaiKey;
-          modelId = OPENAI_DEFAULT_MODEL();
-        } else if (anthropicKey) {
-          chosenProvider = 'anthropic';
-          apiKey = anthropicKey;
-          modelId = ANTHROPIC_DEFAULT_MODEL();
-        }
-      }
-
-      let geminiFallback: string | null = null;
-      if (chosenProvider === 'gemini') {
-        // Old saved ids (retired 1.5 models, invented ones) resolve to what the key can use.
-        const resolved = await resolveGeminiModel(apiKey, modelId);
-        modelId = resolved.primary;
-        geminiFallback = resolved.fallback;
-      }
-
-      if (chosenProvider && apiKey) {
+      for (const candidateProvider of executionChain) {
+        const modelId = modelForProvider(candidateProvider, requestedModel);
         try {
-          const llmResult =
-            chosenProvider === 'gemini'
-              ? await runGeminiWithTools(apiKey, modelId, prompt, history, systemPrompt, snapshot, geminiFallback)
-              : chosenProvider === 'openai'
-              ? await runOpenAiWithTools(apiKey, modelId, prompt, history, systemPrompt, snapshot)
-              : await runAnthropicWithTools(apiKey, modelId, prompt, history, systemPrompt, snapshot);
+          let llmResult: any;
+          let resolvedModelId = modelId;
 
-          const finalModelId = (llmResult as any).resolvedModelId || modelId;
+          if (candidateProvider === 'gemini') {
+            const geminiKey = (process.env.GEMINI_API_KEY || '').trim();
+            const resolved = await resolveGeminiModel(geminiKey, modelId);
+            resolvedModelId = resolved.primary;
+            llmResult = await runGeminiWithTools(
+              geminiKey,
+              resolved.primary,
+              prompt,
+              history,
+              systemPrompt,
+              snapshot,
+              resolved.fallback
+            );
+            resolvedModelId = llmResult.resolvedModelId || resolvedModelId;
+          } else if (candidateProvider === 'openrouter') {
+            const orKey = (process.env.OPENROUTER_API_KEY || '').trim();
+            llmResult = await runOpenAiCompatibleWithTools({
+              providerLabel: 'OpenRouter',
+              endpoint: 'https://openrouter.ai/api/v1/chat/completions',
+              apiKey: orKey,
+              extraHeaders: {
+                'HTTP-Referer': 'https://yashwanth-hub.vercel.app',
+                'X-Title': 'Yashwanth Hub Jarvis AI OS',
+              },
+              modelId,
+              userPrompt: prompt,
+              history,
+              systemPrompt,
+              snapshot,
+              allowToolFallback: true,
+            });
+          } else if (candidateProvider === 'openai') {
+            const openaiKey = (process.env.OPENAI_API_KEY || '').trim();
+            llmResult = await runOpenAiCompatibleWithTools({
+              providerLabel: 'OpenAI',
+              endpoint: 'https://api.openai.com/v1/chat/completions',
+              apiKey: openaiKey,
+              modelId,
+              userPrompt: prompt,
+              history,
+              systemPrompt,
+              snapshot,
+            });
+          } else if (candidateProvider === 'anthropic') {
+            const anthropicKey = (process.env.ANTHROPIC_API_KEY || '').trim();
+            llmResult = await runAnthropicWithTools(anthropicKey, modelId, prompt, history, systemPrompt, snapshot);
+          } else if (candidateProvider === 'huggingface') {
+            const hfKey = (process.env.HF_TOKEN || process.env.HUGGINGFACE_API_KEY || '').trim();
+            llmResult = await runOpenAiCompatibleWithTools({
+              providerLabel: 'Hugging Face',
+              endpoint: 'https://router.huggingface.co/v1/chat/completions',
+              apiKey: hfKey,
+              modelId,
+              userPrompt: prompt,
+              history,
+              systemPrompt,
+              snapshot,
+              allowToolFallback: true,
+            });
+          } else if (candidateProvider === 'ollama') {
+            const ollamaUrl = (process.env.OLLAMA_BASE_URL || '').trim().replace(/\/$/, '');
+            llmResult = await runOpenAiCompatibleWithTools({
+              providerLabel: 'Ollama',
+              endpoint: `${ollamaUrl}/v1/chat/completions`,
+              modelId,
+              userPrompt: prompt,
+              history,
+              systemPrompt,
+              snapshot,
+              allowToolFallback: true,
+            });
+          }
 
-          return res.status(200).json({
-            success: true,
-            providerMode: 'server_llm',
-            provider: chosenProvider,
-            modelId: finalModelId,
-            text: llmResult.text,
-            tokensInput: llmResult.tokensIn,
-            tokensOutput: llmResult.tokensOut,
-            latencyMs: Date.now() - startTime,
-            tool_calls: llmResult.tool_calls,
-            proposed_actions: llmResult.proposed_actions,
-            citations: llmResult.citations,
-            configuredProviders: envProviders,
-          });
-        } catch (llmErr: any) {
-          const grounded = buildDeterministicGroundedResponse(prompt, snapshot, projectId);
-          return res.status(200).json({
-            success: true,
-            providerMode: 'grounded_fallback_after_error',
-            providerError: llmErr?.message || 'LLM call failed',
-            provider: 'local_heuristic',
-            modelId: 'grounded-chief-of-staff-v2',
-            ...grounded,
-            tokensInput: 0,
-            tokensOutput: 0,
-            latencyMs: Date.now() - startTime,
-            configuredProviders: envProviders,
-          });
+          if (llmResult) {
+            return res.status(200).json({
+              success: true,
+              providerMode: 'server_llm',
+              provider: candidateProvider,
+              modelId: resolvedModelId,
+              failoverNotice:
+                lastError && requestedProvider !== candidateProvider
+                  ? `Primary provider failed (${lastError}); served seamlessly via ${candidateProvider}.`
+                  : undefined,
+              text: llmResult.text,
+              tokensInput: llmResult.tokensIn,
+              tokensOutput: llmResult.tokensOut,
+              latencyMs: Date.now() - startTime,
+              tool_calls: llmResult.tool_calls,
+              proposed_actions: llmResult.proposed_actions,
+              citations: llmResult.citations,
+              configuredProviders: envProviders,
+            });
+          }
+        } catch (err: any) {
+          lastError = `${candidateProvider}: ${err?.message || 'error'}`;
         }
+      }
+
+      if (lastError) {
+        const grounded = buildDeterministicGroundedResponse(prompt, snapshot, projectId);
+        return res.status(200).json({
+          success: true,
+          providerMode: 'grounded_fallback_after_error',
+          providerError: lastError,
+          provider: 'local_heuristic',
+          modelId: 'grounded-chief-of-staff-v2',
+          ...grounded,
+          tokensInput: 0,
+          tokensOutput: 0,
+          latencyMs: Date.now() - startTime,
+          configuredProviders: envProviders,
+        });
       }
 
       const grounded = buildDeterministicGroundedResponse(prompt, snapshot, projectId);
@@ -722,7 +920,7 @@ export function createAiChatHandler(dbClient: any = supabaseServer) {
         success: true,
         providerMode: 'grounded_deterministic',
         providerNotice:
-          'No live server LLM API key (GEMINI_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY) is configured in environment variables; returning deterministic tool-grounded response from verified workspace records.',
+          'No live server LLM API key (GEMINI_API_KEY / OPENROUTER_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / HF_TOKEN) is configured in environment variables; returning deterministic tool-grounded response from verified workspace records.',
         provider: 'local_heuristic',
         modelId: 'grounded-chief-of-staff-v2',
         ...grounded,

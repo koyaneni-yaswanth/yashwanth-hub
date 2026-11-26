@@ -126,7 +126,7 @@ export const HudMissionDock: React.FC<HudMissionDockProps> = ({
                 <span>All caught up for today.</span>
               </p>
             ) : (
-              dueAndOverdueTasks.slice(0, 6).map((task) => {
+              dueAndOverdueTasks.slice(0, 3).map((task) => {
                 const overdue = isOverdue(task.due_date, task.done);
                 return (
                   <div
@@ -192,7 +192,7 @@ export const HudMissionDock: React.FC<HudMissionDockProps> = ({
                 No deadlines in the next 7 days.
               </p>
             ) : (
-              deadlines.slice(0, 6).map((d) => (
+              deadlines.slice(0, 3).map((d) => (
                 <button
                   key={d.id}
                   type="button"

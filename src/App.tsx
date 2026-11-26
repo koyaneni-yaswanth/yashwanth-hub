@@ -4,9 +4,12 @@ import { db, initializeDatabase } from './db';
 import type { NavigationTab } from './types';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { SyncProvider } from './context/SyncContext';
+import { FocusModeProvider } from './context/FocusModeContext';
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
 import { MobileNav } from './components/layout/MobileNav';
+import { HubDestinationBar } from './components/layout/HubDestinationBar';
+import { FocusModePickerModal } from './components/focus/FocusModePickerModal';
 import { CommandPalette } from './components/common/CommandPalette';
 import { Modal } from './components/common/Modal';
 import { AlertTriangle } from 'lucide-react';
@@ -493,6 +496,7 @@ function HubMain() {
   const isHome = currentTab === 'dashboard';
 
   return (
+    <FocusModeProvider onAreaChange={setCurrentArea}>
     <div
       className={`min-h-screen flex flex-col font-sans transition-colors duration-200 ${
         isHome ? 'jarvis-hud text-[#E6F1FF]' : 'text-[var(--hub-ink)]'
@@ -552,6 +556,9 @@ function HubMain() {
             >
               <Suspense fallback={<PageSkeleton label={`Loading ${TAB_TITLES[currentTab]}`} />}>
                 <div key={currentTab} className="hub-page-enter">
+                  {!isHome && (
+                    <HubDestinationBar currentTab={currentTab} onSelectTab={setCurrentTab} />
+                  )}
                   {renderActiveTab()}
                 </div>
               </Suspense>
@@ -586,6 +593,9 @@ function HubMain() {
         onClose={() => setIsQuickCaptureOpen(false)}
         areas={areas}
       />
+
+      {/* Focus Mode Workspace Selector */}
+      <FocusModePickerModal onNavigate={(tab) => setCurrentTab(tab)} />
 
       {/* OAuth Diagnostic Error Modal */}
       {oauthError && (
@@ -645,6 +655,7 @@ function HubMain() {
         </Modal>
       )}
     </div>
+    </FocusModeProvider>
   );
 }
 

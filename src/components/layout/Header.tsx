@@ -13,11 +13,13 @@ import {
   UserCheck,
   LogIn,
   AlertTriangle,
+  Crosshair,
 } from 'lucide-react';
 import { db } from '../../db';
 import { TurbineLogo } from '../common/TurbineLogo';
 import { useTheme } from '../../context/ThemeContext';
 import { useSync } from '../../context/SyncContext';
+import { useFocusMode } from '../../context/FocusModeContext';
 import { SupabaseAuthService, type AuthState } from '../../services/auth/supabaseAuthService';
 import type { Area, NavigationTab } from '../../types';
 
@@ -46,6 +48,7 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const { isDark, toggleTheme } = useTheme();
   const { status, queueCount, failedCount, signedIn, statusMessage, syncNow } = useSync();
+  const focus = useFocusMode();
   const [authState, setAuthState] = React.useState<AuthState>(() => SupabaseAuthService.getState());
 
   React.useEffect(() => {
@@ -195,7 +198,7 @@ export const Header: React.FC<HeaderProps> = ({
           {onOpenQuickCapture && (
             <button
               onClick={onOpenQuickCapture}
-              className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold whitespace-nowrap hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer shadow-xs"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold whitespace-nowrap hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer shadow-xs"
               title="Quick Add or Voice Capture (Ctrl+Q)"
               aria-label="Quick Add"
             >
@@ -203,6 +206,25 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="hidden sm:inline">Quick Add</span>
             </button>
           )}
+
+          {/* Focus Mode Toggle (One Thing at a Time — Home strip & mobile drawer also expose it on xs) */}
+          <button
+            type="button"
+            onClick={focus.toggleFocusMode}
+            aria-pressed={focus.enabled}
+            aria-label={focus.enabled ? `Exit Focus Mode (${focus.workspace.shortLabel})` : 'Enter Focus Mode (Ctrl+Shift+F)'}
+            title={focus.enabled ? `Focused: ${focus.workspace.label} (Click to exit)` : 'Enter Focus Mode (Ctrl+Shift+F)'}
+            className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+              focus.enabled
+                ? 'border-[#7C5CFF]/60 bg-[#7C5CFF]/15 text-[#E6F1FF] dark:text-[#E6F1FF] hover:bg-[#7C5CFF]/25'
+                : 'border-[var(--hub-line)] bg-[var(--hub-bg)]/60 text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:border-[var(--hub-accent)]/40'
+            }`}
+          >
+            <Crosshair className={`w-3.5 h-3.5 shrink-0 ${focus.enabled ? 'text-[#3BE8FF]' : ''}`} />
+            <span className="hidden lg:inline">
+              {focus.enabled ? focus.workspace.shortLabel : 'Focus'}
+            </span>
+          </button>
 
           {/* Always-visible Account / Live Sync Pill (Mobile + Desktop) */}
           <button

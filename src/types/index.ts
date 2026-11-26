@@ -548,7 +548,15 @@ export interface NeoSapienTranscript {
 }
 
 // Multi-Model AI Engine
-export type AIProvider = 'openai' | 'anthropic' | 'gemini' | 'local_heuristic';
+export type AIProvider =
+  | 'auto'
+  | 'openai'
+  | 'anthropic'
+  | 'gemini'
+  | 'openrouter'
+  | 'huggingface'
+  | 'ollama'
+  | 'local_heuristic';
 
 export type AIMode =
   | 'personal'

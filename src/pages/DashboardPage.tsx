@@ -12,6 +12,7 @@ import {
   CalendarCheck,
   Undo2,
   Check,
+  Crosshair,
 } from 'lucide-react';
 import { db } from '../db';
 import type { Task, Area, Priority } from '../types';
@@ -26,6 +27,8 @@ import {
 import { IntegrationVaultService } from '../services/integrationVaultService';
 import { GoogleAuthService } from '../services/google/googleAuthService';
 import { useSync } from '../context/SyncContext';
+import { useFocusMode } from '../context/FocusModeContext';
+import { filterItemsForFocusWorkspace } from '../lib/hubArchitecture';
 import { handOffFocusTask } from '../lib/focusHandoff';
 import { MomentumChip } from '../components/momentum/MomentumChip';
 import { TaskService } from '../services/sync/taskService';
@@ -99,6 +102,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     [allTasks, currentArea]
   );
   const openTasks = React.useMemo(() => tasks.filter((t) => !t.done), [tasks]);
+  const recentAddedCutoff = React.useMemo(() => new Date(nowMs - 5 * 60_000).toISOString(), [nowMs]);
   const dueAndOverdueTasks = React.useMemo(
     () =>
       openTasks
@@ -107,11 +111,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           return st === 'overdue' || st === 'today';
         })
         .sort((a, b) => {
+          const aJustAdded = (a.created_at || '') >= recentAddedCutoff;
+          const bJustAdded = (b.created_at || '') >= recentAddedCutoff;
+          if (aJustAdded !== bJustAdded) return bJustAdded ? 1 : -1;
+          if (aJustAdded && bJustAdded) {
+            return (b.created_at || '').localeCompare(a.created_at || '');
+          }
           if (a.starred && !b.starred) return -1;
           if (!a.starred && b.starred) return 1;
           return toDueKey(a.due_date).localeCompare(toDueKey(b.due_date));
         }),
-    [openTasks, today]
+    [openTasks, today, recentAddedCutoff]
   );
   const overdueCount = React.useMemo(
     () => dueAndOverdueTasks.filter((t) => dueStatus(t.due_date, t.done, today) === 'overdue').length,
@@ -267,6 +277,7 @@ const DashboardHudShell: React.FC<ShellProps> = ({
   const [recommendationSkipIndex, setRecommendationSkipIndex] = useState(0);
 
   const { syncNow } = useSync();
+  const focus = useFocusMode();
   const handleSyncNow = async () => {
     setIsSyncing(true);
     try {
@@ -281,8 +292,13 @@ const DashboardHudShell: React.FC<ShellProps> = ({
     }
   };
 
+  const candidateSourceTasks = React.useMemo(
+    () => (focus.enabled ? filterItemsForFocusWorkspace(openTasks, focus.workspaceId) : openTasks),
+    [focus.enabled, focus.workspaceId, openTasks]
+  );
+
   const scoredCandidateTasks = React.useMemo(() => {
-    return openTasks
+    return candidateSourceTasks
       .map((t) => {
         let score = 0;
         let label = 'Next up';
@@ -319,7 +335,7 @@ const DashboardHudShell: React.FC<ShellProps> = ({
         return { task: t, score, label };
       })
       .sort((a, b) => b.score - a.score);
-  }, [openTasks, today, nextWeek, currentArea]);
+  }, [candidateSourceTasks, today, nextWeek, currentArea]);
 
   const candidateTasks = scoredCandidateTasks.map((s) => s.task);
   const activeRecommendation =
@@ -481,10 +497,12 @@ const DashboardHudShell: React.FC<ShellProps> = ({
       <div className="relative z-20 flex flex-wrap items-center justify-between gap-2 px-1 sm:pt-4">
         <div className="min-w-0">
           <h2 className="text-lg sm:text-xl font-bold font-heading text-[#E6F1FF] tracking-tight truncate">
-            {getGreeting('Yaswanth')}
+            {focus.enabled ? `Focused · ${focus.workspace.label}` : getGreeting('Yaswanth')}
           </h2>
           <p className="text-xs text-[#7A8BA6] hud-tabular">
-            {dueAndOverdueTasks.length === 0
+            {focus.enabled
+              ? `${focus.workspace.previewSummary} · Your next move is highlighted`
+              : dueAndOverdueTasks.length === 0
               ? `ALL CLEAR · ${openTasks.length} OPEN`
               : [
                   overdueCount ? `${overdueCount} OVERDUE` : '',
@@ -497,27 +515,59 @@ const DashboardHudShell: React.FC<ShellProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => onNavigate('goals')}
-            className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl hud-glass-pill text-xs font-semibold text-[#E6F1FF] hover:text-[#3BE8FF] transition-colors cursor-pointer"
-            title="Open Goals & Habits"
-          >
-            <Trophy className="w-3.5 h-3.5 text-[#FFB547]" />
-            <span>Goals</span>
-            <span className="hud-tabular text-[#3BE8FF]">{activeGoalsCount}</span>
-          </button>
-          <MomentumChip onOpen={() => onNavigate('momentum')} />
-          <button
-            type="button"
-            onClick={handleSyncNow}
-            disabled={isSyncing}
-            className="p-2 rounded-xl hud-glass-pill text-[#7A8BA6] hover:text-[#3BE8FF] transition-colors cursor-pointer disabled:opacity-50"
-            title="Sync workspace"
-            aria-label="Sync now"
-          >
-            <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin text-[#3BE8FF]' : ''}`} />
-          </button>
+          {focus.enabled ? (
+            <>
+              <button
+                type="button"
+                onClick={focus.openPicker}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl hud-glass-pill text-xs font-semibold text-[#E6F1FF] hover:text-[#3BE8FF] transition-colors cursor-pointer"
+              >
+                <Crosshair className="w-3.5 h-3.5 text-[#3BE8FF]" />
+                <span>Switch Workspace</span>
+              </button>
+              <button
+                type="button"
+                onClick={focus.disableFocusMode}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-[#7C5CFF]/25 border border-[#7C5CFF]/55 text-xs font-semibold text-[#E6F1FF] hover:bg-[#7C5CFF]/35 transition-colors cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Exit Focus</span>
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={focus.openPicker}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl hud-glass-pill text-xs font-semibold text-[#E6F1FF] hover:text-[#3BE8FF] transition-colors cursor-pointer"
+                title="Enter single-workspace Focus Mode (Ctrl+Shift+F)"
+              >
+                <Crosshair className="w-3.5 h-3.5 text-[#7C5CFF]" />
+                <span>Focus Mode</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onNavigate('goals')}
+                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl hud-glass-pill text-xs font-semibold text-[#E6F1FF] hover:text-[#3BE8FF] transition-colors cursor-pointer"
+                title="Open Goals & Habits"
+              >
+                <Trophy className="w-3.5 h-3.5 text-[#FFB547]" />
+                <span>Goals</span>
+                <span className="hud-tabular text-[#3BE8FF]">{activeGoalsCount}</span>
+              </button>
+              <MomentumChip onOpen={() => onNavigate('momentum')} />
+              <button
+                type="button"
+                onClick={handleSyncNow}
+                disabled={isSyncing}
+                className="p-2 rounded-xl hud-glass-pill text-[#7A8BA6] hover:text-[#3BE8FF] transition-colors cursor-pointer disabled:opacity-50"
+                title="Sync workspace"
+                aria-label="Sync now"
+              >
+                <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin text-[#3BE8FF]' : ''}`} />
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -603,33 +653,44 @@ const DashboardHudShell: React.FC<ShellProps> = ({
           onOpenQuickCapture={onOpenQuickCapture}
           onNavigate={onNavigate}
           onSelectArea={onSelectArea}
+          focusMode={{
+            enabled: focus.enabled,
+            workspaceLabel: focus.workspace.label,
+            previewSummary: focus.workspace.previewSummary,
+            openCount: candidateSourceTasks.length,
+            onExit: focus.disableFocusMode,
+            onSwitchWorkspace: focus.openPicker,
+            onOpenWorkspace: () => onNavigate(focus.workspace.destinationTab),
+          }}
           tasks={tasks}
           today={today}
           currentArea={currentArea}
         />
       </div>
 
-      {/* Bottom Mission Dock (3 Snap Tracks + Expandable Overview Drawer) */}
-      <HudMissionDock
-        expanded={hud.dockExpanded}
-        onToggleExpand={() => hud.setDockExpanded(!hud.dockExpanded)}
-        dueAndOverdueTasks={dueAndOverdueTasks}
-        openTasks={openTasks}
-        completedTasksCount={tasks.filter((t) => t.done).length}
-        deadlines={deadlines}
-        projects={allProjects}
-        pinnedNotes={pinnedNotes}
-        monthExpenses={monthExpenses}
-        scheduleCount={scheduleCount}
-        upcomingMeetingsCount={upcomingMeetings.length}
-        upcomingEventsCount={upcomingEvents.length}
-        today={today}
-        areas={areas}
-        onToggleTask={handleToggleTask}
-        onToggleStar={handleToggleStar}
-        onDeleteTask={handleDeleteTask}
-        onNavigate={onNavigate}
-      />
+      {/* Bottom Mission Dock (Hidden during distraction-free Focus Mode) */}
+      {!focus.enabled && (
+        <HudMissionDock
+          expanded={hud.dockExpanded}
+          onToggleExpand={() => hud.setDockExpanded(!hud.dockExpanded)}
+          dueAndOverdueTasks={dueAndOverdueTasks}
+          openTasks={openTasks}
+          completedTasksCount={tasks.filter((t) => t.done).length}
+          deadlines={deadlines}
+          projects={allProjects}
+          pinnedNotes={pinnedNotes}
+          monthExpenses={monthExpenses}
+          scheduleCount={scheduleCount}
+          upcomingMeetingsCount={upcomingMeetings.length}
+          upcomingEventsCount={upcomingEvents.length}
+          today={today}
+          areas={areas}
+          onToggleTask={handleToggleTask}
+          onToggleStar={handleToggleStar}
+          onDeleteTask={handleDeleteTask}
+          onNavigate={onNavigate}
+        />
+      )}
 
       {/* Interactive Daily Planning Modal */}
       {isDailyPlanningOpen && (
