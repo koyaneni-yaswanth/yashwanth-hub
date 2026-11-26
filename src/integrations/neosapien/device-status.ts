@@ -191,10 +191,12 @@ export class NeoDeviceStatusManager {
     };
     await db.device_status_history.add(historyEntry);
 
-    // Push to Supabase if configured
+    // Push to Supabase only when user has an authenticated session
     const client = getSupabaseClient();
     if (client) {
       try {
+        const { data: sessData } = await client.auth.getSession();
+        if (!sessData?.session?.user?.id) return;
         await client.from('connected_devices').upsert({
           id: device.id,
           device_type: device.device_type,

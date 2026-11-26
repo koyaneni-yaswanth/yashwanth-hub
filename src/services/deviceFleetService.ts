@@ -147,28 +147,39 @@ export class DeviceFleetService {
       }
     }
 
-    // 2. Sync to Supabase connected_devices if cloud is configured
-    if (isSupabaseConfigured()) {
-      try {
-        const client = getSupabaseClient();
-        if (client) {
-          await client.from('connected_devices').upsert({
-            hardware_id: installId,
-            name: session.deviceName,
-            device_type: session.deviceType,
-            connection_state: 'connected',
-            last_status_update: now,
-          });
-        }
-      } catch (err) {
-        console.warn('Could not sync device registration to Supabase:', err);
+    // 2. Sync to Supabase connected_devices only when user has an authenticated session
+    try {
+      const client = await this.getSignedInClient();
+      if (client) {
+        await client.from('connected_devices').upsert({
+          hardware_id: installId,
+          name: session.deviceName,
+          device_type: session.deviceType,
+          connection_state: 'connected',
+          last_status_update: now,
+        });
       }
+    } catch (err) {
+      console.warn('Could not sync device registration to Supabase:', err);
     }
 
     // 3. Start Heartbeat
     this.startHeartbeatLoop();
 
     return session;
+  }
+
+  private static async getSignedInClient() {
+    if (!isSupabaseConfigured()) return null;
+    const client = getSupabaseClient();
+    if (!client) return null;
+    try {
+      const { data } = await client.auth.getSession();
+      if (!data?.session?.user?.id) return null;
+      return client;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -238,18 +249,16 @@ export class DeviceFleetService {
       revokedAt: now,
     });
 
-    if (isSupabaseConfigured()) {
-      try {
-        const client = getSupabaseClient();
-        if (client) {
-          await client.from('connected_devices').update({
-            connection_state: 'disconnected',
-            last_status_update: now,
-          }).eq('hardware_id', deviceId);
-        }
-      } catch (e) {
-        console.warn('Could not revoke on Supabase:', e);
+    try {
+      const client = await this.getSignedInClient();
+      if (client) {
+        await client.from('connected_devices').update({
+          connection_state: 'disconnected',
+          last_status_update: now,
+        }).eq('hardware_id', deviceId);
       }
+    } catch (e) {
+      console.warn('Could not revoke on Supabase:', e);
     }
 
     // If revoking current device, clean up credentials
@@ -274,17 +283,15 @@ export class DeviceFleetService {
       localStorage.setItem(this.DEVICE_NAME_KEY, trimmed);
     }
 
-    if (isSupabaseConfigured()) {
-      try {
-        const client = getSupabaseClient();
-        if (client) {
-          await client.from('connected_devices').update({
-            name: trimmed,
-          }).eq('hardware_id', deviceId);
-        }
-      } catch (e) {
-        console.warn('Could not update device name in Supabase:', e);
+    try {
+      const client = await this.getSignedInClient();
+      if (client) {
+        await client.from('connected_devices').update({
+          name: trimmed,
+        }).eq('hardware_id', deviceId);
       }
+    } catch (e) {
+      console.warn('Could not update device name in Supabase:', e);
     }
   }
 
@@ -294,15 +301,13 @@ export class DeviceFleetService {
   public static async removeDeviceRegistration(deviceId: string): Promise<void> {
     await db.device_sessions.delete(deviceId);
 
-    if (isSupabaseConfigured()) {
-      try {
-        const client = getSupabaseClient();
-        if (client) {
-          await client.from('connected_devices').delete().eq('hardware_id', deviceId);
-        }
-      } catch (e) {
-        console.warn('Could not remove device registration from Supabase:', e);
+    try {
+      const client = await this.getSignedInClient();
+      if (client) {
+        await client.from('connected_devices').delete().eq('hardware_id', deviceId);
       }
+    } catch (e) {
+      console.warn('Could not remove device registration from Supabase:', e);
     }
   }
 

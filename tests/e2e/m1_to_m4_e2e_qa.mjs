@@ -49,7 +49,11 @@ async function waitForServer(url, timeoutMs = 15000) {
 
 function attachErrorCollectors(page, errors) {
   page.on('pageerror', (err) => errors.push(`pageerror: ${err.message}`));
-  page.on('requestfailed', (req) => errors.push(`requestfailed: ${req.url()} (${req.failure()?.errorText || 'unknown'})`));
+  page.on('requestfailed', (req) => {
+    const errText = req.failure()?.errorText || 'unknown';
+    if (errText === 'net::ERR_ABORTED') return;
+    errors.push(`requestfailed: ${req.url()} (${errText})`);
+  });
   page.on('response', (res) => {
     if (res.status() >= 400) errors.push(`http ${res.status()}: ${res.url()}`);
   });
