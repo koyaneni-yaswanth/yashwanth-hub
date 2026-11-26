@@ -12,11 +12,17 @@ import {
   ExternalLink,
   ShieldAlert,
   SlidersHorizontal,
+  Radio,
+  Send,
+  RefreshCw,
 } from 'lucide-react';
 import { db } from '../db';
 import type { NotificationType, NavigationTab } from '../types';
 import { formatShortDate } from '../lib/utils';
+import { getSupabaseClient } from '../lib/supabase';
 import { ReminderEngine } from '../services/reminderEngine';
+import { guardActionExecution } from '../services/selfHealingService';
+import type { ChannelStatusItem, NotificationChannelId, NotificationDispatchResult } from '../../api/_lib/channelTypes';
 import { Badge } from '../components/common/Badge';
 
 import { CapacitorService } from '../services/native/capacitorService';
@@ -43,6 +49,84 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({ onNavigate
   const [prefs, setPrefs] = useState<NotificationPrefs>(() => ReminderEngine.getPrefs());
   const [prefsSaved, setPrefsSaved] = useState(false);
   const [confirmClearAll, setConfirmClearAll] = useState(false);
+  const [channels, setChannels] = useState<ChannelStatusItem[]>([]);
+  const [webhookSigningConfigured, setWebhookSigningConfigured] = useState(false);
+  const [loadingChannels, setLoadingChannels] = useState(false);
+  const [selectedChannel, setSelectedChannel] = useState<NotificationChannelId | 'all'>('webhook');
+  const [customWebhookUrl, setCustomWebhookUrl] = useState(() =>
+    typeof localStorage !== 'undefined' ? localStorage.getItem('yash_custom_n8n_webhook') || '' : ''
+  );
+  const [testTitle, setTestTitle] = useState('Yashwanth Hub Alert Check');
+  const [testMessage, setTestMessage] = useState('Milestone 3 outbound notification test from Notifications.');
+  const [dispatchingTest, setDispatchingTest] = useState(false);
+  const [dispatchResults, setDispatchResults] = useState<NotificationDispatchResult[] | null>(null);
+  const [dispatchError, setDispatchError] = useState<string | null>(null);
+
+  const loadChannelStatus = async () => {
+    setLoadingChannels(true);
+    try {
+      const resp = await fetch('/api/automations/dispatch?action=channel_status');
+      if (resp.ok && (resp.headers.get('content-type') || '').includes('application/json')) {
+        const body = await resp.json();
+        setChannels(Array.isArray(body?.channels) ? body.channels : []);
+        setWebhookSigningConfigured(Boolean(body?.webhookSigningConfigured));
+      }
+    } catch {
+      // Static preview fallback cleanly leaves channel cards unloaded
+    } finally {
+      setLoadingChannels(false);
+    }
+  };
+
+  const handleDispatchChannelTest = async () => {
+    setDispatchingTest(true);
+    setDispatchError(null);
+    setDispatchResults(null);
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('yash_custom_n8n_webhook', customWebhookUrl.trim());
+      }
+      await guardActionExecution({
+        actionType: `notify_${selectedChannel}`,
+        summary: `User-confirmed Level 2 dispatch to ${selectedChannel}: ${testTitle}`,
+        approvedByHuman: true,
+        channel: selectedChannel,
+      });
+
+      const supa = getSupabaseClient();
+      const token = supa ? (await supa.auth.getSession()).data?.session?.access_token : undefined;
+      if (!token) {
+        setDispatchError('Sign in to Supabase Cloud Sync first so the server can authenticate your outbound dispatch.');
+        return;
+      }
+
+      const resp = await fetch('/api/automations/dispatch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          action: 'notify',
+          channel: selectedChannel,
+          title: testTitle,
+          message: testMessage,
+          webhookUrl: customWebhookUrl.trim() || undefined,
+          severity: 'info',
+        }),
+      });
+      const body = await resp.json();
+      if (Array.isArray(body?.results)) {
+        setDispatchResults(body.results);
+      } else {
+        setDispatchError(body?.error || body?.message || 'Dispatch failed.');
+      }
+    } catch (err: any) {
+      setDispatchError(err?.message || 'Failed to reach /api/automations/dispatch.');
+    } finally {
+      setDispatchingTest(false);
+    }
+  };
 
   const updatePrefs = (next: NotificationPrefs) => {
     setPrefs(next);
@@ -55,6 +139,7 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({ onNavigate
     CapacitorService.checkNotificationPermissions().then((granted) => {
       setPermissionGranted(granted);
     });
+    void loadChannelStatus();
   }, []);
 
   // Live Query
@@ -398,6 +483,124 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({ onNavigate
         <p className="text-[11px] text-[var(--hub-muted)]">
           Repeated reminders are merged: an identical unread notification is not added again within 12 hours.
         </p>
+      </section>
+
+      {/* Outbound Channels (Telegram, Discord, n8n/Zapier/Make Webhook) */}
+      <section aria-labelledby="outbound-channels-heading" className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-2xl p-5 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 id="outbound-channels-heading" className="text-sm font-semibold text-[var(--hub-ink)] flex items-center gap-2">
+              <Radio className="w-4 h-4 text-[var(--hub-accent)]" />
+              Outbound Automation &amp; Alert Channels
+            </h2>
+            <p className="text-xs text-[var(--hub-muted)] mt-0.5">
+              Optional Level-2 channels (Telegram, Discord, HTTPS n8n/Make/Zapier webhooks). Dispatches require confirmation and never report connected without verified env config.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant={webhookSigningConfigured ? 'emerald' : 'gray'}>
+              {webhookSigningConfigured ? 'HMAC-SHA256 Signing On' : 'HMAC Secret Optional'}
+            </Badge>
+            <button
+              type="button"
+              onClick={loadChannelStatus}
+              disabled={loadingChannels}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[var(--hub-line)] text-xs text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loadingChannels ? 'animate-spin' : ''}`} />
+              <span>Check Env</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {channels.length === 0 ? (
+            <div className="md:col-span-3 text-xs text-[var(--hub-muted)]">
+              Click Check Env when hosted on Vercel to inspect configured server alert secrets.
+            </div>
+          ) : (
+            channels.map((ch) => (
+              <div key={ch.id} className="rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] p-3.5 space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-[var(--hub-ink)]">{ch.label}</span>
+                  <Badge variant={ch.configured ? 'emerald' : 'amber'}>
+                    {ch.configured ? 'Configured' : 'Not Configured'}
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-[var(--hub-muted)]">{ch.detail}</p>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] p-4 space-y-3">
+          <div className="text-xs font-semibold text-[var(--hub-ink)]">
+            Send Confirmed Level-2 Test Alert
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <select
+              aria-label="Target notification channel"
+              value={selectedChannel}
+              onChange={(e) => setSelectedChannel(e.target.value as NotificationChannelId | 'all')}
+              className="px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-surface)] text-xs text-[var(--hub-ink)]"
+            >
+              <option value="webhook">n8n / HTTPS Webhook</option>
+              <option value="telegram">Telegram Bot</option>
+              <option value="discord">Discord Webhook</option>
+              <option value="all">All Configured Channels</option>
+            </select>
+            <input
+              type="text"
+              value={testTitle}
+              onChange={(e) => setTestTitle(e.target.value)}
+              placeholder="Alert title"
+              className="px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-surface)] text-xs text-[var(--hub-ink)]"
+            />
+            <input
+              type="url"
+              value={customWebhookUrl}
+              onChange={(e) => setCustomWebhookUrl(e.target.value)}
+              placeholder="Optional public https:// webhook URL"
+              className="px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-surface)] text-xs text-[var(--hub-ink)]"
+            />
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2.5">
+            <input
+              type="text"
+              value={testMessage}
+              onChange={(e) => setTestMessage(e.target.value)}
+              placeholder="Alert body message"
+              className="flex-1 px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-surface)] text-xs text-[var(--hub-ink)]"
+            />
+            <button
+              type="button"
+              onClick={handleDispatchChannelTest}
+              disabled={dispatchingTest || !testTitle.trim() || !testMessage.trim()}
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer disabled:opacity-50"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>{dispatchingTest ? 'Dispatching...' : 'Confirm & Send Test'}</span>
+            </button>
+          </div>
+
+          {dispatchError && (
+            <div className="text-xs text-amber-500">{dispatchError}</div>
+          )}
+
+          {dispatchResults && (
+            <div className="space-y-1.5 pt-1">
+              {dispatchResults.map((res) => (
+                <div key={res.channel} className="flex items-center justify-between gap-2 text-xs px-3 py-1.5 rounded-lg bg-[var(--hub-surface)] border border-[var(--hub-line)]">
+                  <span className="font-mono uppercase text-[var(--hub-ink)]">{res.channel}</span>
+                  <span className="text-[var(--hub-muted)] truncate flex-1">{res.error || `HTTP ${res.httpStatus ?? 200}`}</span>
+                  <Badge variant={res.ok ? 'emerald' : res.status === 'blocked' ? 'red' : 'amber'}>
+                    {res.status}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </section>
 
       <ConfirmDialog

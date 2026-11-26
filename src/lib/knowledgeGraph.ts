@@ -15,13 +15,15 @@ export type KnowledgeNodeKind =
   | 'goal'
   | 'habit'
   | 'meeting'
-  | 'neo_memory';
+  | 'neo_memory'
+  | 'paper';
 
 export type KnowledgeEdgeKind =
   | 'explicit_project_link'
   | 'explicit_goal_link'
   | 'explicit_meeting_link'
-  | 'shared_area';
+  | 'shared_area'
+  | 'user_link';
 
 export interface KnowledgeGraphNode {
   id: string;
@@ -42,6 +44,7 @@ export interface KnowledgeGraphEdge {
   to: string;
   kind: KnowledgeEdgeKind;
   label: string;
+  customLinkId?: string;
 }
 
 export interface KnowledgeGraphData {
@@ -51,8 +54,18 @@ export interface KnowledgeGraphData {
     nodeCount: number;
     edgeCount: number;
     explicitEdges: number;
+    userEdges: number;
     byKind: Record<KnowledgeNodeKind, number>;
   };
+}
+
+export interface KnowledgeCustomLinkInput {
+  id: string;
+  source_type: string;
+  source_id: string;
+  target_type: string;
+  target_id: string;
+  relation?: string;
 }
 
 export interface KnowledgeGraphInput {
@@ -65,6 +78,8 @@ export interface KnowledgeGraphInput {
   habits?: Array<Record<string, any>>;
   meetings?: Array<Record<string, any>>;
   neoMemories?: Array<Record<string, any>>;
+  researchBookmarks?: Array<Record<string, any>>;
+  customLinks?: KnowledgeCustomLinkInput[];
 }
 
 const norm = (s: unknown) => String(s || '').trim().toLowerCase();
@@ -82,12 +97,23 @@ export function buildKnowledgeGraph(input: KnowledgeGraphInput): KnowledgeGraphD
     nodes.push({ ...node, degree: 0 });
   };
 
-  const addEdge = (from: string, to: string, kind: KnowledgeEdgeKind, label: string) => {
+  const addEdge = (
+    from: string,
+    to: string,
+    kind: KnowledgeEdgeKind,
+    label: string,
+    customLinkId?: string,
+  ) => {
     if (from === to) return;
-    const key = from < to ? `${from}::${to}::${kind}` : `${to}::${from}::${kind}`;
+    const key =
+      kind === 'user_link' && customLinkId
+        ? `user::${customLinkId}`
+        : from < to
+          ? `${from}::${to}::${kind}`
+          : `${to}::${from}::${kind}`;
     if (edgeSeen.has(key)) return;
     edgeSeen.add(key);
-    edges.push({ id: `edge_${edges.length + 1}`, from, to, kind, label });
+    edges.push({ id: `edge_${edges.length + 1}`, from, to, kind, label, customLinkId });
   };
 
   for (const p of input.projects || []) {
@@ -280,6 +306,38 @@ export function buildKnowledgeGraph(input: KnowledgeGraphInput): KnowledgeGraphD
     }
   }
 
+  for (const bm of (input.researchBookmarks || []).slice(0, 40)) {
+    if (!bm?.id) continue;
+    const nid = `paper:${bm.external_id || bm.id}`;
+    addNode({
+      id: nid,
+      rawId: String(bm.external_id || bm.id),
+      kind: 'paper',
+      title: String(bm.title || 'Research Paper'),
+      subtitle: `${String(bm.source || 'research').toUpperCase()}${bm.year ? ` · ${bm.year}` : ''}`,
+      area: String(bm.topic || 'Research'),
+      timestamp: String(bm.saved_at || bm.updated_at || ''),
+      tags: Array.isArray(bm.tags) ? bm.tags.map(String) : [],
+      targetTab: 'research-intelligence',
+    });
+    if (bm.note_id) {
+      const noteNid = `note:${bm.note_id}`;
+      if (nodes.some((n) => n.id === noteNid)) {
+        addEdge(nid, noteNid, 'explicit_project_link', 'Saved to note');
+      }
+    }
+  }
+
+  const nodeIdSet = new Set(nodes.map((n) => n.id));
+  for (const link of input.customLinks || []) {
+    if (!link?.id) continue;
+    const fromId = `${link.source_type}:${link.source_id}`;
+    const toId = `${link.target_type}:${link.target_id}`;
+    if (nodeIdSet.has(fromId) && nodeIdSet.has(toId)) {
+      addEdge(fromId, toId, 'user_link', link.relation || 'related_to', link.id);
+    }
+  }
+
   const degreeMap = new Map<string, number>();
   for (const e of edges) {
     degreeMap.set(e.from, (degreeMap.get(e.from) || 0) + 1);
@@ -304,6 +362,7 @@ export function buildKnowledgeGraph(input: KnowledgeGraphInput): KnowledgeGraphD
     habit: 0,
     meeting: 0,
     neo_memory: 0,
+    paper: 0,
   };
   for (const n of nodes) byKind[n.kind] += 1;
 
@@ -314,6 +373,7 @@ export function buildKnowledgeGraph(input: KnowledgeGraphInput): KnowledgeGraphD
       nodeCount: nodes.length,
       edgeCount: edges.length,
       explicitEdges: edges.filter((e) => e.kind !== 'shared_area').length,
+      userEdges: edges.filter((e) => e.kind === 'user_link').length,
       byKind,
     },
   };

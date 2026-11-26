@@ -13,16 +13,38 @@ import {
 import { processDueQueueJobs } from '../_lib/queueEngine.ts';
 import { executeAutomationRun } from '../_lib/runner.ts';
 import { applyCors } from '../_lib/http.ts';
+import {
+  dispatchNotificationToChannels,
+  getNotificationChannelsStatus,
+  verifyWebhookSignature,
+  type NotificationChannelId,
+} from '../_lib/notificationChannels.ts';
+
+export interface DispatchHandlerOptions {
+  channelEnv?: Record<string, string | undefined>;
+  channelFetch?: typeof fetch;
+}
 
 export function createDispatchHandler(
   dbClient: any = supabaseServer,
-  authResolver: typeof resolveAuthenticatedUser = resolveAuthenticatedUser
+  authResolver: typeof resolveAuthenticatedUser = resolveAuthenticatedUser,
+  options: DispatchHandlerOptions = {}
 ) {
   return async function handler(req: any, res: any) {
     applyCors(req, res, 'GET, POST, PATCH, OPTIONS', 'Content-Type, Authorization, Idempotency-Key');
 
     if (req.method === 'OPTIONS') {
       return res.status(200).end();
+    }
+
+    const queryAction = Array.isArray(req.query?.action) ? req.query.action[0] : req.query?.action;
+    if (req.method === 'GET' && queryAction === 'channel_status') {
+      const report = getNotificationChannelsStatus(options.channelEnv ?? process.env);
+      return res.status(200).json({
+        success: true,
+        ...report,
+        timestamp: new Date().toISOString(),
+      });
     }
 
     const dbConfigured = dbClient !== supabaseServer || isServerSupabaseConfigured();
@@ -100,6 +122,94 @@ export function createDispatchHandler(
     try {
       const body = req.body || {};
       const action = body.action as string | undefined;
+
+      // -------------------------------------------------------------------------
+      // Action 0A: Dispatch outbound notification (Telegram / Discord / Webhook)
+      // -------------------------------------------------------------------------
+      if (action === 'notify') {
+        if (!auth.userId && !auth.isCron) {
+          return res.status(401).json({ error: 'Authenticated session required to send notifications.' });
+        }
+
+        const rawChannel = String(body.channel || 'all').toLowerCase();
+        const channel: NotificationChannelId | 'all' =
+          rawChannel === 'telegram' || rawChannel === 'discord' || rawChannel === 'webhook'
+            ? rawChannel
+            : 'all';
+
+        const title = String(body.title || '').trim();
+        const message = String(body.message || '').trim();
+        if (!title || !message) {
+          return res.status(400).json({ error: 'Both title and message are required for outbound alerts.' });
+        }
+
+        const severity =
+          body.severity === 'urgent' || body.severity === 'warning' ? body.severity : 'info';
+
+        const results = await dispatchNotificationToChannels(
+          {
+            channel,
+            title,
+            message,
+            severity,
+            webhookUrl: typeof body.webhookUrl === 'string' ? body.webhookUrl : undefined,
+            metadata:
+              body.metadata && typeof body.metadata === 'object' ? body.metadata : undefined,
+          },
+          {
+            env: options.channelEnv ?? process.env,
+            fetchImpl: options.channelFetch ?? fetch,
+          },
+        );
+
+        const anyBlocked = results.some((r) => r.status === 'blocked');
+        const anySent = results.some((r) => r.ok);
+
+        if (auth.userId) {
+          try {
+            await activeClient.from('agent_execution_logs').insert({
+              id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+              user_id: auth.userId,
+              action_type: `notify_${channel}`,
+              permission_level: 2,
+              status: anySent ? 'executed' : anyBlocked ? 'blocked' : 'failed',
+              summary: `${title} (${results.map((r) => `${r.channel}:${r.status}`).join(', ')})`,
+              channel,
+              details: { results },
+            });
+          } catch {
+            // Non-blocking audit insert if partial client mock or table unavailable
+          }
+        }
+
+        return res.status(anyBlocked && !anySent ? 400 : 200).json({
+          success: anySent,
+          channel,
+          results,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      // -------------------------------------------------------------------------
+      // Action 0B: Verify HMAC-SHA256 webhook signature & replay window
+      // -------------------------------------------------------------------------
+      if (action === 'verify_webhook') {
+        if (!auth.userId && !auth.isCron) {
+          return res.status(401).json({ error: 'Authenticated session required.' });
+        }
+        const envObj = options.channelEnv ?? process.env;
+        const secret = (envObj.WEBHOOK_SIGNING_SECRET || '').trim();
+        if (!secret) {
+          return res.status(400).json({
+            valid: false,
+            error: 'WEBHOOK_SIGNING_SECRET is not configured on the server.',
+          });
+        }
+        const signatureHeader = String(body.signatureHeader || '');
+        const rawBody = typeof body.rawBody === 'string' ? body.rawBody : JSON.stringify(body.payload ?? {});
+        const verification = verifyWebhookSignature(secret, signatureHeader, rawBody);
+        return res.status(verification.valid ? 200 : 401).json(verification);
+      }
 
       // -------------------------------------------------------------------------
       // Action 1: Create new Recurring / One-Time Automation Schedule

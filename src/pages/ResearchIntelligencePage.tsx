@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   BookOpen,
+  Bookmark,
   BookmarkPlus,
   Check,
   ExternalLink,
   RefreshCw,
   Search,
   Sparkles,
+  Trash2,
 } from 'lucide-react';
 import {
   DEFAULT_RESEARCH_TOPICS,
@@ -18,6 +20,12 @@ import {
 import { db } from '../db';
 import { generateId } from '../lib/utils';
 import { SyncQueueService } from '../services/sync/syncQueueService';
+import {
+  loadResearchBookmarks,
+  removeResearchBookmark,
+  saveResearchBookmark,
+  type ResearchBookmarkRecord,
+} from '../services/sync/m3CloudStore';
 import { toast } from '../lib/toast';
 import { Badge } from '../components/common/Badge';
 
@@ -34,6 +42,8 @@ export const ResearchIntelligencePage: React.FC<ResearchIntelligencePageProps> =
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [savedIds, setSavedIds] = useState<Record<string, boolean>>({});
+  const [bookmarks, setBookmarks] = useState<ResearchBookmarkRecord[]>([]);
+  const [viewMode, setViewMode] = useState<'feed' | 'bookmarks'>('feed');
 
   const loadFeed = useCallback(async (queryText: string) => {
     setIsLoading(true);
@@ -80,7 +90,34 @@ export const ResearchIntelligencePage: React.FC<ResearchIntelligencePageProps> =
 
   useEffect(() => {
     loadFeed(DEFAULT_RESEARCH_TOPICS[0].query);
+    void loadResearchBookmarks().then(setBookmarks);
   }, [loadFeed]);
+
+  const handleToggleBookmark = async (paper: ResearchPaperItem) => {
+    const existing = bookmarks.find(
+      (b) => b.external_id === paper.id || (b.source === paper.source && b.title === paper.title),
+    );
+    if (existing) {
+      await removeResearchBookmark(existing.id);
+      setBookmarks((prev) => prev.filter((item) => item.id !== existing.id));
+      toast('Removed synced bookmark', 'info');
+      return;
+    }
+    const yearMatch = paper.publishedDate ? /^(\d{4})/.exec(paper.publishedDate) : null;
+    const saved = await saveResearchBookmark({
+      source: paper.source,
+      external_id: paper.id,
+      title: paper.title,
+      authors: paper.authors,
+      year: yearMatch ? Number(yearMatch[1]) : null,
+      url: paper.url || '',
+      summary: paper.summary,
+      topic: selectedTopicId === 'custom' ? customQuery : selectedTopicId,
+      tags: paper.matchedKeywords.slice(0, 5),
+    });
+    setBookmarks((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
+    toast(`Bookmarked "${paper.title.slice(0, 38)}..." across devices`, 'success');
+  };
 
   const handleSelectTopic = (id: string) => {
     const topic = DEFAULT_RESEARCH_TOPICS.find((t) => t.id === id);
@@ -123,8 +160,22 @@ export const ResearchIntelligencePage: React.FC<ResearchIntelligencePageProps> =
     };
     await db.notes.put(note);
     await SyncQueueService.enqueueChange('notes', id, 'INSERT', note).catch(() => {});
+    const yearMatch = paper.publishedDate ? /^(\d{4})/.exec(paper.publishedDate) : null;
+    const saved = await saveResearchBookmark({
+      source: paper.source,
+      external_id: paper.id,
+      title: paper.title,
+      authors: paper.authors,
+      year: yearMatch ? Number(yearMatch[1]) : null,
+      url: paper.url || '',
+      summary: paper.summary,
+      topic: area,
+      tags: paper.matchedKeywords.slice(0, 5),
+      note_id: id,
+    });
+    setBookmarks((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)]);
     setSavedIds((prev) => ({ ...prev, [paper.id]: true }));
-    toast(`Saved "${paper.title.slice(0, 42)}..." to Notes Vault`, 'success');
+    toast(`Saved "${paper.title.slice(0, 42)}..." to Notes Vault & Bookmarks`, 'success');
   };
 
   const handleAskAIAboutPaper = (paper: ResearchPaperItem) => {
@@ -201,19 +252,46 @@ export const ResearchIntelligencePage: React.FC<ResearchIntelligencePageProps> =
           </button>
         </form>
 
-        {/* Live Source Status Strip */}
-        {feed && (
-          <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px]">
-            {(['arxiv', 'openalex', 'crossref'] as const).map((src) => {
-              const st = feed.sourceStatus[src];
-              return (
-                <Badge key={src} variant={st.ok ? 'emerald' : 'amber'}>
-                  {src.toUpperCase()}: {st.ok ? `${st.count} hits · ${st.latencyMs}ms` : st.error || 'Unavailable'}
-                </Badge>
-              );
-            })}
+        {/* View Switcher + Live Source Status Strip */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+          <div className="inline-flex rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)] p-0.5 text-xs">
+            <button
+              type="button"
+              onClick={() => setViewMode('feed')}
+              className={`px-3 py-1 rounded-lg font-semibold cursor-pointer ${
+                viewMode === 'feed'
+                  ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)]'
+                  : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
+              }`}
+            >
+              Live Feed ({feed?.papers.length ?? 0})
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('bookmarks')}
+              className={`px-3 py-1 rounded-lg font-semibold cursor-pointer ${
+                viewMode === 'bookmarks'
+                  ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)]'
+                  : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
+              }`}
+            >
+              Synced Bookmarks ({bookmarks.length})
+            </button>
           </div>
-        )}
+
+          {feed && viewMode === 'feed' && (
+            <div className="flex flex-wrap items-center gap-2 text-[11px]">
+              {(['arxiv', 'openalex', 'crossref'] as const).map((src) => {
+                const st = feed.sourceStatus[src];
+                return (
+                  <Badge key={src} variant={st.ok ? 'emerald' : 'amber'}>
+                    {src.toUpperCase()}: {st.ok ? `${st.count} hits · ${st.latencyMs}ms` : st.error || 'Unavailable'}
+                  </Badge>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {errorMsg && (
@@ -222,7 +300,57 @@ export const ResearchIntelligencePage: React.FC<ResearchIntelligencePageProps> =
         </div>
       )}
 
-      {/* Papers Feed */}
+      {/* Papers Feed or Synced Bookmarks */}
+      {viewMode === 'bookmarks' ? (
+        <div className="space-y-3">
+          {bookmarks.length === 0 ? (
+            <div className="p-8 text-center text-sm text-[var(--hub-muted)] rounded-2xl border border-[var(--hub-line)] bg-[var(--hub-surface)]">
+              No synced research bookmarks yet. Click Bookmark on any live paper to sync it across devices and show it in your Knowledge Graph.
+            </div>
+          ) : (
+            bookmarks.map((bm) => (
+              <article
+                key={bm.id}
+                className="rounded-2xl bg-[var(--hub-surface)] border border-[var(--hub-line)] p-4 sm:p-5 space-y-2"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="purple">{bm.source.toUpperCase()}</Badge>
+                    {bm.year && <span className="text-[11px] font-mono text-[var(--hub-muted)]">{bm.year}</span>}
+                    {bm.topic && <span className="text-[11px] text-[var(--hub-muted)]">{bm.topic}</span>}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void removeResearchBookmark(bm.id).then(() => {
+                        setBookmarks((prev) => prev.filter((item) => item.id !== bm.id));
+                        toast('Removed synced bookmark', 'info');
+                      })
+                    }
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[var(--hub-line)] text-xs text-red-400 hover:bg-red-500/10 cursor-pointer"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Remove</span>
+                  </button>
+                </div>
+                <h3 className="font-heading text-base font-bold text-[var(--hub-ink)]">{bm.title}</h3>
+                {bm.summary && <p className="text-xs text-[var(--hub-ink)]/85 leading-relaxed">{bm.summary}</p>}
+                {bm.url && (
+                  <a
+                    href={bm.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--hub-accent)] hover:underline"
+                  >
+                    <span>Open Paper</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
+              </article>
+            ))
+          )}
+        </div>
+      ) : (
       <div className="space-y-3">
         {isLoading && !feed ? (
           <div className="p-8 text-center text-sm text-[var(--hub-muted)] rounded-2xl border border-[var(--hub-line)] bg-[var(--hub-surface)]">
@@ -296,6 +424,20 @@ export const ResearchIntelligencePage: React.FC<ResearchIntelligencePageProps> =
                   )}
                   <button
                     type="button"
+                    onClick={() => handleToggleBookmark(paper)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer"
+                  >
+                    <Bookmark
+                      className={`w-3.5 h-3.5 ${
+                        bookmarks.some((b) => b.external_id === paper.id)
+                          ? 'text-[var(--hub-accent)] fill-current'
+                          : ''
+                      }`}
+                    />
+                    <span>{bookmarks.some((b) => b.external_id === paper.id) ? 'Bookmarked' : 'Bookmark'}</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleSaveToNotes(paper)}
                     disabled={savedIds[paper.id]}
                     className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer disabled:opacity-60"
@@ -319,6 +461,7 @@ export const ResearchIntelligencePage: React.FC<ResearchIntelligencePageProps> =
           ))
         )}
       </div>
+      )}
     </div>
   );
 };

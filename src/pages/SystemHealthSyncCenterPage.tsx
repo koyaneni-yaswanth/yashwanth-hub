@@ -12,12 +12,22 @@ import {
   Split,
   GitBranch,
   ExternalLink,
+  ShieldCheck,
+  ShieldAlert,
+  CheckCircle2,
 } from 'lucide-react';
 import { db } from '../db';
 import { GoogleAuthService } from '../services/google/googleAuthService';
 import { CoreSyncEngine, type SyncEngineStatus, type SyncConflictItem } from '../services/sync/syncEngine';
 import { NeoConnectionMonitor } from '../integrations/neosapien/connection';
 import { AIGateway } from '../services/ai/aiGateway';
+import {
+  PERMISSION_TIERS,
+  guardActionExecution,
+  runLevel1SelfHealingDiagnostics,
+  type SelfHealingDiagnosticReport,
+} from '../services/selfHealingService';
+import { loadExecutionLogs, type AgentExecutionLogRecord } from '../services/sync/m3CloudStore';
 import type { ProviderHealthReport } from '../../api/_lib/aiProviderAdapters';
 import type { DevMonitorReport } from '../../api/_lib/devMonitor';
 import { Badge } from '../components/common/Badge';
@@ -39,6 +49,25 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
   const [aiProviders, setAiProviders] = useState<ProviderHealthReport[]>([]);
   const [devReport, setDevReport] = useState<DevMonitorReport | null>(null);
   const [isLoadingDev, setIsLoadingDev] = useState(false);
+  const [diagnosticReport, setDiagnosticReport] = useState<SelfHealingDiagnosticReport | null>(null);
+  const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
+  const [executionLogs, setExecutionLogs] = useState<AgentExecutionLogRecord[]>([]);
+
+  const handleRunDiagnostics = async () => {
+    setIsRunningDiagnostics(true);
+    try {
+      const report = await runLevel1SelfHealingDiagnostics();
+      setDiagnosticReport(report);
+      const logs = await loadExecutionLogs();
+      setExecutionLogs(logs);
+    } finally {
+      setIsRunningDiagnostics(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadExecutionLogs().then(setExecutionLogs);
+  }, []);
 
   // Live Database Queries
   const taskCount = useLiveQuery(() => db.tasks.count(), []) || 0;
@@ -473,6 +502,132 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
           </div>
         </div>
       )}
+
+      {/* Autonomous Self-Healing & Execution Policy Tiers (Level 1 / 2 / 3) */}
+      <div className="bg-[var(--hub-card-bg)] border border-[var(--hub-border)] rounded-2xl p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-bold flex items-center gap-2 text-[var(--hub-ink)]">
+              <ShieldCheck className="w-5 h-5 text-[var(--hub-accent)]" />
+              <span>Autonomous Self-Healing &amp; Execution Policy</span>
+            </h2>
+            <p className="text-xs text-[var(--hub-muted)] mt-0.5">
+              Strict 3-tier execution guardrail: Level 1 runs safe diagnostics automatically; Level 2 waits for human approval; Level 3 destructive/security actions stay blocked.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleRunDiagnostics}
+            disabled={isRunningDiagnostics}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer disabled:opacity-50 shrink-0"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRunningDiagnostics ? 'animate-spin' : ''}`} />
+            <span>{isRunningDiagnostics ? 'Scanning...' : 'Run Level-1 Diagnostics'}</span>
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+          {PERMISSION_TIERS.map((tier) => (
+            <div key={tier.level} className="rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-border)] p-4 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <Badge variant={tier.badgeVariant}>Level {tier.level}</Badge>
+                <span className="text-[10px] font-mono text-[var(--hub-muted)]">
+                  {tier.level === 1 ? 'AUTO' : tier.level === 2 ? 'CONFIRM' : 'BLOCKED'}
+                </span>
+              </div>
+              <div className="font-semibold text-[var(--hub-ink)]">{tier.name}</div>
+              <p className="text-[11px] text-[var(--hub-muted)]">{tier.policy}</p>
+            </div>
+          ))}
+        </div>
+
+        {diagnosticReport && (
+          <div className="rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-border)] p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-[var(--hub-ink)]">
+                {diagnosticReport.overallStatus === 'healthy' ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                ) : (
+                  <ShieldAlert className="w-4 h-4 text-amber-500" />
+                )}
+                <span>
+                  Scan completed · {diagnosticReport.failedSyncCount} failed sync · {diagnosticReport.pendingSyncCount} pending · {diagnosticReport.overdueTaskCount} overdue
+                </span>
+              </div>
+              <span className="text-[11px] font-mono text-[var(--hub-muted)]">
+                {diagnosticReport.suppressedDuplicateAlerts > 0
+                  ? 'Duplicate daily notice suppressed'
+                  : diagnosticReport.newAlertsCreated === 1
+                    ? '1 alert logged'
+                    : `${diagnosticReport.newAlertsCreated} alerts logged`}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+              {diagnosticReport.findings.map((finding) => (
+                <div key={finding.id} className="p-3 rounded-lg bg-[var(--hub-card-bg)] border border-[var(--hub-border)] flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="font-semibold text-[var(--hub-ink)]">{finding.title}</div>
+                    <div className="text-[11px] text-[var(--hub-muted)]">{finding.detail}</div>
+                  </div>
+                  {finding.recommendedActionType === 'retry_sync_queue' ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void guardActionExecution({
+                          actionType: 'retry_sync_queue',
+                          summary: 'User approved Level-2 sync queue retry from diagnostics',
+                          approvedByHuman: true,
+                          channel: 'sync_engine',
+                        }).then(async () => {
+                          await CoreSyncEngine.synchronizeAll();
+                          const logs = await loadExecutionLogs();
+                          setExecutionLogs(logs);
+                        })
+                      }
+                      className="px-2.5 py-1 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-[11px] font-semibold shrink-0 cursor-pointer"
+                    >
+                      Approve Retry
+                    </button>
+                  ) : (
+                    <Badge variant={finding.status === 'healthy' ? 'emerald' : 'amber'}>
+                      {finding.status}
+                    </Badge>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {executionLogs.length > 0 && (
+          <div className="space-y-1.5">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--hub-muted)]">
+              Recent Execution &amp; Policy Audit ({executionLogs.length})
+            </div>
+            <div className="space-y-1 max-h-44 overflow-y-auto pr-1 text-xs">
+              {executionLogs.slice(0, 8).map((entry) => (
+                <div key={entry.id} className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-border)]">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Badge variant={entry.permission_level === 1 ? 'emerald' : entry.permission_level === 2 ? 'amber' : 'red'}>
+                      L{entry.permission_level}
+                    </Badge>
+                    <span className="truncate text-[var(--hub-ink)]">{entry.summary}</span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge variant={entry.status === 'executed' || entry.status === 'approved' ? 'emerald' : entry.status === 'blocked' ? 'red' : 'amber'}>
+                      {entry.status}
+                    </Badge>
+                    <span className="font-mono text-[10px] text-[var(--hub-muted)]">
+                      {entry.created_at.slice(0, 16).replace('T', ' ')}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Synchronization Event History */}
       <div className="bg-[var(--hub-card-bg)] border border-[var(--hub-border)] rounded-2xl p-6">

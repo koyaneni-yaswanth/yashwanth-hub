@@ -1,12 +1,22 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ArrowRight, GitBranch, Search } from 'lucide-react';
+import { ArrowRight, GitBranch, Link2, Plus, Search, Trash2 } from 'lucide-react';
 import { db } from '../../db';
 import {
   buildKnowledgeGraph,
   type KnowledgeGraphNode,
   type KnowledgeNodeKind,
 } from '../../lib/knowledgeGraph';
+import {
+  createKnowledgeLink,
+  deleteKnowledgeLink,
+  loadKnowledgeLinks,
+  loadResearchBookmarks,
+  type KnowledgeEntityType,
+  type KnowledgeLinkRecord,
+  type ResearchBookmarkRecord,
+} from '../../services/sync/m3CloudStore';
+import { toast } from '../../lib/toast';
 import { Badge } from '../common/Badge';
 import type { NavigationTab } from '../../types';
 
@@ -20,7 +30,17 @@ const KIND_COLOR: Record<KnowledgeNodeKind, string> = {
   robotics: '#a855f7',
   meeting: '#ec4899',
   neo_memory: '#14b8a6',
+  paper: '#f43f5e',
 };
+
+const RELATION_OPTIONS = ['related_to', 'depends_on', 'supports', 'researched_by', 'milestone_for'];
+
+function mapNodeKindToEntityType(kind: KnowledgeNodeKind): KnowledgeEntityType {
+  if (kind === 'project' || kind === 'task' || kind === 'note' || kind === 'goal' || kind === 'habit' || kind === 'paper') {
+    return kind;
+  }
+  return 'note';
+}
 
 interface KnowledgeGraphViewProps {
   onNavigate?: (tab: NavigationTab) => void;
@@ -30,6 +50,16 @@ export const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({ onNaviga
   const [filterKind, setFilterKind] = useState<'all' | KnowledgeNodeKind>('all');
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [customLinks, setCustomLinks] = useState<KnowledgeLinkRecord[]>([]);
+  const [researchBookmarks, setResearchBookmarks] = useState<ResearchBookmarkRecord[]>([]);
+  const [linkTargetId, setLinkTargetId] = useState<string>('');
+  const [linkRelation, setLinkRelation] = useState<string>(RELATION_OPTIONS[0]);
+  const [isSavingLink, setIsSavingLink] = useState(false);
+
+  useEffect(() => {
+    void loadKnowledgeLinks().then(setCustomLinks);
+    void loadResearchBookmarks().then(setResearchBookmarks);
+  }, []);
 
   const projects = useLiveQuery(() => db.projects.toArray(), []) || [];
   const tasks = useLiveQuery(() => db.tasks.toArray(), []) || [];
@@ -53,9 +83,16 @@ export const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({ onNaviga
         habits,
         meetings,
         neoMemories,
+        researchBookmarks,
+        customLinks,
       }),
-    [projects, tasks, notes, documents, robotics, goals, habits, meetings, neoMemories]
+    [projects, tasks, notes, documents, robotics, goals, habits, meetings, neoMemories, researchBookmarks, customLinks]
   );
+
+  const linkableTargets = useMemo(() => {
+    const activeId = selectedId || graph.nodes[0]?.id;
+    return graph.nodes.filter((n) => n.id !== activeId).slice(0, 80);
+  }, [graph.nodes, selectedId]);
 
   const filteredNodes = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -65,6 +102,34 @@ export const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({ onNaviga
       return `${n.title} ${n.area} ${n.subtitle} ${n.tags.join(' ')}`.toLowerCase().includes(q);
     });
   }, [graph.nodes, filterKind, search]);
+
+  const handleAddCustomLink = async () => {
+    const sourceNode = graph.nodes.find((n) => n.id === selectedId) || filteredNodes[0];
+    const targetNode = graph.nodes.find((n) => n.id === linkTargetId) || linkableTargets[0];
+    if (!sourceNode || !targetNode) return;
+    setIsSavingLink(true);
+    try {
+      const created = await createKnowledgeLink({
+        source_type: mapNodeKindToEntityType(sourceNode.kind),
+        source_id: sourceNode.rawId,
+        source_label: sourceNode.title,
+        target_type: mapNodeKindToEntityType(targetNode.kind),
+        target_id: targetNode.rawId,
+        target_label: targetNode.title,
+        relation: linkRelation,
+      });
+      setCustomLinks((prev) => [created, ...prev]);
+      toast(`Linked "${sourceNode.title.slice(0, 24)}" -> "${targetNode.title.slice(0, 24)}"`, 'success');
+    } finally {
+      setIsSavingLink(false);
+    }
+  };
+
+  const handleRemoveCustomLink = async (linkId: string) => {
+    await deleteKnowledgeLink(linkId);
+    setCustomLinks((prev) => prev.filter((item) => item.id !== linkId));
+    toast('Removed custom entity link', 'info');
+  };
 
   const selectedNode: KnowledgeGraphNode | null =
     graph.nodes.find((n) => n.id === selectedId) || filteredNodes[0] || null;
@@ -125,6 +190,7 @@ export const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({ onNaviga
             <option value="robotics">Robotics ({graph.stats.byKind.robotics})</option>
             <option value="document">Documents ({graph.stats.byKind.document})</option>
             <option value="neo_memory">Neo 1 ({graph.stats.byKind.neo_memory})</option>
+            <option value="paper">Papers ({graph.stats.byKind.paper})</option>
           </select>
         </div>
       </div>
@@ -228,6 +294,51 @@ export const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({ onNaviga
                 </svg>
               </div>
 
+              {/* Create Persistent Entity Link */}
+              {linkableTargets.length > 0 && (
+                <div className="rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] p-3 space-y-2">
+                  <div className="flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-wider text-[var(--hub-muted)]">
+                    <Link2 className="w-3.5 h-3.5 text-[var(--hub-accent)]" />
+                    <span>Connect Entity (Synced Knowledge Link)</span>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <select
+                      aria-label="Relationship type"
+                      value={linkRelation}
+                      onChange={(e) => setLinkRelation(e.target.value)}
+                      className="px-2.5 py-1.5 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-surface)] text-xs text-[var(--hub-ink)]"
+                    >
+                      {RELATION_OPTIONS.map((rel) => (
+                        <option key={rel} value={rel}>
+                          {rel.replace('_', ' ')}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      aria-label="Target entity"
+                      value={linkTargetId || linkableTargets[0]?.id || ''}
+                      onChange={(e) => setLinkTargetId(e.target.value)}
+                      className="flex-1 px-2.5 py-1.5 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-surface)] text-xs text-[var(--hub-ink)] min-w-0"
+                    >
+                      {linkableTargets.map((candidate) => (
+                        <option key={candidate.id} value={candidate.id}>
+                          [{candidate.kind.replace('_', ' ')}] {candidate.title}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={isSavingLink}
+                      onClick={handleAddCustomLink}
+                      className="inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer disabled:opacity-50 shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Link</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Provenance Backlinks List */}
               <div className="space-y-1.5">
                 <div className="text-[11px] font-mono uppercase tracking-wider text-[var(--hub-muted)]">
@@ -235,22 +346,36 @@ export const KnowledgeGraphView: React.FC<KnowledgeGraphViewProps> = ({ onNaviga
                 </div>
                 {connectedEdges.length === 0 ? (
                   <p className="text-xs text-[var(--hub-muted)]">
-                    No linked records yet. Assign a `project_id` or matching workspace area to connect entities.
+                    No linked records yet. Assign a `project_id`, matching workspace area, or create a custom link above.
                   </p>
                 ) : (
                   <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
                     {connectedEdges.map(({ edge, peer }) => (
-                      <button
+                      <div
                         key={edge.id}
-                        type="button"
-                        onClick={() => setSelectedId(peer.id)}
-                        className="w-full flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs text-left hover:border-[var(--hub-accent)] cursor-pointer"
+                        className="w-full flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs hover:border-[var(--hub-accent)]"
                       >
-                        <span className="truncate font-medium text-[var(--hub-ink)]">{peer.title}</span>
-                        <span className="text-[10px] font-mono text-[var(--hub-muted)] shrink-0">
-                          {edge.label}
-                        </span>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedId(peer.id)}
+                          className="flex-1 flex items-center justify-between gap-2 text-left min-w-0 cursor-pointer"
+                        >
+                          <span className="truncate font-medium text-[var(--hub-ink)]">{peer.title}</span>
+                          <span className="text-[10px] font-mono text-[var(--hub-muted)] shrink-0">
+                            {edge.label}
+                          </span>
+                        </button>
+                        {edge.kind === 'user_link' && edge.customLinkId && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveCustomLink(edge.customLinkId!)}
+                            aria-label={`Remove link to ${peer.title}`}
+                            className="p-1 rounded text-red-400 hover:bg-red-500/10 cursor-pointer shrink-0"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
                     ))}
                   </div>
                 )}
