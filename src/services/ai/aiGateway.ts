@@ -13,7 +13,14 @@ import { db } from '../../db';
 import { generateId, getTodayISO } from '../../lib/utils';
 import { SUPPORTED_MODELS, getRecommendedModel, normaliseModelId } from './aiModels';
 import { chooseGeminiModels } from '../../../api/_lib/geminiRanking';
-import type { ProviderCapabilities, ProviderHealthReport } from '../../../api/_lib/aiProviderAdapters';
+import type { CloudOrLocalProviderId, ProviderCapabilities, ProviderHealthReport } from '../../../api/_lib/aiProviderAdapters';
+import { LocalAgentClient } from './localAgentClient';
+import {
+  ProviderCircuitBreaker,
+  classifyTaskCategory,
+  type CircuitStateRecord,
+  type TaskRouteCategory,
+} from '../../lib/modelRouter5';
 import { NeoSapienMemoryService } from '../neoSapienMemoryService';
 import { SupabaseAuthService } from '../auth/supabaseAuthService';
 import { SyncQueueService } from '../sync/syncQueueService';
@@ -26,11 +33,45 @@ import {
   type WorkspaceSnapshot,
 } from '../../../api/_lib/aiTools';
 
+export interface ProviderConfigState {
+  provider: CloudOrLocalProviderId;
+  enabled: boolean;
+  selected_model: string | null;
+  key_hint: string | null;
+  base_url: string | null;
+  hasUserKey: boolean;
+  hasServerEnvKey: boolean;
+  last_health_status: string | null;
+  last_latency_ms: number | null;
+  last_checked_at: string | null;
+  last_error: string | null;
+}
+
+export interface ReliabilityTrace {
+  requestId: string;
+  category: TaskRouteCategory;
+  provider: string;
+  status: 'ok' | 'failover' | 'cancelled' | 'error' | 'degraded';
+  latencyMs: number;
+  note?: string;
+  timestamp: string;
+}
+
+export interface ReliabilitySnapshot {
+  circuits: CircuitStateRecord[];
+  recentTraces: ReliabilityTrace[];
+}
+
 export interface AISendOptions {
   provider?: AIProvider;
   modelId?: string;
   mode: AIMode;
   complexity?: 'simple' | 'moderate' | 'complex';
+  routeCategory?: TaskRouteCategory;
+  privateOfflineOnly?: boolean;
+  allowCloudFallback?: boolean;
+  signal?: AbortSignal;
+  requestId?: string;
   systemPrompt?: string;
   contextData?: any;
   projectId?: string;
@@ -41,6 +82,9 @@ export interface AIResponse {
   text: string;
   provider: AIProvider;
   modelId: string;
+  requestId?: string;
+  routeCategory?: TaskRouteCategory;
+  routeRationale?: string;
   providerMode?: 'server_llm' | 'grounded_deterministic' | 'grounded_fallback_after_error' | 'client_override';
   providerNotice?: string;
   latencyMs: number;
@@ -58,6 +102,41 @@ export interface AIResponse {
 }
 
 export class AIGateway {
+  private static activeControllers = new Map<string, AbortController>();
+  private static clientBreaker = new ProviderCircuitBreaker(3, 30000);
+  private static traces: ReliabilityTrace[] = [];
+
+  private static pushTrace(trace: ReliabilityTrace) {
+    this.traces = [trace, ...this.traces].slice(0, 30);
+  }
+
+  public static getReliabilitySnapshot(): ReliabilitySnapshot {
+    return {
+      circuits: this.clientBreaker.snapshot(),
+      recentTraces: [...this.traces],
+    };
+  }
+
+  /** Standardized Gateway Contract: cancel active request(s) via AbortController */
+  public static cancel(requestId?: string): number {
+    let count = 0;
+    if (requestId) {
+      const ctrl = this.activeControllers.get(requestId);
+      if (ctrl) {
+        ctrl.abort(new DOMException('Cancelled by user', 'AbortError'));
+        this.activeControllers.delete(requestId);
+        count = 1;
+      }
+      return count;
+    }
+    for (const [id, ctrl] of this.activeControllers.entries()) {
+      ctrl.abort(new DOMException('Cancelled by user', 'AbortError'));
+      this.activeControllers.delete(id);
+      count++;
+    }
+    return count;
+  }
+
   private static getOptionalClientOverrideKey(provider: AIProvider): string {
     if (typeof window === 'undefined') return '';
     return localStorage.getItem(`yash_ai_key_${provider}`) || localStorage.getItem('yash_ai_key') || '';
@@ -162,6 +241,114 @@ export class AIGateway {
   /** Unified gateway contract: AIProvider.generate() */
   public static async generate(prompt: string, options: AISendOptions): Promise<AIResponse> {
     return this.executePrompt(prompt, options);
+  }
+
+  /** Unified gateway contract: AIProvider.stream() */
+  public static async stream(
+    prompt: string,
+    options: AISendOptions,
+    callbacks: { onToken: (delta: string, accumulated: string) => void; onTool?: (toolMeta: { tool: string; summary: string }) => void }
+  ): Promise<AIResponse> {
+    return this.streamPrompt(prompt, options, callbacks);
+  }
+
+  /** Unified gateway contract: AIProvider.chat() */
+  public static async chat(
+    messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
+    options: Omit<AISendOptions, 'history'> & { stream?: boolean },
+    callbacks?: { onToken: (delta: string, accumulated: string) => void; onTool?: (toolMeta: { tool: string; summary: string }) => void }
+  ): Promise<AIResponse> {
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.content || messages[messages.length - 1]?.content || '';
+    const priorHistory = messages.slice(0, -1).map((m) => ({ role: m.role, content: m.content }));
+    const sysOverride = messages.find((m) => m.role === 'system')?.content;
+    const sendOpts: AISendOptions = {
+      ...options,
+      history: priorHistory,
+      systemPrompt: [sysOverride, options.systemPrompt].filter(Boolean).join('\n\n') || undefined,
+    };
+    if (options.stream && callbacks) {
+      return this.streamPrompt(lastUser, sendOpts, callbacks);
+    }
+    return this.executePrompt(lastUser, sendOpts);
+  }
+
+  /** Unified gateway contract: AIProvider.listModels() */
+  public static async listModels(): Promise<{
+    supportedModels: Array<{ provider: string; modelId: string; displayName: string; isDefault?: boolean }>;
+    localOllamaModels: string[];
+  }> {
+    let supportedModels: Array<{ provider: string; modelId: string; displayName: string; isDefault?: boolean }> = [];
+    const localOllamaModels: string[] = [];
+    try {
+      const resp = await fetch('/api/ai/chat');
+      if (resp.ok) {
+        const data = await resp.json();
+        if (Array.isArray(data.supportedModels)) supportedModels = data.supportedModels;
+      }
+    } catch {
+      /* ignore offline */
+    }
+    try {
+      const st = await LocalAgentClient.listModels();
+      for (const m of st.ollama.models || []) {
+        if (m.name) localOllamaModels.push(m.name);
+      }
+    } catch {
+      /* local agent offline */
+    }
+    return { supportedModels, localOllamaModels };
+  }
+
+  public static async getProviderConfigs(): Promise<{
+    configs: ProviderConfigState[];
+    vaultEncryptionReady: boolean;
+  }> {
+    const headers: Record<string, string> = {};
+    const jwt = await SupabaseAuthService.getAccessToken();
+    if (!jwt) return { configs: [], vaultEncryptionReady: false };
+    headers.Authorization = `Bearer ${jwt}`;
+    const resp = await fetch('/api/ai/chat?action=providers', { headers });
+    if (!resp.ok) return { configs: [], vaultEncryptionReady: false };
+    const data = await resp.json();
+    return {
+      configs: Array.isArray(data.configs) ? data.configs : [],
+      vaultEncryptionReady: Boolean(data.vaultEncryptionReady),
+    };
+  }
+
+  public static async saveProviderConfig(input: {
+    provider: CloudOrLocalProviderId;
+    enabled?: boolean;
+    apiKey?: string;
+    clearKey?: boolean;
+    selectedModel?: string;
+    baseUrl?: string;
+  }): Promise<{ success: boolean; message?: string }> {
+    const jwt = await SupabaseAuthService.getAccessToken();
+    if (!jwt) throw new Error('Sign in with Supabase to save encrypted provider credentials.');
+    const resp = await fetch('/api/ai/chat?action=provider_config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+      body: JSON.stringify({ action: 'provider_config', ...input }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data?.error || 'Failed saving provider configuration.');
+    return { success: true, message: data.message };
+  }
+
+  public static async testProviderConnection(provider: CloudOrLocalProviderId): Promise<ProviderHealthReport> {
+    const jwt = await SupabaseAuthService.getAccessToken();
+    if (!jwt) throw new Error('Sign in with Supabase to run server-side provider test.');
+    const resp = await fetch('/api/ai/chat?action=provider_test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+      body: JSON.stringify({ action: 'provider_test', provider }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.report) throw new Error(data?.error || 'Provider test failed.');
+    if (data.report.status === 'connected') this.clientBreaker.recordSuccess(provider);
+    else this.clientBreaker.recordFailure(provider, data.report.note, false);
+    return data.report;
   }
 
   /** Unified gateway contract: AIProvider.analyze() */
@@ -549,8 +736,21 @@ export class AIGateway {
     }
   ): Promise<AIResponse> {
     const startTime = performance.now();
+    const requestId = options.requestId || `cli_${generateId().slice(0, 10)}`;
+    const controller = new AbortController();
+    this.activeControllers.set(requestId, controller);
+    if (options.signal) {
+      if (options.signal.aborted) controller.abort(options.signal.reason);
+      else options.signal.addEventListener('abort', () => controller.abort(options.signal?.reason), { once: true });
+    }
+
     const mode = options.mode || 'personal';
     const complexity = options.complexity || 'moderate';
+    const routeCategory = classifyTaskCategory({
+      prompt: userPrompt,
+      explicitCategory: options.routeCategory,
+      privateOfflineOnly: options.privateOfflineOnly,
+    });
     const selectedModel =
       options.modelId
         ? SUPPORTED_MODELS.find((m) => m.modelId === normaliseModelId(options.modelId)) || getRecommendedModel(mode, complexity)
@@ -558,10 +758,100 @@ export class AIGateway {
     const provider = options.provider || selectedModel.provider;
     const workspaceSnapshot = await this.buildWorkspaceSnapshot(provider, options.projectId);
 
+    // Local-first private path through JARVIS Local Python Runtime -> Ollama
+    if (options.privateOfflineOnly || routeCategory === 'LOCAL' || provider === 'ollama') {
+      const localHealth = await LocalAgentClient.probeHealth();
+      if (localHealth.online && localHealth.ollamaReachable) {
+        try {
+          const messages = [
+            ...(options.systemPrompt ? [{ role: 'system', content: options.systemPrompt }] : []),
+            ...(options.history || []).slice(-6),
+            { role: 'user', content: userPrompt },
+          ];
+          const localOut = await LocalAgentClient.streamChat(
+            messages,
+            options.modelId || undefined,
+            callbacks.onToken,
+            controller.signal
+          );
+          const latencyMs = Math.round(performance.now() - startTime);
+          this.clientBreaker.recordSuccess('ollama');
+          this.pushTrace({
+            requestId,
+            category: 'LOCAL',
+            provider: 'ollama',
+            status: 'ok',
+            latencyMs,
+            note: 'Executed via Local JARVIS Runtime',
+            timestamp: new Date().toISOString(),
+          });
+          this.activeControllers.delete(requestId);
+          return {
+            text: localOut.text,
+            provider: 'ollama',
+            modelId: localOut.model,
+            requestId,
+            routeCategory: 'LOCAL',
+            routeRationale: 'Routed locally through private JARVIS Python runtime & Ollama.',
+            providerMode: 'client_override',
+            latencyMs,
+            tokensInput: 0,
+            tokensOutput: 0,
+            estimatedCostUSD: 0,
+          };
+        } catch (localErr: any) {
+          if (controller.signal.aborted) {
+            this.activeControllers.delete(requestId);
+            throw localErr;
+          }
+          this.clientBreaker.recordFailure('ollama', localErr?.message || 'Local Ollama error', false);
+          if (options.privateOfflineOnly || !options.allowCloudFallback) {
+            this.pushTrace({
+              requestId,
+              category: 'LOCAL',
+              provider: 'ollama',
+              status: 'degraded',
+              latencyMs: Math.round(performance.now() - startTime),
+              note: localErr?.message || 'Private offline mode blocked cloud fallback',
+              timestamp: new Date().toISOString(),
+            });
+            this.activeControllers.delete(requestId);
+            return {
+              text: `Local private runtime failed (${localErr?.message || 'Ollama offline'}) and cloud fallback is disabled in private mode.`,
+              provider: 'local_heuristic',
+              modelId: 'private-offline-guard',
+              requestId,
+              routeCategory: 'LOCAL',
+              providerMode: 'grounded_fallback_after_error',
+              latencyMs: Math.round(performance.now() - startTime),
+              tokensInput: 0,
+              tokensOutput: 0,
+              estimatedCostUSD: 0,
+            };
+          }
+        }
+      } else if (options.privateOfflineOnly) {
+        this.activeControllers.delete(requestId);
+        return {
+          text: 'Private / Offline mode is active, but neither Local JARVIS Runtime (127.0.0.1:8787) nor Ollama is running. Start `./local-agent/scripts/start_windows.ps1` and `ollama serve`, or disable Private Only mode to allow cloud AI.',
+          provider: 'local_heuristic',
+          modelId: 'private-offline-guard',
+          requestId,
+          routeCategory: 'LOCAL',
+          providerMode: 'grounded_deterministic',
+          latencyMs: Math.round(performance.now() - startTime),
+          tokensInput: 0,
+          tokensOutput: 0,
+          estimatedCostUSD: 0,
+        };
+      }
+    }
+
     try {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         Accept: 'text/event-stream, application/json',
+        'X-Request-Id': requestId,
       };
       const jwt = await SupabaseAuthService.getAccessToken();
       if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
@@ -569,11 +859,15 @@ export class AIGateway {
       const resp = await fetch('/api/ai/chat', {
         method: 'POST',
         headers,
+        signal: controller.signal,
         body: JSON.stringify({
           prompt: userPrompt,
           provider,
           modelId: selectedModel.modelId,
           mode,
+          routeCategory,
+          privateOfflineOnly: Boolean(options.privateOfflineOnly),
+          allowCloudFallback: Boolean(options.allowCloudFallback),
           projectId: options.projectId,
           history: options.history || [],
           systemPrompt: options.systemPrompt,
@@ -641,10 +935,24 @@ export class AIGateway {
               .catch(() => {});
           }
 
+          this.activeControllers.delete(requestId);
+          this.pushTrace({
+            requestId: doneData.requestId || requestId,
+            category: (doneData.routeCategory || routeCategory) as TaskRouteCategory,
+            provider: String(doneData.provider || provider),
+            status: doneData.failoverNotice ? 'failover' : 'ok',
+            latencyMs,
+            note: doneData.failoverNotice || doneData.routeRationale,
+            timestamp: new Date().toISOString(),
+          });
+
           return {
             text: finalText,
             provider: (doneData.provider || provider) as AIProvider,
             modelId: doneData.modelId || selectedModel.modelId,
+            requestId: doneData.requestId || requestId,
+            routeCategory: doneData.routeCategory || routeCategory,
+            routeRationale: doneData.routeRationale,
             providerMode: doneData.providerMode,
             providerNotice: doneData.failoverNotice || doneData.providerNotice || doneData.providerError,
             latencyMs,
@@ -662,11 +970,34 @@ export class AIGateway {
           };
         }
       }
-    } catch {
+    } catch (streamErr: any) {
+      this.activeControllers.delete(requestId);
+      if (controller.signal.aborted || streamErr?.name === 'AbortError') {
+        this.pushTrace({
+          requestId,
+          category: routeCategory,
+          provider: String(provider),
+          status: 'cancelled',
+          latencyMs: Math.round(performance.now() - startTime),
+          note: 'Stream aborted by user or new request.',
+          timestamp: new Date().toISOString(),
+        });
+        throw streamErr;
+      }
       /* fall through cleanly to executePrompt */
     }
 
+    this.activeControllers.delete(requestId);
     const fallback = await this.executePrompt(userPrompt, options);
+    this.pushTrace({
+      requestId,
+      category: routeCategory,
+      provider: String(fallback.provider),
+      status: fallback.providerMode === 'grounded_fallback_after_error' ? 'degraded' : 'ok',
+      latencyMs: fallback.latencyMs,
+      note: fallback.providerNotice,
+      timestamp: new Date().toISOString(),
+    });
     callbacks.onToken(fallback.text, fallback.text);
     return fallback;
   }

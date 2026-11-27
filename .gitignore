@@ -40,4 +40,7 @@ service-account*.json
 supabase/.temp/
 .temp/
 low-speed-wind-turbine/
+__pycache__/
+*.pyc
+.pytest_cache/
 

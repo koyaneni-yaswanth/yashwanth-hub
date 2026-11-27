@@ -147,6 +147,14 @@ try {
     await page.locator('button:has-text("Create Handover Doc")').click();
     await page.waitForSelector('text=Handover document created & verified', { timeout: 8000 });
 
+    // Test JARVIS 5.0 Status Pill -> Unified AI Gateway, Local Agent & Reliability modal
+    await page.waitForSelector('[data-system-status]', { timeout: 5000 });
+    await page.locator('[data-system-status]').click();
+    await page.waitForSelector('text=Circuit: closed', { timeout: 5000 });
+    await page.locator('button:has-text("AI Providers & Credentials")').click();
+    await page.waitForSelector('text=Google Gemini', { timeout: 5000 });
+    await page.locator('button[aria-label="Close AI Gateway Modal"]').click();
+
     await page.screenshot({ path: path.join(artifactDir, 'buddy_desktop_1440.png'), fullPage: false });
 
     // Mobile 390x844 horizontal overflow check

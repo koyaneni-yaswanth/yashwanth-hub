@@ -21,14 +21,20 @@ import {
   Settings2,
   Shield,
   Sparkles,
+  Square,
   Trash2,
   Volume2,
   VolumeX,
   X,
+  Zap,
 } from 'lucide-react';
 import { BuddyCoreScene } from '../components/buddy/BuddyCoreScene';
+import { ProviderGatewayModal } from '../components/buddy/ProviderGatewayModal';
 import { CompanionService } from '../services/companion/companionService';
+import { AIGateway } from '../services/ai/aiGateway';
+import { LocalAgentClient } from '../services/ai/localAgentClient';
 import { VoiceCompanionController, getVoiceCapabilities } from '../services/voiceCompanionService';
+import type { TaskRouteCategory } from '../lib/modelRouter5';
 import {
   BUDDY_VISUAL_STATES,
   DEFAULT_COMPANION_SETTINGS,
@@ -100,6 +106,15 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
   const [timelineFilter, setTimelineFilter] = useState<'all' | CompanionTimelineKind>('all');
   const [showStudioModal, setShowStudioModal] = useState(false);
   const [studioTab, setStudioTab] = useState<'personality' | 'memory' | 'awareness' | 'schedule' | 'security'>('personality');
+  const [showGatewayModal, setShowGatewayModal] = useState(false);
+  const [gatewayInitialTab, setGatewayInitialTab] = useState<'reliability' | 'providers' | 'local'>('providers');
+
+  // JARVIS 5.0 Gateway / Local Runtime & Stream Control state
+  const [routeCategory, setRouteCategory] = useState<'AUTO' | TaskRouteCategory>('AUTO');
+  const [privateOfflineOnly, setPrivateOfflineOnly] = useState(false);
+  const [systemStatusPill, setSystemStatusPill] = useState<'LOCAL ONLINE' | 'CLOUD ONLINE' | 'DEGRADED' | 'OFFLINE'>('DEGRADED');
+  const [showAllHistory, setShowAllHistory] = useState(false);
+  const streamAbortRef = useRef<AbortController | null>(null);
 
   // Memory editing state inside modal
   const [memSearch, setMemSearch] = useState('');
@@ -129,6 +144,28 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
     setTopInsight(proactive.topInsight);
   }, []);
 
+  const refreshSystemStatusPill = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      const loc = await LocalAgentClient.probeHealth();
+      setSystemStatusPill(loc.online && loc.ollamaReachable ? 'LOCAL ONLINE' : 'OFFLINE');
+      return;
+    }
+    const [loc, cloud] = await Promise.all([
+      LocalAgentClient.probeHealth(),
+      AIGateway.healthCheck({ includeLocalOllama: false }).catch(() => null),
+    ]);
+    if (loc.online && loc.ollamaReachable) {
+      setSystemStatusPill('LOCAL ONLINE');
+      return;
+    }
+    const hasHealthyCloud = Boolean(cloud?.providers?.some((p) => p.configured && p.status === 'connected'));
+    if (hasHealthyCloud) {
+      setSystemStatusPill('CLOUD ONLINE');
+      return;
+    }
+    setSystemStatusPill(cloud ? 'DEGRADED' : 'OFFLINE');
+  }, []);
+
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -152,7 +189,12 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
       if (pendingCount > 0 || proactive.topInsight.kind === 'critical') {
         setVisualState('attention');
       }
+      refreshSystemStatusPill().catch(() => {});
     })();
+
+    const onOnlineChange = () => refreshSystemStatusPill().catch(() => {});
+    window.addEventListener('online', onOnlineChange);
+    window.addEventListener('offline', onOnlineChange);
 
     const onExtra = () => {
       refreshLocalState().catch(() => {});
@@ -164,11 +206,13 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
 
     return () => {
       alive = false;
+      window.removeEventListener('online', onOnlineChange);
+      window.removeEventListener('offline', onOnlineChange);
       window.removeEventListener(EXTRA_CLOUD_UPDATE_EVENT, onExtra);
       unsubBroadcast();
       voiceRef.current?.dispose();
     };
-  }, [refreshLocalState]);
+  }, [refreshLocalState, refreshSystemStatusPill]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -196,13 +240,21 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
       setVisualState('thinking');
       setBusyText('Thinking across your workspace & memory...');
 
+      const abortCtrl = new AbortController();
+      streamAbortRef.current = abortCtrl;
+
       try {
         const res = await CompanionService.sendCompanionMessage({
           userMessage: text,
           history: messages,
           explicitAgent: selectedAgent === 'auto' ? undefined : selectedAgent,
+          routeCategory: routeCategory === 'AUTO' ? undefined : routeCategory,
+          privateOfflineOnly,
+          allowCloudFallback: !privateOfflineOnly,
+          signal: abortCtrl.signal,
           onToken: (partial) => setStreamingReply(partial),
         });
+        streamAbortRef.current = null;
 
         const updatedMessages = [...nextHistory, res.replyMessage];
         setMessages(updatedMessages);
@@ -219,14 +271,28 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
           setVisualState('idle');
         }
       } catch (err: any) {
+        streamAbortRef.current = null;
         setBusyText(null);
         setStreamingReply('');
+        if (err?.name === 'AbortError') {
+          setVisualState('idle');
+          return;
+        }
         setVisualState('error');
         setErrorBanner(err?.message || 'Unable to generate reply.');
       }
     },
-    [input, messages, refreshLocalState, selectedAgent, settings.autoSpeakReplies, settings.voiceEnabled, settings.voiceRate, visualState, voiceCaps.ttsSupported]
+    [input, messages, privateOfflineOnly, refreshLocalState, routeCategory, selectedAgent, settings.autoSpeakReplies, settings.voiceEnabled, settings.voiceRate, visualState, voiceCaps.ttsSupported]
   );
+
+  const handleStopStream = () => {
+    streamAbortRef.current?.abort();
+    AIGateway.cancel();
+    streamAbortRef.current = null;
+    setStreamingReply('');
+    setBusyText(null);
+    setVisualState('idle');
+  };
 
   // Initialize Voice controller lazily
   const ensureVoiceController = useCallback(() => {
@@ -425,6 +491,46 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
         </div>
 
         <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            type="button"
+            onClick={() => {
+              setGatewayInitialTab('reliability');
+              setShowGatewayModal(true);
+            }}
+            data-system-status={systemStatusPill}
+            title="Open System Reliability & Local/Cloud Diagnostics"
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold tracking-wide transition ${
+              systemStatusPill === 'LOCAL ONLINE'
+                ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-300'
+                : systemStatusPill === 'CLOUD ONLINE'
+                ? 'bg-sky-500/15 border-sky-400/40 text-sky-300'
+                : systemStatusPill === 'DEGRADED'
+                ? 'bg-amber-500/15 border-amber-400/40 text-amber-300'
+                : 'bg-rose-500/15 border-rose-400/40 text-rose-300'
+            }`}
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-current" />
+            <span>{systemStatusPill}</span>
+          </button>
+
+          <select
+            aria-label="Task Routing Mode"
+            value={routeCategory}
+            onChange={(e) => {
+              const v = e.target.value as 'AUTO' | TaskRouteCategory;
+              setRouteCategory(v);
+              setPrivateOfflineOnly(v === 'LOCAL');
+            }}
+            className="text-xs rounded-lg border border-white/10 bg-[#10151d] text-slate-200 px-2 py-1.5"
+          >
+            <option value="AUTO">Route: Smart Auto</option>
+            <option value="FAST">FAST</option>
+            <option value="REASONING">REASONING</option>
+            <option value="CODING">CODING</option>
+            <option value="MULTIMODAL">MULTIMODAL</option>
+            <option value="LOCAL">LOCAL (Private)</option>
+          </select>
+
           <select
             aria-label="Active Specialist Agent"
             value={selectedAgent}
@@ -438,6 +544,18 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
               </option>
             ))}
           </select>
+
+          <button
+            type="button"
+            onClick={() => {
+              setGatewayInitialTab('providers');
+              setShowGatewayModal(true);
+            }}
+            className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-[#10151d] hover:bg-white/10 px-2.5 py-1.5 text-xs text-slate-200 transition"
+          >
+            <Zap className="h-3.5 w-3.5 text-amber-300" />
+            <span className="hidden sm:inline">Providers</span>
+          </button>
 
           <button
             type="button"
@@ -552,7 +670,17 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
             </p>
           </div>
         ) : (
-          messages.map((m) => (
+          <>
+            {messages.length > 40 && !showAllHistory && (
+              <button
+                type="button"
+                onClick={() => setShowAllHistory(true)}
+                className="w-full text-center text-[11px] text-sky-400 hover:underline py-1"
+              >
+                Load {messages.length - 40} earlier message(s)
+              </button>
+            )}
+            {(showAllHistory ? messages : messages.slice(-40)).map((m) => (
             <div
               key={m.id}
               className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}
@@ -585,7 +713,8 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
                 )}
               </div>
             </div>
-          ))
+            ))}
+          </>
         )}
 
         {streamingReply && (
@@ -716,15 +845,27 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
             {speakingActive || settings.voiceEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
           </button>
 
-          <button
-            type="submit"
-            disabled={!input.trim() || visualState === 'thinking'}
-            aria-label="Send message to JARVIS"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-black font-semibold text-xs px-3.5 py-2 transition shrink-0"
-          >
-            <Send className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Send</span>
-          </button>
+          {visualState === 'thinking' ? (
+            <button
+              type="button"
+              onClick={handleStopStream}
+              aria-label="Stop generating"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-rose-500/85 hover:bg-rose-500 text-white font-semibold text-xs px-3 py-2 transition shrink-0"
+            >
+              <Square className="h-3 w-3" />
+              <span className="hidden sm:inline">Stop</span>
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={!input.trim()}
+              aria-label="Send message to JARVIS"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-black font-semibold text-xs px-3.5 py-2 transition shrink-0"
+            >
+              <Send className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Send</span>
+            </button>
+          )}
         </form>
       </div>
 
@@ -1303,6 +1444,15 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
           </div>
         </div>
       )}
+
+      <ProviderGatewayModal
+        isOpen={showGatewayModal}
+        onClose={() => setShowGatewayModal(false)}
+        initialTab={gatewayInitialTab}
+        onStatusRefresh={() => {
+          refreshSystemStatusPill().catch(() => {});
+        }}
+      />
     </div>
   );
 };

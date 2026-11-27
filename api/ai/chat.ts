@@ -24,14 +24,29 @@ import {
   selectRecommendedProvider,
   type CloudOrLocalProviderId,
 } from '../_lib/aiProviderAdapters.ts';
+import {
+  canEncryptUserSecrets,
+  encryptProviderSecret,
+  extractConfigMap,
+  generateCorrelationId,
+  loadEffectiveProviderContext,
+  maskSecretHint,
+  serverCircuitBreaker,
+  testSingleProviderAndPersist,
+} from '../_lib/aiVaultAndRouter.ts';
+import {
+  buildJarvis5RoutePlan,
+  computeJitteredBackoffMs,
+  type TaskRouteCategory,
+} from '../../src/lib/modelRouter5.ts';
 import { applyCors } from '../_lib/http.ts';
 
 /** Provider model defaults — configurable via Vercel env vars so ids never go stale. */
-const OPENAI_DEFAULT_MODEL = () => (process.env.OPENAI_MODEL || 'gpt-4o-mini').trim();
-const ANTHROPIC_DEFAULT_MODEL = () => (process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5').trim();
-const OPENROUTER_DEFAULT_MODEL = () => (process.env.OPENROUTER_MODEL || 'openrouter/auto').trim();
-const HF_DEFAULT_MODEL = () => (process.env.HUGGINGFACE_MODEL || 'Qwen/Qwen2.5-72B-Instruct').trim();
-const OLLAMA_DEFAULT_MODEL = () => (process.env.OLLAMA_MODEL || 'llama3.2').trim();
+const OPENAI_DEFAULT_MODEL = (env: Record<string, string | undefined> = process.env) => (env.OPENAI_MODEL || 'gpt-4o-mini').trim();
+const ANTHROPIC_DEFAULT_MODEL = (env: Record<string, string | undefined> = process.env) => (env.ANTHROPIC_MODEL || 'claude-haiku-4-5').trim();
+const OPENROUTER_DEFAULT_MODEL = (env: Record<string, string | undefined> = process.env) => (env.OPENROUTER_MODEL || 'openrouter/auto').trim();
+const HF_DEFAULT_MODEL = (env: Record<string, string | undefined> = process.env) => (env.HUGGINGFACE_MODEL || 'Qwen/Qwen2.5-72B-Instruct').trim();
+const OLLAMA_DEFAULT_MODEL = (env: Record<string, string | undefined> = process.env) => (env.OLLAMA_MODEL || 'llama3.2').trim();
 
 function toOpenAiTools() {
   return AI_TOOL_DEFINITIONS.map((t) => ({
@@ -878,19 +893,56 @@ export function createAiChatHandler(
       return res.status(200).end();
     }
 
+    const requestId =
+      typeof req.headers?.['x-request-id'] === 'string' && req.headers['x-request-id'].trim()
+        ? req.headers['x-request-id'].trim()
+        : generateCorrelationId();
+    if (typeof res.setHeader === 'function') {
+      res.setHeader('X-Request-Id', requestId);
+    }
+
     const envProviders = detectConfiguredProviders(process.env);
     const actionParam = Array.isArray(req.query?.action) ? req.query.action[0] : req.query?.action;
 
     if (req.method === 'GET') {
       if (actionParam === 'health') {
-        const reports = await probeAllProviders(process.env);
+        let effectiveEnv = process.env as Record<string, string | undefined>;
+        try {
+          const auth = await resolveAuthenticatedUser(req, dbClient);
+          if (auth.authenticated && auth.userId) {
+            const ctx = await loadEffectiveProviderContext((auth as any).client || dbClient, auth.userId, process.env);
+            effectiveEnv = ctx.effectiveEnv;
+          }
+        } catch {
+          /* unauthenticated public health stays env-only */
+        }
+        const reports = await probeAllProviders(effectiveEnv, fetchImpl);
         const recommendation = selectRecommendedProvider(reports);
         return res.status(200).json({
           success: true,
-          configuredProviders: envProviders,
+          requestId,
+          configuredProviders: detectConfiguredProviders(effectiveEnv),
           providers: reports,
           recommended: recommendation,
+          circuitBreakers: serverCircuitBreaker.snapshot(),
+          vaultEncryptionReady: canEncryptUserSecrets(process.env),
           timestamp: new Date().toISOString(),
+        });
+      }
+
+      if (actionParam === 'providers') {
+        const auth = await resolveAuthenticatedUser(req, dbClient);
+        if (!auth.authenticated || !auth.userId) {
+          return res.status(401).json({ error: 'Sign in to inspect provider credentials.', code: 'auth_required' });
+        }
+        const activeDb = (auth as any).client || dbClient;
+        const ctx = await loadEffectiveProviderContext(activeDb, auth.userId, process.env);
+        return res.status(200).json({
+          success: true,
+          requestId,
+          configs: ctx.configs,
+          vaultEncryptionReady: canEncryptUserSecrets(process.env),
+          circuitBreakers: serverCircuitBreaker.snapshot(),
         });
       }
 
@@ -928,6 +980,73 @@ export function createAiChatHandler(
     try {
       const body = req.body || {};
 
+      if (actionParam === 'provider_config' || body.action === 'provider_config') {
+        const auth = await resolveAuthenticatedUser(req, dbClient);
+        if (!auth.authenticated || !auth.userId) {
+          return res.status(401).json({ error: 'Sign in to configure AI providers.', code: 'auth_required' });
+        }
+        const provider = String(body.provider || '') as CloudOrLocalProviderId;
+        if (!Object.prototype.hasOwnProperty.call(AI_PROVIDER_REGISTRY, provider)) {
+          return res.status(400).json({ error: `Unsupported provider "${provider}".` });
+        }
+        const activeDb = (auth as any).client || dbClient;
+        const updates: Record<string, any> = {
+          user_id: auth.userId,
+          provider,
+          updated_at: new Date().toISOString(),
+        };
+        if (typeof body.enabled === 'boolean') updates.enabled = body.enabled;
+        if (typeof body.selectedModel === 'string') {
+          updates.selected_model = body.selectedModel.trim() || null;
+        }
+        if (provider === 'ollama' && typeof body.baseUrl === 'string') {
+          updates.base_url = body.baseUrl.trim() || null;
+        }
+        if (body.clearKey === true) {
+          updates.encrypted_api_key = null;
+          updates.key_hint = null;
+        } else if (typeof body.apiKey === 'string' && body.apiKey.trim()) {
+          if (!canEncryptUserSecrets(process.env)) {
+            return res.status(400).json({
+              error: 'Cannot encrypt API key: set AI_VAULT_ENCRYPTION_KEY or SUPABASE_SERVICE_ROLE_KEY on Vercel.',
+            });
+          }
+          updates.encrypted_api_key = encryptProviderSecret(body.apiKey.trim(), process.env);
+          updates.key_hint = maskSecretHint(body.apiKey.trim());
+        }
+        const { error: upErr } = await activeDb.from('provider_credentials').upsert(updates, { onConflict: 'user_id,provider' });
+        if (upErr) {
+          return res.status(500).json({ error: `Failed saving provider configuration: ${upErr.message}` });
+        }
+        return res.status(200).json({
+          success: true,
+          requestId,
+          provider,
+          message: `Saved ${AI_PROVIDER_REGISTRY[provider].name} configuration securely.`,
+        });
+      }
+
+      if (actionParam === 'provider_test' || body.action === 'provider_test') {
+        const auth = await resolveAuthenticatedUser(req, dbClient);
+        if (!auth.authenticated || !auth.userId) {
+          return res.status(401).json({ error: 'Sign in to test provider connections.', code: 'auth_required' });
+        }
+        const provider = String(body.provider || '') as CloudOrLocalProviderId;
+        if (!Object.prototype.hasOwnProperty.call(AI_PROVIDER_REGISTRY, provider)) {
+          return res.status(400).json({ error: `Unsupported provider "${provider}".` });
+        }
+        const activeDb = (auth as any).client || dbClient;
+        const ctx = await loadEffectiveProviderContext(activeDb, auth.userId, process.env);
+        const report = await testSingleProviderAndPersist({
+          db: activeDb,
+          userId: auth.userId,
+          provider,
+          effectiveEnv: ctx.effectiveEnv,
+          fetchImpl,
+        });
+        return res.status(200).json({ success: true, requestId, report });
+      }
+
       if (body.action === 'embed' || actionParam === 'embed') {
         const auth = await resolveAuthenticatedUser(req, dbClient);
         if (!auth.authenticated) {
@@ -957,10 +1076,18 @@ export function createAiChatHandler(
           code: 'auth_required',
         });
       }
+      const activeDb = (auth as any).client || dbClient;
+      const providerCtx = await loadEffectiveProviderContext(activeDb, auth.userId, process.env);
+      const effectiveEnv = providerCtx.effectiveEnv;
+      const activeConfigMap =
+        dbClient === supabaseServer || auth.userId
+          ? detectConfiguredProviders(effectiveEnv)
+          : extractConfigMap(providerCtx.configs);
+
       const history = Array.isArray(body.history) ? body.history : [];
       const projectId = body.projectId ? String(body.projectId) : undefined;
       const mode = String(body.mode || 'personal');
-      const snapshot = await enrichSnapshotFromServer(body.workspaceSnapshot, auth.userId, dbClient);
+      const snapshot = await enrichSnapshotFromServer(body.workspaceSnapshot, auth.userId, activeDb);
 
       const requestedProvider = String(body.provider || 'auto');
       const requestedModel = String(body.modelId || '');
@@ -971,7 +1098,24 @@ export function createAiChatHandler(
         body.systemPrompt ? `\nAdditional Instructions: ${body.systemPrompt}` : ''
       }`;
 
-      const executionChain = buildProviderExecutionChain(requestedProvider, envProviders);
+      const routePlan = buildJarvis5RoutePlan({
+        prompt,
+        requestedProvider: requestedProvider as any,
+        explicitCategory: body.routeCategory as TaskRouteCategory | undefined,
+        hasImageInput: Boolean(body.hasImageInput),
+        hasAudioInput: Boolean(body.hasAudioInput),
+        requiresTools: body.requiresTools !== false,
+        privateOfflineOnly: Boolean(body.privateOfflineOnly),
+        allowCloudFallbackWhenLocalDown: Boolean(body.allowCloudFallback),
+        configured: activeConfigMap,
+        enabledProviders: providerCtx.enabledProviders,
+        breaker: dbClient === supabaseServer ? serverCircuitBreaker : undefined,
+      });
+
+      const executionChain =
+        routePlan.fallbackChain.length > 0
+          ? routePlan.fallbackChain
+          : buildProviderExecutionChain(requestedProvider, activeConfigMap);
       const wantsStream =
         body.stream === true ||
         (typeof req.headers?.accept === 'string' && req.headers.accept.includes('text/event-stream'));
@@ -989,32 +1133,34 @@ export function createAiChatHandler(
       let lastError: string | null = null;
 
       for (const candidateProvider of executionChain) {
-        const modelId = modelForProvider(candidateProvider, requestedModel);
+        const userDefaultModel = providerCtx.selectedModels[candidateProvider];
+        const modelId = modelForProvider(candidateProvider, requestedModel || userDefaultModel || '');
         try {
           let llmResult: any;
           let resolvedModelId = modelId;
           let streamedInline = false;
 
-          if (candidateProvider === 'gemini') {
-            const geminiKey = (process.env.GEMINI_API_KEY || '').trim();
-            const resolved = await resolveGeminiModel(geminiKey, modelId);
-            resolvedModelId = resolved.primary;
-            if (wantsStream) {
-              streamedInline = true;
-              llmResult = await runGeminiStreamingWithTools(
-                geminiKey,
-                resolved.primary,
-                prompt,
-                history,
-                systemPrompt,
-                snapshot,
-                resolved.fallback,
-                (delta) => writeSseEvent(res, { type: 'token', delta }),
-                (toolMeta) => writeSseEvent(res, { type: 'tool', ...toolMeta }),
-                fetchImpl
-              );
-            } else {
-              llmResult = await runGeminiWithTools(
+          const runAttempt = async () => {
+            if (candidateProvider === 'gemini') {
+              const geminiKey = (effectiveEnv.GEMINI_API_KEY || '').trim();
+              const resolved = await resolveGeminiModel(geminiKey, modelId);
+              resolvedModelId = resolved.primary;
+              if (wantsStream) {
+                streamedInline = true;
+                return await runGeminiStreamingWithTools(
+                  geminiKey,
+                  resolved.primary,
+                  prompt,
+                  history,
+                  systemPrompt,
+                  snapshot,
+                  resolved.fallback,
+                  (delta) => writeSseEvent(res, { type: 'token', delta }),
+                  (toolMeta) => writeSseEvent(res, { type: 'tool', ...toolMeta }),
+                  fetchImpl
+                );
+              }
+              return await runGeminiWithTools(
                 geminiKey,
                 resolved.primary,
                 prompt,
@@ -1024,69 +1170,94 @@ export function createAiChatHandler(
                 resolved.fallback
               );
             }
-            resolvedModelId = llmResult.resolvedModelId || resolvedModelId;
-          } else if (candidateProvider === 'openrouter') {
-            const orKey = (process.env.OPENROUTER_API_KEY || '').trim();
-            llmResult = await runOpenAiCompatibleWithTools({
-              providerLabel: 'OpenRouter',
-              endpoint: 'https://openrouter.ai/api/v1/chat/completions',
-              apiKey: orKey,
-              extraHeaders: {
-                'HTTP-Referer': 'https://yashwanth-hub.vercel.app',
-                'X-Title': 'Yashwanth Hub Jarvis AI OS',
-              },
-              modelId,
-              userPrompt: prompt,
-              history,
-              systemPrompt,
-              snapshot,
-              allowToolFallback: true,
-            });
-          } else if (candidateProvider === 'openai') {
-            const openaiKey = (process.env.OPENAI_API_KEY || '').trim();
-            llmResult = await runOpenAiCompatibleWithTools({
-              providerLabel: 'OpenAI',
-              endpoint: 'https://api.openai.com/v1/chat/completions',
-              apiKey: openaiKey,
-              modelId,
-              userPrompt: prompt,
-              history,
-              systemPrompt,
-              snapshot,
-            });
-          } else if (candidateProvider === 'anthropic') {
-            const anthropicKey = (process.env.ANTHROPIC_API_KEY || '').trim();
-            llmResult = await runAnthropicWithTools(anthropicKey, modelId, prompt, history, systemPrompt, snapshot);
-          } else if (candidateProvider === 'huggingface') {
-            const hfKey = (process.env.HF_TOKEN || process.env.HUGGINGFACE_API_KEY || '').trim();
-            llmResult = await runOpenAiCompatibleWithTools({
-              providerLabel: 'Hugging Face',
-              endpoint: 'https://router.huggingface.co/v1/chat/completions',
-              apiKey: hfKey,
-              modelId,
-              userPrompt: prompt,
-              history,
-              systemPrompt,
-              snapshot,
-              allowToolFallback: true,
-            });
-          } else if (candidateProvider === 'ollama') {
-            const ollamaUrl = (process.env.OLLAMA_BASE_URL || '').trim().replace(/\/$/, '');
-            llmResult = await runOpenAiCompatibleWithTools({
-              providerLabel: 'Ollama',
-              endpoint: `${ollamaUrl}/v1/chat/completions`,
-              modelId,
-              userPrompt: prompt,
-              history,
-              systemPrompt,
-              snapshot,
-              allowToolFallback: true,
-            });
+            if (candidateProvider === 'openrouter') {
+              const orKey = (effectiveEnv.OPENROUTER_API_KEY || '').trim();
+              return await runOpenAiCompatibleWithTools({
+                providerLabel: 'OpenRouter',
+                endpoint: 'https://openrouter.ai/api/v1/chat/completions',
+                apiKey: orKey,
+                extraHeaders: {
+                  'HTTP-Referer': 'https://yashwanth-hub.vercel.app',
+                  'X-Title': 'Yashwanth Hub Jarvis AI OS',
+                },
+                modelId,
+                userPrompt: prompt,
+                history,
+                systemPrompt,
+                snapshot,
+                allowToolFallback: true,
+              });
+            }
+            if (candidateProvider === 'openai') {
+              const openaiKey = (effectiveEnv.OPENAI_API_KEY || '').trim();
+              return await runOpenAiCompatibleWithTools({
+                providerLabel: 'OpenAI',
+                endpoint: 'https://api.openai.com/v1/chat/completions',
+                apiKey: openaiKey,
+                modelId,
+                userPrompt: prompt,
+                history,
+                systemPrompt,
+                snapshot,
+              });
+            }
+            if (candidateProvider === 'anthropic') {
+              const anthropicKey = (effectiveEnv.ANTHROPIC_API_KEY || '').trim();
+              return await runAnthropicWithTools(anthropicKey, modelId, prompt, history, systemPrompt, snapshot);
+            }
+            if (candidateProvider === 'huggingface') {
+              const hfKey = (effectiveEnv.HF_TOKEN || effectiveEnv.HUGGINGFACE_API_KEY || '').trim();
+              return await runOpenAiCompatibleWithTools({
+                providerLabel: 'Hugging Face',
+                endpoint: 'https://router.huggingface.co/v1/chat/completions',
+                apiKey: hfKey,
+                modelId,
+                userPrompt: prompt,
+                history,
+                systemPrompt,
+                snapshot,
+                allowToolFallback: true,
+              });
+            }
+            if (candidateProvider === 'ollama') {
+              const ollamaUrl = (effectiveEnv.OLLAMA_BASE_URL || '').trim().replace(/\/$/, '');
+              return await runOpenAiCompatibleWithTools({
+                providerLabel: 'Ollama',
+                endpoint: `${ollamaUrl}/v1/chat/completions`,
+                apiKey: '',
+                modelId,
+                userPrompt: prompt,
+                history,
+                systemPrompt,
+                snapshot,
+                allowToolFallback: true,
+              });
+            }
+            return null;
+          };
+
+          // Single jittered safe retry on transient rate/5xx failure before failing over
+          try {
+            llmResult = await runAttempt();
+          } catch (firstErr: any) {
+            const msg = String(firstErr?.message || '');
+            const transient = /(429|502|503|504|timeout|abort|rate)/i.test(msg);
+            if (!transient || streamedInline) throw firstErr;
+            await new Promise((r) => setTimeout(r, computeJitteredBackoffMs(0, 200)));
+            llmResult = await runAttempt();
+          }
+
+          if (candidateProvider === 'gemini' && llmResult?.resolvedModelId) {
+            resolvedModelId = llmResult.resolvedModelId;
           }
 
           if (llmResult) {
+            serverCircuitBreaker.recordSuccess(candidateProvider);
             const payload = {
               success: true,
+              requestId,
+              routeCategory: routePlan.category,
+              routeRationale: routePlan.rationale,
               providerMode: 'server_llm',
               provider: candidateProvider,
               modelId: resolvedModelId,
@@ -1101,7 +1272,7 @@ export function createAiChatHandler(
               tool_calls: llmResult.tool_calls,
               proposed_actions: llmResult.proposed_actions,
               citations: llmResult.citations,
-              configuredProviders: envProviders,
+              configuredProviders: activeConfigMap,
             };
             if (wantsStream) {
               if (!streamedInline) streamTextInChunks(res, payload.text);
@@ -1111,7 +1282,9 @@ export function createAiChatHandler(
             return res.status(200).json(payload);
           }
         } catch (err: any) {
-          lastError = `${candidateProvider}: ${err?.message || 'error'}`;
+          const msg = err?.message || 'error';
+          serverCircuitBreaker.recordFailure(candidateProvider, msg, /(401|403|invalid[_ ]api[_ ]key)/i.test(msg));
+          lastError = `${candidateProvider}: ${msg}`;
         }
       }
 

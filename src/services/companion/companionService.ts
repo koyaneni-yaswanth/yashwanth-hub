@@ -482,6 +482,10 @@ export class CompanionService {
     userMessage: string;
     history: AIChatMessage[];
     explicitAgent?: BuddyAgentRole;
+    routeCategory?: 'FAST' | 'REASONING' | 'CODING' | 'MULTIMODAL' | 'LOCAL';
+    privateOfflineOnly?: boolean;
+    allowCloudFallback?: boolean;
+    signal?: AbortSignal;
     onToken?: (partial: string) => void;
   }): Promise<{
     replyMessage: AIChatMessage;
@@ -489,6 +493,7 @@ export class CompanionService {
     extractedCount: number;
     memoriesUsedCount: number;
     proposedTimelineItem?: CompanionTimelineItem;
+    cancelled?: boolean;
     error?: string;
   }> {
     const cleanInput = String(options.userMessage || '').trim();
@@ -569,6 +574,7 @@ export class CompanionService {
       let replyText = '';
       let providerUsed = 'local_heuristic';
       let modelUsed = 'jarvis-offline';
+      let cancelled = false;
 
       try {
         const aiRes = await AIGateway.streamPrompt(
@@ -577,17 +583,26 @@ export class CompanionService {
             mode: agent.id === 'startup' ? 'startup' : agent.id === 'research' ? 'research' : 'personal',
             provider: settings.preferredProvider === 'auto' ? 'auto' : (settings.preferredProvider as any),
             complexity: agent.preferredComplexity,
+            routeCategory: options.routeCategory,
+            privateOfflineOnly: options.privateOfflineOnly,
+            allowCloudFallback: options.allowCloudFallback,
+            signal: options.signal,
           },
           {
             onToken: (_delta, accumulated) => options.onToken?.(accumulated),
           }
         );
-        replyText = aiRes.text;
+        replyText = aiRes.providerNotice ? `${aiRes.text}\n\n_${aiRes.providerNotice}_` : aiRes.text;
         providerUsed = aiRes.provider;
         modelUsed = aiRes.modelId;
-      } catch {
-        // Honest verified offline reply
-        replyText = `I'm running in local workspace mode right now.\n\n**What I verified locally:**\n- Open tasks: ${openTasks.length} (${overdue.length} overdue, ${dueToday.length} due today)\n- Active projects: ${projects.filter((p) => p.status === 'active').length}\n- Loaded ${relevantMemories.length} relevant long-term memory notes.\n\nConnect or unlock your server AI provider if you'd like live LLM reasoning on top of these facts.`;
+      } catch (err: any) {
+        if (options.signal?.aborted || err?.name === 'AbortError') {
+          cancelled = true;
+          replyText = 'Generation stopped.';
+        } else {
+          // Honest verified offline reply
+          replyText = `I'm running in local workspace mode right now.\n\n**What I verified locally:**\n- Open tasks: ${openTasks.length} (${overdue.length} overdue, ${dueToday.length} due today)\n- Active projects: ${projects.filter((p) => p.status === 'active').length}\n- Loaded ${relevantMemories.length} relevant long-term memory notes.\n\nConnect or unlock your server AI provider or local runtime if you'd like live LLM reasoning.`;
+        }
       }
 
       const replyMessage: AIChatMessage = {
@@ -615,13 +630,14 @@ export class CompanionService {
         }
       }
 
-      endAiThinking(true);
+      endAiThinking(!cancelled);
       return {
         replyMessage,
         agentUsed: agent.id,
         extractedCount,
         memoriesUsedCount: relevantMemories.length,
         proposedTimelineItem,
+        cancelled,
       };
     } catch (err: any) {
       endAiThinking(false);
