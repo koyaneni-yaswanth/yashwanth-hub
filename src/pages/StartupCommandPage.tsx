@@ -19,6 +19,7 @@ import {
   Upload,
   Usb,
   Cpu,
+  Download,
 } from 'lucide-react';
 import { db } from '../db';
 import { Badge } from '../components/common/Badge';
@@ -28,11 +29,16 @@ import {
   isWebSerialSupported,
   parseTelemetryCsv,
   SYNTHETIC_DEMO_CSV,
+  type PvCurveBin,
   type StoredPvTelemetrySummary,
 } from '../lib/telemetryAnalyzer';
 import { generateId } from '../lib/utils';
 import { toast } from '../lib/toast';
-import { SyncQueueService } from '../services/sync/syncQueueService';
+import {
+  EXTRA_CLOUD_UPDATE_EVENT,
+  listenExtraBroadcasts,
+  saveSyncedPreference,
+} from '../services/sync/extraCloudSync';
 import type { V3FAssessmentItem, V3FScore } from '../types';
 
 const INITIAL_V3F_DATA: V3FAssessmentItem[] = [
@@ -200,22 +206,37 @@ export const StartupCommandPage: React.FC = () => {
   const [csvFileName, setCsvFileName] = useState<string>('');
   const [rotorRadiusM, setRotorRadiusM] = useState<number>(0.45);
   const [storedPv, setStoredPv] = useState<StoredPvTelemetrySummary | null>(null);
+  const [hoveredBin, setHoveredBin] = useState<PvCurveBin | null>(null);
   const [serialActive, setSerialActive] = useState(false);
   const [serialError, setSerialError] = useState<string | null>(null);
   const serialDisconnectRef = React.useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
-    db.settings.get('v3f_assessment_v2').then((saved) => {
-      if (saved?.value && Array.isArray(saved.value) && saved.value.length > 0) {
-        setAssessmentItems(saved.value as V3FAssessmentItem[]);
+    const loadSavedState = async () => {
+      const [savedV3f, savedPv] = await Promise.all([
+        db.settings.get('v3f_assessment_v2'),
+        db.settings.get('pawan_pv_telemetry_v1'),
+      ]);
+      if (savedV3f?.value && Array.isArray(savedV3f.value) && savedV3f.value.length > 0) {
+        setAssessmentItems(savedV3f.value as V3FAssessmentItem[]);
       }
-    });
-    db.settings.get('pawan_pv_telemetry_v1').then((saved) => {
-      if (saved?.value && typeof saved.value === 'object') {
-        setStoredPv(saved.value as StoredPvTelemetrySummary);
+      if (savedPv?.value && typeof savedPv.value === 'object') {
+        setStoredPv(savedPv.value as StoredPvTelemetrySummary);
       }
+    };
+    void loadSavedState();
+
+    const onCloudUpdate = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ kind?: string }>)?.detail;
+      if (!detail?.kind || detail.kind === 'user_preferences') void loadSavedState();
+    };
+    window.addEventListener(EXTRA_CLOUD_UPDATE_EVENT, onCloudUpdate);
+    const unsubBroadcast = listenExtraBroadcasts((d) => {
+      if (d.kind === 'user_preferences') void loadSavedState();
     });
     return () => {
+      window.removeEventListener(EXTRA_CLOUD_UPDATE_EVENT, onCloudUpdate);
+      unsubBroadcast();
       void serialDisconnectRef.current?.();
     };
   }, []);
@@ -279,11 +300,7 @@ export const StartupCommandPage: React.FC = () => {
       pvCurveBins: parsedTelemetry.pvCurveBins,
     };
 
-    await db.settings.put({
-      key: 'pawan_pv_telemetry_v1',
-      value: summary,
-      updated_at: summary.capturedAt,
-    });
+    await saveSyncedPreference('pawan_pv_telemetry_v1', summary, summary.capturedAt);
     setStoredPv(summary);
 
     const evidenceSummary = `Captured ${summary.sampleCount} samples (${summary.durationSec}s @ ${summary.sampleRateHz ?? 'unknown'} Hz, file ${summary.fileName}). Peak ${summary.peakPowerW} W at ${summary.peakPowerWindMs ?? '—'} m/s; cut-in ${summary.cutInWindSpeedMs ?? '—'} m/s.`;
@@ -298,11 +315,7 @@ export const StartupCommandPage: React.FC = () => {
         : item
     );
     setAssessmentItems(nextAssessment);
-    await db.settings.put({
-      key: 'v3f_assessment_v2',
-      value: nextAssessment,
-      updated_at: summary.capturedAt,
-    });
+    await saveSyncedPreference('v3f_assessment_v2', nextAssessment, summary.capturedAt);
 
     const expId = generateId();
     const record = {
@@ -324,8 +337,26 @@ export const StartupCommandPage: React.FC = () => {
       updated_at: summary.capturedAt,
     };
     await db.robotics_records.put(record);
-    SyncQueueService.enqueueChange('robotics_experiments', expId, 'INSERT', record).catch(() => {});
-    toast('Saved P-v telemetry run to V3F evidence & experiment log', 'success');
+    // `installWorkspaceSyncHooks()` automatically queues normalized UUID row to `robotics_experiments`
+    toast('Saved P-v telemetry run to V3F evidence & synced across devices', 'success');
+  };
+
+  const handleDownloadTelemetryReport = () => {
+    if (!parsedTelemetry || parsedTelemetry.sampleCount === 0) return;
+    const report = {
+      exportedAt: new Date().toISOString(),
+      project: 'PAWAN SHAKTI',
+      fileName: csvFileName || 'bench-daq-run.csv',
+      rotorRadiusM,
+      analysis: parsedTelemetry,
+    };
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pawan_shakti_pv_report_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const numericItems = assessmentItems.filter((i) => typeof i.score === 'number');
@@ -344,11 +375,7 @@ export const StartupCommandPage: React.FC = () => {
         : item
     );
     setAssessmentItems(next);
-    await db.settings.put({
-      key: 'v3f_assessment_v2',
-      value: next,
-      updated_at: new Date().toISOString(),
-    });
+    await saveSyncedPreference('v3f_assessment_v2', next);
   };
 
   const filteredItems = filterCategory === 'All'
@@ -357,9 +384,10 @@ export const StartupCommandPage: React.FC = () => {
 
   const categories = Array.from(new Set(assessmentItems.map((i) => i.category)));
 
-  const targetDate = new Date('2026-11-15T23:59:59+05:30').getTime();
+  // 90-day TRL 5 Gate (started 6 Nov 2026 -> target 4 Feb 2027)
+  const trl5GateDate = new Date('2027-02-04T23:59:59+05:30').getTime();
   const now = Date.now();
-  const diffDays = Math.max(0, Math.ceil((targetDate - now) / (1000 * 60 * 60 * 24)));
+  const diffDays = Math.max(0, Math.ceil((trl5GateDate - now) / (1000 * 60 * 60 * 24)));
 
   return (
     <div className="space-y-6 pb-12">
@@ -384,10 +412,10 @@ export const StartupCommandPage: React.FC = () => {
           <div className="flex items-center gap-4 bg-[var(--hub-bg)] p-4 rounded-xl border border-[var(--hub-line)] flex-none">
             <div className="text-center">
               <span className="text-xs text-[var(--hub-muted)] uppercase tracking-wider block font-bold">
-                Target Gate Date
+                90-Day TRL 5 Gate
               </span>
-              <span className="text-2xl font-bold font-heading text-red-700 dark:text-red-400">
-                15 Nov 2026
+              <span className="text-2xl font-bold font-heading text-teal-700 dark:text-teal-300">
+                04 Feb 2027
               </span>
               <span className="text-xs font-semibold text-[var(--hub-ink)] block mt-0.5">
                 {diffDays} Days Remaining
@@ -442,14 +470,14 @@ export const StartupCommandPage: React.FC = () => {
       </div>
 
       {/* Navigation Sub-Tabs */}
-      <div className="flex items-center gap-2 border-b border-[var(--hub-line)] pb-2 overflow-x-auto">
+      <div className="flex items-center flex-wrap gap-1.5 border-b border-[var(--hub-line)] pb-2.5">
         {[
-          { id: 'v3f', label: 'V3F 6-Category Assessment (0-3 Rubric)', icon: ShieldCheck },
+          { id: 'v3f', label: 'V3F Rubric (12)', icon: ShieldCheck },
           { id: 'telemetry', label: 'Bench P-v Telemetry & Serial DAQ', icon: Activity },
-          { id: 'plan15', label: '15 Nov Submission Checklist', icon: Calendar },
-          { id: 'bom', label: 'Bill of Materials (BOM) Economics', icon: IndianRupee },
-          { id: 'risks', label: 'Risk Register & TRL 4 Protocol', icon: AlertTriangle },
-          { id: 'roadmap', label: '90-Day Engineering Roadmap', icon: Cpu },
+          { id: 'plan15', label: 'Submission Plan', icon: Calendar },
+          { id: 'bom', label: 'BOM Economics', icon: IndianRupee },
+          { id: 'risks', label: 'Risks & TRL 4', icon: AlertTriangle },
+          { id: 'roadmap', label: '90-Day Roadmap', icon: Cpu },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -457,13 +485,13 @@ export const StartupCommandPage: React.FC = () => {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                 isActive
                   ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] shadow-xs'
                   : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-surface)]'
               }`}
             >
-              <Icon className="w-4 h-4" />
+              <Icon className="w-3.5 h-3.5" />
               <span>{tab.label}</span>
             </button>
           );
@@ -736,9 +764,18 @@ export const StartupCommandPage: React.FC = () => {
                         })
                         .join(' ');
                       return (
-                        <div className="rounded-xl bg-[#05070D] border border-white/10 p-3">
-                          <div className="text-[11px] font-mono text-white/70 mb-1">
-                            Empirical Power Curve — Wind Speed (m/s) vs Electrical Power (W)
+                        <div className="rounded-xl bg-[#05070D] border border-white/10 p-3 space-y-2">
+                          <div className="flex items-center justify-between gap-2 text-[11px] font-mono">
+                            <span className="text-white/75">
+                              Empirical Power Curve — Wind Speed (m/s) vs Electrical Power (W)
+                            </span>
+                            {hoveredBin ? (
+                              <span className="text-[#3BE8FF]">
+                                {hoveredBin.windBinMs} m/s · Avg {hoveredBin.avgPowerW}W · Peak {hoveredBin.peakPowerW}W (n={hoveredBin.samples})
+                              </span>
+                            ) : (
+                              <span className="text-white/45">Hover points to inspect bins</span>
+                            )}
                           </div>
                           <svg viewBox="0 0 440 170" className="w-full h-40" role="img" aria-label="Power vs Wind Speed curve">
                             <line x1="35" y1="145" x2="420" y2="145" stroke="#475569" strokeWidth="1" />
@@ -747,9 +784,15 @@ export const StartupCommandPage: React.FC = () => {
                             {bins.map((b) => {
                               const x = 35 + ((b.windBinMs - minWind) / (maxWind - minWind)) * 380;
                               const y = 145 - (b.avgPowerW / maxW) * 120;
+                              const active = hoveredBin?.windBinMs === b.windBinMs;
                               return (
-                                <g key={b.windBinMs}>
-                                  <circle cx={x} cy={y} r="3.5" fill="#10b981" />
+                                <g
+                                  key={b.windBinMs}
+                                  className="cursor-pointer"
+                                  onMouseEnter={() => setHoveredBin(b)}
+                                  onMouseLeave={() => setHoveredBin(null)}
+                                >
+                                  <circle cx={x} cy={y} r={active ? 6 : 4} fill={active ? '#3BE8FF' : '#10b981'} />
                                   <text x={x} y="160" textAnchor="middle" fill="#94a3b8" fontSize="9">
                                     {b.windBinMs}
                                   </text>
@@ -770,12 +813,20 @@ export const StartupCommandPage: React.FC = () => {
                       </div>
                     )}
 
-                    <div className="flex items-center justify-end gap-2">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
                       {csvFileName.includes('demo-synthetic') && (
                         <span className="text-[11px] font-mono text-amber-500 mr-auto">
                           DEMO TEMPLATE — replace with actual DAQ capture before V3F submission
                         </span>
                       )}
+                      <button
+                        type="button"
+                        onClick={handleDownloadTelemetryReport}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Download Report JSON</span>
+                      </button>
                       <button
                         type="button"
                         onClick={handleSaveTelemetryEvidence}

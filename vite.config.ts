@@ -10,8 +10,10 @@ export default defineConfig({
       output: {
         codeSplitting: {
           groups: [
-            // Rarely-changing framework code gets its own long-cached chunk.
-            { name: 'react-vendor', test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/, priority: 20 },
+            // Rarely-changing framework & sync SDKs get long-cached vendor chunks.
+            { name: 'react-vendor', test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/, priority: 30 },
+            { name: 'supabase-vendor', test: /node_modules[\\/]@supabase[\\/]/, priority: 25 },
+            { name: 'dexie-vendor', test: /node_modules[\\/](dexie|dexie-react-hooks)[\\/]/, priority: 20 },
             { name: 'icons', test: /node_modules[\\/]lucide-react[\\/]/, priority: 10 },
           ],
         },

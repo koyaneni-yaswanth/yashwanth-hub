@@ -21,6 +21,9 @@ import { GoogleAuthService } from '../services/google/googleAuthService';
 import { CoreSyncEngine, type SyncEngineStatus, type SyncConflictItem } from '../services/sync/syncEngine';
 import { NeoConnectionMonitor } from '../integrations/neosapien/connection';
 import { AIGateway } from '../services/ai/aiGateway';
+import { useSync } from '../context/SyncContext';
+import { SyncQueueService } from '../services/sync/syncQueueService';
+import { SemanticMemoryService } from '../services/semanticMemoryService';
 import {
   PERMISSION_TIERS,
   guardActionExecution,
@@ -52,6 +55,10 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
   const [diagnosticReport, setDiagnosticReport] = useState<SelfHealingDiagnosticReport | null>(null);
   const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
   const [executionLogs, setExecutionLogs] = useState<AgentExecutionLogRecord[]>([]);
+  const [vectorCount, setVectorCount] = useState(0);
+  const { signedIn, queueCount, failedCount, syncNow, isOnline } = useSync();
+  const queueItems = useLiveQuery(() => db.sync_queue.toArray(), []) || [];
+  const fleetDevices = useLiveQuery(() => db.device_sessions.toArray(), []) || [];
 
   const handleRunDiagnostics = async () => {
     setIsRunningDiagnostics(true);
@@ -67,6 +74,7 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
 
   useEffect(() => {
     void loadExecutionLogs().then(setExecutionLogs);
+    void SemanticMemoryService.getIndexStats().then((s) => setVectorCount(s.localVectorCount));
     const onCloudUpdate = (ev: Event) => {
       const table = (ev as CustomEvent<{ table?: string }>)?.detail?.table;
       if (!table || table === 'agent_execution_logs') {
@@ -212,6 +220,15 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
   };
 
   const isGoogleConnected = GoogleAuthService.isConnected();
+  const systemHealthBadge = !isOnline
+    ? { label: 'Offline · Queued Locally', variant: 'amber' as const }
+    : syncStatus.state === 'PROCESSING'
+    ? { label: 'Synchronizing Services', variant: 'blue' as const }
+    : failedCount > 0
+    ? { label: `Attention · ${failedCount} Pending Retry`, variant: 'amber' as const }
+    : signedIn || isGoogleConnected
+    ? { label: 'Cloud + Local Synced', variant: 'emerald' as const }
+    : { label: 'Operational · Local-First Ready', variant: 'emerald' as const };
 
   return (
     <div className="space-y-6">
@@ -225,8 +242,8 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
             <div>
               <div className="flex items-center gap-2.5 flex-wrap">
                 <h1 className="text-2xl font-bold tracking-tight">System Health & Sync Center</h1>
-                <Badge variant={syncStatus.state === 'SYNCED' ? 'emerald' : syncStatus.state === 'PROCESSING' ? 'blue' : 'amber'}>
-                  {syncStatus.state}
+                <Badge variant={systemHealthBadge.variant}>
+                  {systemHealthBadge.label}
                 </Badge>
               </div>
               <p className="text-sm text-[var(--hub-muted)] mt-1">
@@ -327,13 +344,13 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
               <Database className="w-4 h-4 text-purple-700 dark:text-purple-300" />
               Dexie Database
             </span>
-            <Badge variant="emerald">Healthy (v4)</Badge>
+            <Badge variant="emerald">Healthy (v9)</Badge>
           </div>
 
           <div className="text-xs text-[var(--hub-muted)] space-y-1">
             <div>Tasks: {taskCount} | Events: {eventCount}</div>
             <div>Projects: {projectCount} | Notes: {noteCount}</div>
-            <div>Latency: &lt; 1 ms (Local Memory)</div>
+            <div>Vectors: {vectorCount} · Latency &lt; 1 ms</div>
           </div>
 
           <span className="text-[11px] text-[var(--hub-muted)] block pt-1">
@@ -510,6 +527,71 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
           </div>
         </div>
       )}
+
+      {/* Live Sync Queue & Multi-Device Fleet Inspector */}
+      <div className="bg-[var(--hub-card-bg)] border border-[var(--hub-border)] rounded-2xl p-6 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-bold text-[var(--hub-ink)]">
+              Live Sync Queue &amp; Cross-Device Fleet Inspector
+            </h2>
+            <p className="text-xs text-[var(--hub-muted)]">
+              {queueCount} queued write(s) · {fleetDevices.filter((d) => d.status !== 'revoked').length} registered device(s) · 1 multiplexed Realtime socket
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {failedCount > 0 && (
+              <button
+                type="button"
+                onClick={async () => {
+                  await db.sync_queue.filter((q) => (q.attempts || 0) > 0).modify({ attempts: 0, last_error: undefined });
+                  await syncNow();
+                }}
+                className="px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-xs font-semibold text-amber-400 cursor-pointer"
+              >
+                Retry Failed ({failedCount})
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={async () => {
+                await SyncQueueService.flushQueue();
+                await syncNow();
+              }}
+              className="px-3 py-1.5 rounded-xl border border-[var(--hub-border)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer"
+            >
+              Flush Queue Now
+            </button>
+          </div>
+        </div>
+
+        {queueItems.length > 0 ? (
+          <div className="space-y-1.5 max-h-44 overflow-y-auto text-xs">
+            {queueItems.slice(0, 12).map((q) => (
+              <div
+                key={q.id}
+                className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-border)]"
+              >
+                <div className="min-w-0">
+                  <span className="font-mono text-[11px] font-semibold text-[var(--hub-ink)]">
+                    {q.action} · {q.table_name}
+                  </span>
+                  {q.last_error && (
+                    <div className="text-[11px] text-amber-400 truncate">{q.last_error}</div>
+                  )}
+                </div>
+                <Badge variant={(q.attempts || 0) > 0 ? 'amber' : 'blue'}>
+                  {(q.attempts || 0) > 0 ? `Retry #${q.attempts}` : 'Queued'}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-xs text-[var(--hub-muted)] px-3 py-2 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-border)]">
+            Queue clear — zero unuploaded writes pending on this device.
+          </div>
+        )}
+      </div>
 
       {/* Autonomous Self-Healing & Execution Policy Tiers (Level 1 / 2 / 3) */}
       <div className="bg-[var(--hub-card-bg)] border border-[var(--hub-border)] rounded-2xl p-6 space-y-4">

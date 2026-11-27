@@ -9,6 +9,9 @@ import { getSupabaseClient, isSupabaseConfigured } from '../../lib/supabase';
 import { SyncQueueService } from './syncQueueService';
 import { reconcileLifeData } from './lifeSync';
 import { reconcileWorkspaceData } from './workspaceSync';
+import { reconcileExtraCloudData } from './extraCloudSync';
+import { loadKnowledgeLinks, loadResearchBookmarks } from './m3CloudStore';
+import { DeviceFleetService } from '../deviceFleetService';
 
 export interface CloudSyncSummary {
   status: 'synced' | 'offline' | 'signed_out' | 'local_only' | 'partial_error';
@@ -69,8 +72,8 @@ async function executeFullCloudSync(): Promise<CloudSyncSummary> {
   // Step 1: Flush local queue first so newer device writes reach cloud before pull merge.
   const firstFlush = await SyncQueueService.flushQueue();
 
-  // Step 2: Reconcile life tables + all workspace tables in parallel.
-  const [lifeRes, wsRes] = await Promise.all([
+  // Step 2: Reconcile life tables, workspace tables, AI conversations/memories/prefs, and fleet in parallel.
+  const [lifeRes, wsRes, extraRes] = await Promise.all([
     reconcileLifeData().catch((err) => ({
       status: 'unavailable' as const,
       table: 'goals' as const,
@@ -83,11 +86,20 @@ async function executeFullCloudSync(): Promise<CloudSyncSummary> {
       uploaded: 0,
       tableErrors: [err?.message || String(err)],
     })),
+    reconcileExtraCloudData().catch((err) => ({
+      pulled: 0,
+      uploaded: 0,
+      errors: [err?.message || String(err)],
+    })),
+    loadKnowledgeLinks().catch(() => []),
+    loadResearchBookmarks().catch(() => []),
+    DeviceFleetService.syncFleetFromCloud().catch(() => {}),
   ]);
 
-  let pulled = 0;
+  let pulled = extraRes.pulled;
   let deleted = 0;
-  let queuedFromReconcile = 0;
+  let queuedFromReconcile = extraRes.uploaded;
+  if (extraRes.errors.length) errors.push(...extraRes.errors);
 
   if (lifeRes.status === 'ok') {
     pulled += lifeRes.pulled;

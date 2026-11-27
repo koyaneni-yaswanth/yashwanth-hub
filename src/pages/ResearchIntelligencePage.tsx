@@ -168,7 +168,7 @@ export const ResearchIntelligencePage: React.FC<ResearchIntelligencePageProps> =
       updated_at: now,
     };
     await db.notes.put(note);
-    await SyncQueueService.enqueueChange('notes', id, 'INSERT', note).catch(() => {});
+    // `installWorkspaceSyncHooks()` automatically queues note writes with normalized UUIDs
     const yearMatch = paper.publishedDate ? /^(\d{4})/.exec(paper.publishedDate) : null;
     const saved = await saveResearchBookmark({
       source: paper.source,

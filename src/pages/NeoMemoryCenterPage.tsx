@@ -177,7 +177,7 @@ export const NeoMemoryCenterPage: React.FC<NeoMemoryCenterPageProps> = ({
     const updated = await db.neo_memories.get(selectedMemory.id);
     if (updated) {
       setSelectedMemory(updated);
-      SyncQueueService.enqueueChange('neo_memories', selectedMemory.id, 'UPDATE', {
+      SyncQueueService.enqueueChange('memories', selectedMemory.id, 'UPDATE', {
         ...updated,
         updated_at: now,
       }).catch(() => {});

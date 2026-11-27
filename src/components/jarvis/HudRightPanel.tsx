@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import type { NavigationTab, Task } from '../../types';
 import type { HudWorkspaceSummary } from '../../lib/jarvisHud';
+import type { AutonomousRadarItem } from '../../lib/autonomousRadar';
 import { TodayProgress } from '../home/TodayProgress';
 import { renderWorkspaceGlyph } from './workspaceGlyph';
 
@@ -55,6 +56,7 @@ interface HudRightPanelProps {
   onPanelMouseEnter?: () => void;
   onPanelMouseLeave?: () => void;
   focusMode?: HudFocusModeProps;
+  radarItems?: AutonomousRadarItem[];
   tasks: Task[];
   today: string;
   currentArea: string;
@@ -81,6 +83,7 @@ export const HudRightPanel: React.FC<HudRightPanelProps> = ({
   onPanelMouseEnter,
   onPanelMouseLeave,
   focusMode,
+  radarItems = [],
   tasks,
   today,
   currentArea,
@@ -376,6 +379,44 @@ export const HudRightPanel: React.FC<HudRightPanelProps> = ({
 
       {/* Compact Today Progress */}
       <TodayProgress tasks={tasks} today={today} currentArea={currentArea} onNavigate={onNavigate} />
+
+      {/* Autonomous Cross-Domain Intelligence Radar */}
+      {radarItems.length > 0 && (
+        <div className="space-y-1.5 border-t border-[rgba(59,232,255,0.14)] pt-2.5">
+          <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-[#7A8BA6] flex items-center justify-between">
+            <span>Autonomous Radar</span>
+            <span className="text-[#3BE8FF]">{radarItems.length}</span>
+          </div>
+          {radarItems.map((item) => (
+            <div
+              key={item.id}
+              className="flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl bg-[rgba(5,7,13,0.62)] border border-[rgba(59,232,255,0.14)] text-xs"
+            >
+              <div className="min-w-0">
+                <div
+                  className={`font-semibold truncate ${
+                    item.severity === 'critical'
+                      ? 'text-[#FF4D6D]'
+                      : item.severity === 'attention'
+                      ? 'text-[#FFB547]'
+                      : 'text-[#E6F1FF]'
+                  }`}
+                >
+                  {item.title}
+                </div>
+                <div className="text-[10px] text-[#7A8BA6] truncate">{item.detail}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onNavigate(item.targetTab)}
+                className="shrink-0 px-2 py-1 rounded-lg bg-[#3BE8FF]/14 border border-[#3BE8FF]/35 text-[10px] font-semibold text-[#3BE8FF] hover:bg-[#3BE8FF]/25 cursor-pointer"
+              >
+                {item.ctaLabel}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Progressive Disclosure for Secondary Planning & Capture Controls */}
       <div className="border-t border-[rgba(59,232,255,0.14)] pt-2">

@@ -12,6 +12,7 @@ import {
 } from '../../lib/taskModel';
 import { isLifeTable } from './lifeSyncCore';
 import { isWorkspaceLocalTable, resolveRemoteWorkspaceTable, toCloudWorkspaceRow } from './workspaceSyncCore';
+import { toCloudConversationRow, toCloudMemoryRow } from './extraCloudSyncCore';
 
 type Client = NonNullable<ReturnType<typeof getSupabaseClient>>;
 
@@ -315,10 +316,17 @@ export class SyncQueueService {
               uploadedV3 = state === 'yes';
             } else if (isWorkspaceLocalTable(item.table_name) && payload) {
               payload = toCloudWorkspaceRow(item.table_name, payload, payload?.user_id || userId);
+            } else if (item.table_name === 'ai_conversations' && payload) {
+              payload = toCloudConversationRow(payload, payload?.user_id || userId);
+            } else if (item.table_name === 'memories' && payload) {
+              payload = toCloudMemoryRow(payload, payload?.user_id || userId);
+            } else if (item.table_name === 'user_preferences' && payload) {
+              payload = { ...payload, user_id: payload.user_id || userId };
             } else if (payload && !payload.user_id) {
               payload = { ...payload, user_id: userId };
             }
-            const { error } = isLifeTable(item.table_name)
+            const useUserIdComposite = isLifeTable(item.table_name) || item.table_name === 'user_preferences';
+            const { error } = useUserIdComposite
               ? await (client.from(remoteTable) as any).upsert(payload, { onConflict: 'user_id,id' })
               : await (client.from(remoteTable) as any).upsert(payload);
             if (error) throw error;

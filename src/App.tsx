@@ -21,6 +21,7 @@ import { CapacitorService } from './services/native/capacitorService';
 import { IntegrationVaultService } from './services/integrationVaultService';
 import { SupabaseAuthService } from './services/auth/supabaseAuthService';
 import { QuickCaptureModal } from './components/common/QuickCaptureModal';
+import { SyncAccountModal } from './components/common/SyncAccountModal';
 import { PageErrorBoundary } from './components/common/PageErrorBoundary';
 import { repairTaskDueDates } from './services/sync/dueDateRepair';
 import { installLifeSyncHooks, startLifeSync } from './services/sync/lifeSync';
@@ -103,6 +104,7 @@ function HubMain() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isQuickCaptureOpen, setIsQuickCaptureOpen] = useState(false);
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [isDbReady, setIsDbReady] = useState(false);
   // URL writes wait until OAuth / deep-link callback params have been read, so they're never clobbered.
   const [isRoutingReady, setIsRoutingReady] = useState(false);
@@ -149,11 +151,11 @@ function HubMain() {
     mainRef.current?.focus({ preventScroll: true });
   }, [currentTab]);
 
-  // Warm the most-used pages in the background once the app is idle, so first visits are instant.
+  // Warm the most-used pages in the background once the app is settled so initial load stays brisk.
   useEffect(() => {
     if (!isRoutingReady) return;
     const warm = () => {
-      [pageLoaders.TasksPage, pageLoaders.CalendarPage, pageLoaders.ProjectsPage, pageLoaders.AIAssistantPage, pageLoaders.DashboardPage]
+      [pageLoaders.TasksPage, pageLoaders.GoalsHabitsPage, pageLoaders.AIAssistantPage]
         .forEach((load) => load().catch(() => {}));
     };
     const w = window as Window & {
@@ -161,10 +163,10 @@ function HubMain() {
       cancelIdleCallback?: (id: number) => void;
     };
     if (w.requestIdleCallback) {
-      const id = w.requestIdleCallback(warm, { timeout: 4000 });
+      const id = w.requestIdleCallback(warm, { timeout: 6000 });
       return () => w.cancelIdleCallback?.(id);
     }
-    const id = window.setTimeout(warm, 2000);
+    const id = window.setTimeout(warm, 3500);
     return () => window.clearTimeout(id);
   }, [isRoutingReady]);
 
@@ -412,7 +414,7 @@ function HubMain() {
       case 'learning-career':
         return <LearningCareerPage />;
       case 'goals':
-        return <GoalsHabitsPage currentArea={currentArea} areas={areas} onOpenSyncAccount={() => setCurrentTab('integrations')} />;
+        return <GoalsHabitsPage currentArea={currentArea} areas={areas} onOpenSyncAccount={() => setIsSyncModalOpen(true)} />;
       case 'focus':
         return <FocusPage />;
       case 'momentum':
@@ -519,6 +521,7 @@ function HubMain() {
         onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
         onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
         onOpenQuickCapture={() => setIsQuickCaptureOpen(true)}
+        onOpenSyncModal={() => setIsSyncModalOpen(true)}
         onNavigate={(tab) => setCurrentTab(tab)}
         turbineDuration={turbineDuration}
         hudMode={isHome}
@@ -597,6 +600,13 @@ function HubMain() {
         isOpen={isQuickCaptureOpen}
         onClose={() => setIsQuickCaptureOpen(false)}
         areas={areas}
+      />
+
+      {/* Unified Cross-Device Sync & Account Modal */}
+      <SyncAccountModal
+        isOpen={isSyncModalOpen}
+        onClose={() => setIsSyncModalOpen(false)}
+        onOpenIntegrations={() => setCurrentTab('integrations')}
       />
 
       {/* Focus Mode Workspace Selector */}

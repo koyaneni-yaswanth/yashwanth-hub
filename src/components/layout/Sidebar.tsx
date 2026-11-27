@@ -142,7 +142,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     isActiveDest
                       ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] shadow-xs font-semibold'
                       : dest.id === 'ai-studio'
-                      ? 'text-teal-700 dark:text-teal-300 bg-teal-500/10 hover:bg-teal-500/15'
+                      ? 'text-[var(--hub-ink)] border border-[var(--hub-line)] bg-[var(--hub-bg)]/50 hover:bg-[var(--hub-bg)] hover:border-[var(--hub-accent)]/40'
                       : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-bg)]'
                   }`}
                 >
@@ -152,7 +152,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         isActiveDest
                           ? 'text-[var(--hub-accent-ink)]'
                           : dest.id === 'ai-studio'
-                          ? 'text-teal-700 dark:text-teal-400'
+                          ? 'text-[var(--hub-accent)]'
                           : ''
                       }`}
                     />
@@ -163,7 +163,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <span
                         className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${
                           isActiveDest
-                            ? 'bg-white/20 text-white'
+                            ? 'bg-[var(--hub-accent-ink)]/15 text-[var(--hub-accent-ink)]'
                             : 'bg-[var(--hub-bg)] border border-[var(--hub-line)] text-[var(--hub-ink)]'
                         }`}
                       >

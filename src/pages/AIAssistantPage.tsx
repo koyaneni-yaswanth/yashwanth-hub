@@ -43,6 +43,7 @@ import { getSupabaseClient } from '../lib/supabase';
 import { toast } from '../lib/toast';
 import { guardActionExecution } from '../services/selfHealingService';
 import { SemanticMemoryService } from '../services/semanticMemoryService';
+import { EXTRA_CLOUD_UPDATE_EVENT, listenExtraBroadcasts } from '../services/sync/extraCloudSync';
 import { Badge } from '../components/common/Badge';
 import type { AIToolSpec } from '../../api/_lib/aiTools';
 
@@ -167,6 +168,29 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
       if (latest.project_id) setSelectedProjectId(latest.project_id);
     }
   }, [conversations, activeConversationId, messages.length]);
+
+  // Live sync refresh across mobile & desktop tabs when active conversation updates remotely
+  useEffect(() => {
+    const syncActiveConv = async () => {
+      if (!activeConversationId) return;
+      const latest = await db.ai_conversations.get(activeConversationId);
+      if (latest && Array.isArray(latest.messages) && latest.messages.length > messages.length) {
+        setMessages(latest.messages);
+      }
+    };
+    const onCloudUpdate = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ kind?: string }>)?.detail;
+      if (!detail?.kind || detail.kind === 'ai_conversations') void syncActiveConv();
+    };
+    window.addEventListener(EXTRA_CLOUD_UPDATE_EVENT, onCloudUpdate);
+    const unsubBroadcast = listenExtraBroadcasts((d) => {
+      if (d.kind === 'ai_conversations') void syncActiveConv();
+    });
+    return () => {
+      window.removeEventListener(EXTRA_CLOUD_UPDATE_EVENT, onCloudUpdate);
+      unsubBroadcast();
+    };
+  }, [activeConversationId, messages.length]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -503,19 +527,19 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
 
   return (
     <div className="max-w-5xl mx-auto space-y-4 pb-8 flex flex-col min-h-[680px]">
-      {/* Clean Minimal Top Bar */}
-      <div className="flex items-center justify-between gap-3 pb-3 border-b border-[var(--hub-line)]">
+      {/* Clean Responsive Top Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-[var(--hub-line)]">
         <div className="min-w-0">
           <h2 className="text-xl sm:text-2xl font-bold font-heading text-[var(--hub-ink)] flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-[var(--hub-accent)] shrink-0" />
-            <span className="truncate">Ask Jarvis AI</span>
+            <span>Ask Jarvis AI</span>
           </h2>
           <p className="text-xs text-[var(--hub-muted)] mt-0.5 hidden sm:block">
             Connected directly to your tasks, projects, calendar, and notes.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
           <button
             type="button"
             onClick={handleGenerateBriefing}

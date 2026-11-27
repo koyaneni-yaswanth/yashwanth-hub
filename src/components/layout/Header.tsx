@@ -30,6 +30,7 @@ interface HeaderProps {
   onOpenMobileMenu: () => void;
   onOpenCommandPalette: () => void;
   onOpenQuickCapture?: () => void;
+  onOpenSyncModal?: () => void;
   onNavigate: (tab: NavigationTab) => void;
   turbineDuration?: number;
   hudMode?: boolean;
@@ -42,6 +43,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenMobileMenu,
   onOpenCommandPalette,
   onOpenQuickCapture,
+  onOpenSyncModal,
   onNavigate,
   turbineDuration = 8,
   hudMode = false,
@@ -230,7 +232,9 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             type="button"
             onClick={() => {
-              if (authState.configured && !signedIn && !authState.user) {
+              if (onOpenSyncModal) {
+                onOpenSyncModal();
+              } else if (authState.configured && !signedIn && !authState.user) {
                 onNavigate('integrations');
               } else if (status === 'error' || (authState.configured && signedIn)) {
                 void syncNow();

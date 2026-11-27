@@ -123,25 +123,25 @@ export const JarvisCommandCenter: React.FC<{
       className="relative flex flex-col w-full h-[42vh] min-h-[270px] max-h-[380px] md:h-full md:max-h-none md:min-h-[380px] overflow-hidden rounded-2xl border border-[rgba(59,232,255,0.18)] bg-[rgba(5,7,13,0.45)]"
     >
       {/* Subtle Top HUD Stage Controls */}
-      <div className="relative z-20 flex items-center justify-between px-3.5 sm:px-5 pt-3">
-        <div>
-          <p className="hud-tabular text-[10px] uppercase tracking-[0.16em] text-[#7A8BA6]">
+      <div className="relative z-20 flex items-center justify-between gap-2 px-3.5 sm:px-5 pt-3">
+        <div className="min-w-0">
+          <p className="hud-tabular text-[10px] uppercase tracking-[0.16em] text-[#7A8BA6] truncate">
             Jarvis HUD · Orbital Stage
           </p>
-          <h2 id="jarvis-cc-title" className="font-heading text-sm sm:text-base font-semibold text-[#E6F1FF]">
+          <h2 id="jarvis-cc-title" className="font-heading text-sm sm:text-base font-semibold text-[#E6F1FF] truncate">
             {hud?.hoveredNodeId
               ? hudNodes.find((n) => n.id === hud.hoveredNodeId)?.label || 'Command Centre'
               : 'Command Centre'}
           </h2>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <button
             type="button"
             onClick={handleOpenCore}
-            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-xl hud-glass-pill text-xs font-semibold text-[#3BE8FF] hover:border-[#3BE8FF]/60 transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 h-8 px-2.5 sm:px-3 rounded-xl hud-glass-pill text-xs font-semibold text-[#3BE8FF] hover:border-[#3BE8FF]/60 transition-colors cursor-pointer whitespace-nowrap shrink-0"
           >
-            <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+            <Sparkles className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
             <span>Ask / Capture</span>
           </button>
 
@@ -150,9 +150,9 @@ export const JarvisCommandCenter: React.FC<{
             onClick={toggle}
             aria-expanded={expanded}
             aria-label={expanded ? 'Switch to 2D radial layout' : 'Enable 3D scene'}
-            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-xl hud-glass-pill text-xs font-medium text-[#E6F1FF] hover:border-[#3BE8FF]/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3BE8FF] cursor-pointer"
+            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-xl hud-glass-pill text-xs font-medium text-[#E6F1FF] hover:border-[#3BE8FF]/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3BE8FF] cursor-pointer whitespace-nowrap shrink-0"
           >
-            <Eye className="w-3.5 h-3.5 text-[#3BE8FF]" aria-hidden="true" />
+            <Eye className="w-3.5 h-3.5 text-[#3BE8FF] shrink-0" aria-hidden="true" />
             <span className="hud-tabular">{expanded ? '3D: ON' : '3D: OFF'}</span>
           </button>
         </div>

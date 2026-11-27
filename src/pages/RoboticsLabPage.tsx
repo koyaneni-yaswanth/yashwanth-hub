@@ -15,7 +15,6 @@ import { Badge } from '../components/common/Badge';
 import { StatCard } from '../components/common/StatCard';
 import { Modal } from '../components/common/Modal';
 import { generateId } from '../lib/utils';
-import { SyncQueueService } from '../services/sync/syncQueueService';
 import type { RoboticsProjectRecord } from '../types';
 
 const INITIAL_ROBOTICS_BASELINES: RoboticsProjectRecord[] = [
@@ -144,7 +143,7 @@ export const RoboticsLabPage: React.FC = () => {
     };
 
     await db.robotics_records.add(record);
-    SyncQueueService.enqueueChange('robotics_experiments', record.id, 'INSERT', record).catch(() => {});
+    // Sync hook (`installWorkspaceSyncHooks`) automatically queues normalized UUID row for `robotics_experiments`
 
     setIsLogOpen(false);
     setFormTitle('');
@@ -157,10 +156,6 @@ export const RoboticsLabPage: React.FC = () => {
   const handleStatusChange = async (id: string, nextStatus: RoboticsProjectRecord['status']) => {
     const now = new Date().toISOString();
     await db.robotics_records.update(id, { status: nextStatus, updated_at: now });
-    const updated = await db.robotics_records.get(id);
-    if (updated) {
-      SyncQueueService.enqueueChange('robotics_experiments', id, 'UPDATE', updated).catch(() => {});
-    }
   };
 
   return (

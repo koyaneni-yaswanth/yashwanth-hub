@@ -37,6 +37,7 @@ import {
   collectDeadlines,
   deriveCoreState,
 } from '../lib/jarvisHud';
+import { buildAutonomousRadarItems } from '../lib/autonomousRadar';
 import { getAiActivityPhase, subscribeAiActivity } from '../lib/aiActivity';
 import { JarvisHudProvider } from '../context/JarvisHudContext';
 import { useJarvisHud } from '../context/jarvisHudStore';
@@ -92,7 +93,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const activeGoalsCount = allGoals.filter((g) => g.status !== 'achieved').length;
   const allHabitLogs = useLiveQuery(() => db.habit_logs.toArray(), []) ?? NO_ARR;
   const roboticsRecords = useLiveQuery(() => db.robotics_records.count(), []) ?? 0;
-  const neoMemoriesCount = useLiveQuery(() => db.neo_memories.count(), []) ?? 0;
+  const neoMemories = useLiveQuery(() => db.neo_memories.toArray(), []) ?? NO_ARR;
+  const neoMemoriesCount = neoMemories.length;
+  const pvSetting = useLiveQuery(() => db.settings.get('pawan_pv_telemetry_v1'), []);
 
   const pinnedNotes = React.useMemo(() => allNotes.filter((n) => n.pinned), [allNotes]);
   const aiPhase = useSyncExternalStore(subscribeAiActivity, getAiActivityPhase, () => 'idle' as const);
@@ -200,6 +203,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         pinnedNotes={pinnedNotes}
         deadlines={deadlines}
         activeGoalsCount={activeGoalsCount}
+        neoMemories={neoMemories}
+        hasVerifiedPvTelemetry={Boolean((pvSetting?.value as { meetsV3f1HzRequirement?: boolean } | undefined)?.meetsV3f1HzRequirement)}
       />
     </JarvisHudProvider>
   );
@@ -228,6 +233,8 @@ interface ShellProps {
   pinnedNotes: any[];
   deadlines: ReturnType<typeof collectDeadlines>;
   activeGoalsCount: number;
+  neoMemories: any[];
+  hasVerifiedPvTelemetry: boolean;
 }
 
 const DashboardHudShell: React.FC<ShellProps> = ({
@@ -253,6 +260,8 @@ const DashboardHudShell: React.FC<ShellProps> = ({
   pinnedNotes,
   deadlines,
   activeGoalsCount,
+  neoMemories,
+  hasVerifiedPvTelemetry,
 }) => {
   const hud = useJarvisHud()!;
   const taskInputRef = useRef<HTMLInputElement>(null);
@@ -276,8 +285,33 @@ const DashboardHudShell: React.FC<ShellProps> = ({
   const [weeklyReviewNotice, setWeeklyReviewNotice] = useState<string | null>(null);
   const [recommendationSkipIndex, setRecommendationSkipIndex] = useState(0);
 
-  const { syncNow } = useSync();
+  const { syncNow, signedIn, queueCount } = useSync();
   const focus = useFocusMode();
+  const neoPendingCount = React.useMemo(
+    () =>
+      neoMemories.reduce(
+        (sum, m) =>
+          sum +
+          (Array.isArray(m.actionItems)
+            ? m.actionItems.filter((a: any) => a.status === 'pending_approval').length
+            : 0),
+        0
+      ),
+    [neoMemories]
+  );
+  const radarItems = React.useMemo(
+    () =>
+      buildAutonomousRadarItems({
+        todayISO: today,
+        tasks: allTasks,
+        activeGoalsCount,
+        neoMemoriesPendingCount: neoPendingCount,
+        hasVerifiedPvTelemetry,
+        queueCount,
+        signedIn,
+      }),
+    [today, allTasks, activeGoalsCount, neoPendingCount, hasVerifiedPvTelemetry, queueCount, signedIn]
+  );
   const handleSyncNow = async () => {
     setIsSyncing(true);
     try {
@@ -662,6 +696,7 @@ const DashboardHudShell: React.FC<ShellProps> = ({
             onSwitchWorkspace: focus.openPicker,
             onOpenWorkspace: () => onNavigate(focus.workspace.destinationTab),
           }}
+          radarItems={radarItems}
           tasks={tasks}
           today={today}
           currentArea={currentArea}

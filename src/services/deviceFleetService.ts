@@ -121,7 +121,7 @@ export class DeviceFleetService {
       syncStatus: navigator.onLine ? 'synced' : 'offline',
       lastActive: now,
       registeredAt: now,
-      appVersion: '2.2.0',
+      appVersion: '3.0.0',
     };
 
     // 1. Persist to Dexie
@@ -151,13 +151,33 @@ export class DeviceFleetService {
     try {
       const client = await this.getSignedInClient();
       if (client) {
-        await client.from('connected_devices').upsert({
-          hardware_id: installId,
-          name: session.deviceName,
-          device_type: session.deviceType,
-          connection_state: 'connected',
-          last_status_update: now,
-        });
+        const { data: authData } = await client.auth.getUser().catch(() => ({ data: { user: null } }));
+        const userId = authData?.user?.id;
+        if (userId) {
+          const cloudDeviceType =
+            meta.platform === 'ios'
+              ? 'ios'
+              : meta.deviceType === 'mobile' || meta.deviceType === 'tablet'
+              ? 'android_companion'
+              : 'desktop_companion';
+          const telemetrySource =
+            meta.platform === 'android' || meta.platform === 'ios'
+              ? 'android_companion'
+              : 'desktop_client';
+          await client.from('connected_devices').upsert(
+            {
+              user_id: userId,
+              hardware_id: installId,
+              name: session.deviceName,
+              device_type: cloudDeviceType,
+              connection_state: 'connected',
+              telemetry_source: telemetrySource,
+              last_status_update: now,
+            },
+            { onConflict: 'user_id,hardware_id' }
+          );
+          await this.syncFleetFromCloud();
+        }
       }
     } catch (err) {
       console.warn('Could not sync device registration to Supabase:', err);
@@ -167,6 +187,43 @@ export class DeviceFleetService {
     this.startHeartbeatLoop();
 
     return session;
+  }
+
+  public static async syncFleetFromCloud(): Promise<void> {
+    const installId = this.getInstallationId();
+    const client = await this.getSignedInClient();
+    if (!client) return;
+    const { data, error } = await client.from('connected_devices').select('*').limit(50);
+    if (error || !Array.isArray(data)) return;
+
+    for (const remote of data) {
+      const hwId = remote.hardware_id;
+      if (!hwId || hwId === installId) continue;
+      const existing = await db.device_sessions.get(hwId);
+      const inferredType =
+        remote.device_type === 'android_companion' || remote.device_type === 'ios'
+          ? 'mobile'
+          : 'laptop';
+      const nextStatus =
+        remote.connection_state === 'connected'
+          ? 'online'
+          : remote.connection_state === 'stale'
+          ? 'recently_active'
+          : 'offline';
+      await db.device_sessions.put({
+        id: hwId,
+        deviceName: remote.name || existing?.deviceName || 'Synced Device',
+        platform: remote.device_type === 'ios' ? 'ios' : remote.device_type === 'android_companion' ? 'android' : existing?.platform || 'browser',
+        browser: existing?.browser || 'Cloud Session',
+        deviceType: existing?.deviceType || inferredType,
+        isCurrent: false,
+        status: existing?.status === 'revoked' ? 'revoked' : nextStatus,
+        syncStatus: 'synced',
+        lastActive: remote.last_status_update || remote.created_at || new Date().toISOString(),
+        registeredAt: remote.created_at || existing?.registeredAt || new Date().toISOString(),
+        appVersion: '3.0.0',
+      });
+    }
   }
 
   private static async getSignedInClient() {

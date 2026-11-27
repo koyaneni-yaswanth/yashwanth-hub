@@ -267,13 +267,14 @@ async function main() {
     await page.waitForSelector('button:has-text("Push Briefing (L2)")', { timeout: 12000 });
     report.verifiedFlows.push('AI Daily Briefing synthesis & L2 Push bar');
 
-    // Flow D: System Health & Self-Healing Diagnostics (Level 1 / 2 / 3)
+    // Flow D: System Health, Sync Queue Inspector & Self-Healing Diagnostics (Level 1 / 2 / 3)
     await page.goto(`${baseUrl}/?tab=system-health`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('text=Live Sync Queue & Cross-Device Fleet Inspector', { timeout: 12000 });
     await page.waitForSelector('text=Autonomous Self-Healing & Execution Policy', { timeout: 12000 });
     await page.click('button:has-text("Run Level-1 Diagnostics")');
     await page.waitForSelector('text=Scan completed', { timeout: 10000 });
     await page.waitForSelector('text=Recent Execution & Policy Audit', { timeout: 10000 });
-    report.verifiedFlows.push('Level-1 Self-Healing Diagnostics & execution audit log');
+    report.verifiedFlows.push('System Health Queue Inspector & Level-1 Diagnostics');
 
     // Flow E: Notifications Outbound Channel Status UI
     await page.goto(`${baseUrl}/?tab=notifications`, { waitUntil: 'domcontentloaded' });
@@ -293,10 +294,14 @@ async function main() {
     await page.waitForSelector('text=W Peak', { timeout: 10000 });
     report.verifiedFlows.push('Startup Command P-v CSV telemetry analyzer & V3F evidence persistence');
 
-    // Flow G: Knowledge Vault Semantic Index Trigger (M7)
+    // Flow G: Knowledge Vault Semantic Index & Header Cross-Device Sync Drawer (M7/M8)
     await page.goto(`${baseUrl}/?tab=knowledge-memory`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('button:has-text("Index Semantic Vault")', { timeout: 12000 });
-    report.verifiedFlows.push('Knowledge Vault pgvector semantic indexing button rendered');
+    await page.click('header button[aria-label*="sync" i], header button[aria-label*="Cloud sync status"]');
+    await page.waitForSelector('[role="dialog"] >> text=Cross-Device Sync & Account', { timeout: 8000 });
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('[role="dialog"] >> text=Cross-Device Sync & Account', { state: 'detached', timeout: 5000 });
+    report.verifiedFlows.push('Knowledge Vault semantic indexing & Header Cross-Device Sync Drawer');
 
     // Flow H: Command Palette Ctrl+K Jump
     await page.keyboard.press('Control+KeyK');
