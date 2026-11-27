@@ -39,6 +39,7 @@ interface HeaderProps {
 
 const HEADER_QUICK_TABS: Array<{ tab: NavigationTab; label: string }> = [
   { tab: 'dashboard', label: 'Home' },
+  { tab: 'universe', label: '3D Studio' },
   { tab: 'buddy', label: 'JARVIS' },
   { tab: 'tasks', label: 'Tasks' },
   { tab: 'calendar', label: 'Calendar' },

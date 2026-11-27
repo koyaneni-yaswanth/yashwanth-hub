@@ -42,6 +42,7 @@ interface SidebarProps {
 
 const PINNED_QUICK_LINKS: Array<{ tab: NavigationTab; label: string; icon: React.ElementType }> = [
   { tab: 'dashboard', label: 'Home', icon: Home },
+  { tab: 'universe', label: '3D Studio', icon: Compass },
   { tab: 'buddy', label: 'JARVIS', icon: Sparkles },
   { tab: 'my-day', label: 'My Day', icon: Sun },
   { tab: 'tasks', label: 'Tasks', icon: CheckSquare },

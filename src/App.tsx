@@ -62,6 +62,7 @@ const pageLoaders = {
   GoalsHabitsPage: () => import('./pages/GoalsHabitsPage'),
   FocusPage: () => import('./pages/FocusPage'),
   MomentumPage: () => import('./pages/MomentumPage'),
+  UniversePage: () => import('./pages/UniversePage'),
 };
 
 const DashboardPage = lazy(() => pageLoaders.DashboardPage().then((m) => ({ default: m.DashboardPage })));
@@ -93,6 +94,7 @@ const GoalsHabitsPage = lazy(() => pageLoaders.GoalsHabitsPage().then((m) => ({ 
 const FocusPage = lazy(() => pageLoaders.FocusPage().then((m) => ({ default: m.FocusPage })));
 const BuddyPage = lazy(() => pageLoaders.BuddyPage().then((m) => ({ default: m.BuddyPage })));
 const MomentumPage = lazy(() => pageLoaders.MomentumPage().then((m) => ({ default: m.MomentumPage })));
+const UniversePage = lazy(() => pageLoaders.UniversePage().then((m) => ({ default: m.UniversePage })));
 
 function HubMain() {
   const { isDark } = useTheme();
@@ -490,6 +492,8 @@ function HubMain() {
         return <AutomationsPage />;
       case 'settings':
         return <SettingsPage areas={areas} />;
+      case 'universe':
+        return <UniversePage onNavigate={(tab) => setCurrentTab(tab)} />;
       default:
         return (
           <DashboardPage
@@ -505,15 +509,20 @@ function HubMain() {
 
   const isHome = currentTab === 'dashboard';
   const isBuddy = currentTab === 'buddy';
+  const isUniverse = currentTab === 'universe';
 
   return (
     <FocusModeProvider onAreaChange={setCurrentArea}>
     <div
       className={`min-h-screen flex flex-col font-sans transition-colors duration-200 ${
-        isHome ? 'jarvis-hud text-[#E6F1FF]' : isBuddy ? 'bg-[#05070D] text-slate-100' : 'text-[var(--hub-ink)]'
+        isHome
+          ? 'jarvis-hud text-[#E6F1FF]'
+          : isBuddy || isUniverse
+          ? 'bg-[#05070D] text-slate-100'
+          : 'text-[var(--hub-ink)]'
       }`}
     >
-      {!isHome && !isBuddy && <AmbientBackground />}
+      {!isHome && !isBuddy && !isUniverse && <AmbientBackground />}
       <a href="#main-content" className="hub-skip-link">
         Skip to content
       </a>
@@ -529,11 +538,11 @@ function HubMain() {
         onOpenSyncModal={() => setIsSyncModalOpen(true)}
         onNavigate={(tab) => setCurrentTab(tab)}
         turbineDuration={turbineDuration}
-        hudMode={isHome}
+        hudMode={isHome || isUniverse}
       />
 
       {/* Main Container */}
-      <div className={`flex-1 flex w-full ${isHome ? 'relative' : 'max-w-7xl mx-auto'}`}>
+      <div className={`flex-1 flex w-full ${isHome || isUniverse ? 'relative' : 'max-w-7xl mx-auto'}`}>
         {/* Navigation Sidebar (64px glass icon rail on Home; full sidebar on other tabs) */}
         <Sidebar
           currentTab={currentTab}
@@ -544,7 +553,7 @@ function HubMain() {
           isOpenMobile={isMobileMenuOpen}
           onCloseMobile={() => setIsMobileMenuOpen(false)}
           onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
-          compactRail={isHome}
+          compactRail={isHome || isUniverse}
         />
 
         {/* Dynamic Page Content */}
@@ -554,7 +563,9 @@ function HubMain() {
           tabIndex={-1}
           aria-label={TAB_TITLES[currentTab]}
           className={`flex-1 min-w-0 overflow-x-hidden focus:outline-none ${
-            isHome
+            isUniverse
+              ? 'relative flex flex-col p-0'
+              : isHome
               ? 'relative flex flex-col p-2.5 sm:p-4 pb-24 md:pb-4 lg:pb-3'
               : 'p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8 safe-area-content-pb'
           }`}
@@ -569,7 +580,7 @@ function HubMain() {
             >
               <Suspense fallback={<PageSkeleton label={`Loading ${TAB_TITLES[currentTab]}`} />}>
                 <div key={currentTab} className="hub-page-enter">
-                  {!isHome && (
+                  {!isHome && !isUniverse && (
                     <HubDestinationBar currentTab={currentTab} onSelectTab={setCurrentTab} />
                   )}
                   {renderActiveTab()}

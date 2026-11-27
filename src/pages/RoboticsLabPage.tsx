@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { Suspense, lazy, useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   Bot,
@@ -9,6 +9,7 @@ import {
   Layers,
   AlertTriangle,
   ShieldCheck,
+  Box,
 } from 'lucide-react';
 import { db } from '../db';
 import { Badge } from '../components/common/Badge';
@@ -16,6 +17,10 @@ import { StatCard } from '../components/common/StatCard';
 import { Modal } from '../components/common/Modal';
 import { generateId } from '../lib/utils';
 import type { RoboticsProjectRecord } from '../types';
+
+const EngineeringModelViewer = lazy(() =>
+  import('../components/three/EngineeringModelViewer').then((m) => ({ default: m.EngineeringModelViewer }))
+);
 
 const INITIAL_ROBOTICS_BASELINES: RoboticsProjectRecord[] = [
   {
@@ -222,6 +227,30 @@ export const RoboticsLabPage: React.FC = () => {
           subtext={`Out of ${records.length} total logs`}
           icon={<CheckCircle2 className="w-5 h-5 text-emerald-700 dark:text-emerald-300" />}
         />
+      </div>
+
+      {/* Interactive 3D Robotics & CAD Assembly Viewer */}
+      <div className="space-y-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-xs font-bold text-[var(--hub-ink)]">
+            <Box className="w-4 h-4 text-[var(--hub-accent)]" />
+            <span>Interactive 3D Robotics & CAD Viewer</span>
+          </div>
+          <span className="text-[11px] font-mono text-[var(--hub-muted)]">
+            Showing: {selectedProject === 'AgileX PiPER' || selectedProject === 'All' ? 'AgileX PiPER 6-DOF Rig' : '3-Drone Swarm + AWR2944 FOV'}
+          </span>
+        </div>
+        <Suspense
+          fallback={
+            <div className="h-[280px] rounded-2xl border border-[var(--hub-line)] bg-[#06080E] flex items-center justify-center text-xs text-slate-400">
+              Loading Three.js CAD Viewer...
+            </div>
+          }
+        >
+          <EngineeringModelViewer
+            preset={selectedProject === '3-Drone Swarm' || selectedProject === 'AWR2944 mmWave' ? 'drone-swarm' : 'piper-arm'}
+          />
+        </Suspense>
       </div>
 
       {/* Project Filter Pills */}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { Suspense, lazy, useState, useEffect } from 'react';
 import {
   Wind,
   ShieldCheck,
@@ -20,7 +20,13 @@ import {
   Usb,
   Cpu,
   Download,
+  Box,
 } from 'lucide-react';
+import type { V3FAssessmentItem, V3FScore } from '../types';
+
+const EngineeringModelViewer = lazy(() =>
+  import('../components/three/EngineeringModelViewer').then((m) => ({ default: m.EngineeringModelViewer }))
+);
 import { db } from '../db';
 import { Badge } from '../components/common/Badge';
 import { StatCard } from '../components/common/StatCard';
@@ -39,7 +45,6 @@ import {
   listenExtraBroadcasts,
   saveSyncedPreference,
 } from '../services/sync/extraCloudSync';
-import type { V3FAssessmentItem, V3FScore } from '../types';
 
 const INITIAL_V3F_DATA: V3FAssessmentItem[] = [
   {
@@ -198,7 +203,7 @@ const BOM_DATA = [
 ];
 
 export const StartupCommandPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'v3f' | 'telemetry' | 'plan15' | 'bom' | 'risks' | 'roadmap'>('v3f');
+  const [activeTab, setActiveTab] = useState<'v3f' | 'viewer' | 'telemetry' | 'plan15' | 'bom' | 'risks' | 'roadmap'>('v3f');
   const [assessmentItems, setAssessmentItems] = useState<V3FAssessmentItem[]>(INITIAL_V3F_DATA);
   const [filterCategory, setFilterCategory] = useState<string>('All');
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
@@ -473,6 +478,7 @@ export const StartupCommandPage: React.FC = () => {
       <div className="flex items-center flex-wrap gap-1.5 border-b border-[var(--hub-line)] pb-2.5">
         {[
           { id: 'v3f', label: 'V3F Rubric (12)', icon: ShieldCheck },
+          { id: 'viewer', label: '3D Turbine CAD', icon: Box },
           { id: 'telemetry', label: 'Bench P-v Telemetry & Serial DAQ', icon: Activity },
           { id: 'plan15', label: 'Submission Plan', icon: Calendar },
           { id: 'bom', label: 'BOM Economics', icon: IndianRupee },
@@ -1028,6 +1034,21 @@ export const StartupCommandPage: React.FC = () => {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* TAB: INTERACTIVE 3D TURBINE CAD & SUB-ASSEMBLY VIEWER */}
+      {activeTab === 'viewer' && (
+        <div className="space-y-4">
+          <Suspense
+            fallback={
+              <div className="h-[360px] rounded-2xl border border-[var(--hub-line)] bg-[#06080E] flex items-center justify-center text-xs text-slate-400">
+                Loading Three.js Wind Turbine CAD Viewer...
+              </div>
+            }
+          >
+            <EngineeringModelViewer preset="pawan-turbine" />
+          </Suspense>
         </div>
       )}
     </div>

@@ -195,6 +195,29 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
         setVisualState('attention');
       }
       refreshSystemStatusPill().catch(() => {});
+
+      try {
+        const prefill = localStorage.getItem('yash_ai_prefill_prompt');
+        if (prefill) {
+          setInput(prefill);
+          localStorage.removeItem('yash_ai_prefill_prompt');
+        }
+        const sketchUrl = sessionStorage.getItem('yash_universe_sketch_dataurl');
+        if (sketchUrl) {
+          sessionStorage.removeItem('yash_universe_sketch_dataurl');
+          fetch(sketchUrl)
+            .then((r) => r.blob())
+            .then((blob) => prepareImageFile(new File([blob], 'studio-whiteboard.png', { type: 'image/png' })))
+            .then((prep) => {
+              if (!alive) return;
+              setAttachedImages((prev) => [...prev, prep].slice(0, 3));
+              setRouteCategory('MULTIMODAL');
+            })
+            .catch(() => {});
+        }
+      } catch {
+        /* ignore storage handoff errors */
+      }
     })();
 
     const onOnlineChange = () => refreshSystemStatusPill().catch(() => {});

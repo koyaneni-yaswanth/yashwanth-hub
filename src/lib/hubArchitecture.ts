@@ -43,6 +43,7 @@ export const HUB_DESTINATIONS: HubDestinationMeta[] = [
     defaultTab: 'dashboard',
     routes: [
       { tab: 'dashboard', label: 'Home Command', description: 'Jarvis 3D Core & Next Move', tier: 'primary' },
+      { tab: 'universe', label: '3D Universe', description: 'Interactive 3D Studio, monitors & labs', tier: 'primary' },
       { tab: 'momentum', label: 'Momentum', description: 'Momentum score & life constellation', tier: 'secondary' },
     ],
   },
@@ -129,6 +130,7 @@ export const HUB_DESTINATIONS: HubDestinationMeta[] = [
 
 const TAB_TO_DESTINATION: Partial<Record<NavigationTab, HubDestinationId>> = {
   dashboard: 'home',
+  universe: 'home',
   projects: 'command',
   'startup-command': 'command',
   'wind-plan': 'command',

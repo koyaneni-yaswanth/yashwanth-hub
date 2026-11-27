@@ -38,6 +38,7 @@ export const TAB_TITLES: Record<NavigationTab, string> = {
   focus: 'Deep Work',
   momentum: 'Momentum',
   'research-feed': 'Research Intelligence',
+  universe: '3D Universe',
 };
 
 const APP_NAME = 'Yashwanth Hub';
@@ -67,22 +68,25 @@ export function readTabFromSearch(search: string): NavigationTab | null {
   return isNavigationTab(tab) ? canonicalTab(tab) : null;
 }
 
-/** Reads the active tab from `/buddy` pathname or `?tab=` in a URL search string. */
+/** Reads the active tab from `/buddy`, `/universe`, or `?tab=` in a URL search string. */
 export function readTabFromLocation(pathname: string, search: string): NavigationTab | null {
   const cleanPath = (pathname || '/').replace(/\/+$/, '') || '/';
   if (cleanPath === '/buddy') return 'buddy';
+  if (cleanPath === '/universe') return 'universe';
   return readTabFromSearch(search);
 }
 
-/** Builds the URL for a tab, keeping clean `/buddy` route and `?tab=` deep links for workspace routes. */
+/** Builds the URL for a tab, keeping clean `/buddy` and `/universe` routes and `?tab=` deep links for workspace routes. */
 export function buildTabUrl(tab: NavigationTab, pathname: string): string {
   const cleanPath = (pathname || '/').replace(/\/+$/, '') || '/';
   if (tab === 'buddy') return '/buddy';
-  const basePath = cleanPath === '/buddy' ? '/' : (pathname || '/');
+  if (tab === 'universe') return '/universe';
+  const basePath = cleanPath === '/buddy' || cleanPath === '/universe' ? '/' : (pathname || '/');
   return tab === 'dashboard' ? basePath : `${basePath}?tab=${encodeURIComponent(tab)}`;
 }
 
 export function documentTitleFor(tab: NavigationTab): string {
   if (tab === 'buddy') return `JARVIS — Personal AI Companion · ${APP_NAME}`;
+  if (tab === 'universe') return `Yashwanth — Interactive 3D Engineering Universe`;
   return tab === 'dashboard' ? `${APP_NAME} — Command Center` : `${TAB_TITLES[tab]} · ${APP_NAME}`;
 }
