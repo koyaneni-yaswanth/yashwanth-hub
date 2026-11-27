@@ -125,8 +125,9 @@ export const JarvisCommandCenter: React.FC<{
       {/* Subtle Top HUD Stage Controls */}
       <div className="relative z-20 flex items-center justify-between gap-2 px-3.5 sm:px-5 pt-3">
         <div className="min-w-0">
-          <p className="hud-tabular text-[10px] uppercase tracking-[0.16em] text-[#7A8BA6] truncate">
-            Jarvis HUD · Orbital Stage
+          <p className="hud-tabular text-[10px] uppercase tracking-[0.14em] text-[#7A8BA6] truncate">
+            <span className="sm:hidden">Orbital HUD</span>
+            <span className="hidden sm:inline">Jarvis HUD · Orbital Stage</span>
           </p>
           <h2 id="jarvis-cc-title" className="font-heading text-sm sm:text-base font-semibold text-[#E6F1FF] truncate">
             {hud?.hoveredNodeId

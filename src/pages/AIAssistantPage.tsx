@@ -193,6 +193,7 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
   }, [activeConversationId, messages.length]);
 
   useEffect(() => {
+    if (messages.length === 0) return;
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length]);
 
