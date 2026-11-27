@@ -231,6 +231,65 @@ export const StudioWhiteboardPanel: React.FC<StudioWhiteboardPanelProps> = ({
     onSendSketchToJarvis(dataUrl);
   };
 
+  const applyStencil = (kind: 'drivetrain' | 'ros2' | 'quadrant') => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+
+    ctx.strokeStyle = '#14171C';
+    ctx.fillStyle = '#14171C';
+    ctx.lineWidth = 2.5;
+    ctx.font = 'bold 18px sans-serif';
+
+    if (kind === 'drivetrain') {
+      const blocks = [
+        { x: 60, label: 'Helical Rotor' },
+        { x: 310, label: 'Planetary Gear' },
+        { x: 560, label: 'PM Generator' },
+        { x: 790, label: 'ESP32 / Load' },
+      ];
+      blocks.forEach((b, idx) => {
+        ctx.strokeRect(b.x, 190, 170, 90);
+        ctx.fillText(b.label, b.x + 14, 240);
+        if (idx < blocks.length - 1) {
+          ctx.beginPath();
+          ctx.moveTo(b.x + 170, 235);
+          ctx.lineTo(b.x + 245, 235);
+          ctx.stroke();
+        }
+      });
+    } else if (kind === 'ros2') {
+      ctx.strokeRect(90, 90, 210, 80);
+      ctx.fillText('/radar_awr2944', 110, 136);
+      ctx.strokeRect(400, 200, 220, 80);
+      ctx.fillText('/slam_planner', 428, 246);
+      ctx.strokeRect(720, 320, 220, 80);
+      ctx.fillText('/piper_can_ctrl', 740, 366);
+      ctx.beginPath();
+      ctx.moveTo(300, 130);
+      ctx.lineTo(400, 240);
+      ctx.moveTo(620, 240);
+      ctx.lineTo(720, 360);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(BOARD_W / 2, 48);
+      ctx.lineTo(BOARD_W / 2, BOARD_H - 48);
+      ctx.moveTo(64, BOARD_H / 2);
+      ctx.lineTo(BOARD_W - 64, BOARD_H / 2);
+      ctx.stroke();
+      ctx.fillStyle = '#A88650';
+      ctx.fillText('HIGH IMPACT / NOW', 120, 95);
+      ctx.fillText('STRATEGIC BETS', BOARD_W / 2 + 80, 95);
+      ctx.fillText('QUICK WINS', 120, BOARD_H / 2 + 45);
+      ctx.fillText('DELEGATE / DEFER', BOARD_W / 2 + 80, BOARD_H / 2 + 45);
+    }
+
+    pushSnapshot();
+    emitCanvasSnapshot();
+    toast('Applied schematic stencil to whiteboard', 'success');
+  };
+
   return (
     <div className="space-y-3" data-testid="studio-whiteboard">
       {/* Toolbar */}
@@ -282,6 +341,26 @@ export const StudioWhiteboardPanel: React.FC<StudioWhiteboardPanelProps> = ({
               className="w-20 accent-[#C6A46B]"
             />
           </label>
+
+          <div className="flex items-center gap-1 ml-1">
+            {(
+              [
+                { id: 'drivetrain', label: 'Turbine' },
+                { id: 'ros2', label: 'ROS2' },
+                { id: 'quadrant', label: '2x2' },
+              ] as const
+            ).map((st) => (
+              <button
+                key={st.id}
+                type="button"
+                onClick={() => applyStencil(st.id)}
+                className="px-2 py-1 rounded-md border border-white/10 bg-white/5 text-[10px] font-mono text-[#E9D7AE] hover:border-[#C6A46B]/60 cursor-pointer"
+                title={`Drop ${st.label} schematic template`}
+              >
+                +{st.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">

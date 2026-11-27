@@ -26,6 +26,7 @@ interface UniverseStudioSceneProps {
   onSelectStation: (id: UniverseStationId) => void;
   whiteboardDataUrl: string | null;
   cubeCommand: CubeActionCommand | null;
+  showPins?: boolean;
   statsSummary: {
     openTasks: number;
     projectCount: number;
@@ -36,6 +37,20 @@ interface UniverseStudioSceneProps {
   onMetricsUpdate?: (metrics: { tier: string; fps: number; webglActive: boolean }) => void;
   onWebglUnavailable: () => void;
 }
+
+const SCENE_PIN_ANCHORS: Array<{
+  id: UniverseStationId;
+  label: string;
+  accent: string;
+  pos: readonly [number, number, number];
+}> = [
+  { id: 'jarvis', label: 'JARVIS Core', accent: '#3BE8FF', pos: [0, 3.16, -1.28] },
+  { id: 'robotics', label: 'PiPER Arm', accent: '#38BDF8', pos: [-2.55, 2.04, -0.15] },
+  { id: 'energy', label: 'Pawan Turbine', accent: '#34D399', pos: [3.05, 2.38, 0.55] },
+  { id: 'whiteboard', label: 'Whiteboard', accent: '#F59E0B', pos: [-4.15, 2.88, -0.45] },
+  { id: 'experiment', label: 'Sim Deck', accent: '#EC4899', pos: [-2.15, 1.58, 1.55] },
+  { id: 'cube', label: 'Cube', accent: '#F97316', pos: [0.15, 1.76, 0.72] },
+];
 
 function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
@@ -139,15 +154,18 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
   onSelectStation,
   whiteboardDataUrl,
   cubeCommand,
+  showPins = true,
   statsSummary,
   onMetricsUpdate,
   onWebglUnavailable,
 }) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
+  const pinRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const stateRef = useRef({
     activeStation,
     hoveredStation,
     whiteboardDataUrl,
+    showPins,
     statsSummary,
   });
 
@@ -157,7 +175,7 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
   const onFallbackRef = useRef(onWebglUnavailable);
 
   useEffect(() => {
-    stateRef.current = { activeStation, hoveredStation, whiteboardDataUrl, statsSummary };
+    stateRef.current = { activeStation, hoveredStation, whiteboardDataUrl, showPins, statsSummary };
     onHoverRef.current = onHoverStation;
     onSelectRef.current = onSelectStation;
     onMetricsRef.current = onMetricsUpdate;
@@ -166,6 +184,7 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
     activeStation,
     hoveredStation,
     whiteboardDataUrl,
+    showPins,
     statsSummary,
     onHoverStation,
     onSelectStation,
@@ -918,6 +937,8 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
         };
 
         const resetCubeSolved = () => {
+          cubeHistory.length = 0;
+          solveQueue.length = 0;
           let idx = 0;
           for (let cx = -1; cx <= 1; cx++) {
             for (let cy = -1; cy <= 1; cy++) {
@@ -930,6 +951,10 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
           }
           cubeRoot.rotation.set(0.28, -0.35, 0);
         };
+        const cubeHistory: Array<{ axis: 'x' | 'y' | 'z'; layer: -1 | 0 | 1; dir: 1 | -1 }> = [];
+        const solveQueue: Array<{ axis: 'x' | 'y' | 'z'; layer: -1 | 0 | 1; dir: 1 | -1 }> = [];
+        let solveTimer = 0;
+        const projVec = new THREE.Vector3();
         cubeRoot.rotation.set(0.28, -0.35, 0);
         registerInteractive(cubeRoot, 'cube');
         scene.add(cubeRoot);
@@ -1039,13 +1064,35 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
 
           while (cubeQueueRef.current.length > 0) {
             const cmd = cubeQueueRef.current.shift()!;
-            if (cmd.type === 'reset') resetCubeSolved();
-            else if (cmd.type === 'scramble') {
+            if (cmd.type === 'reset') {
+              resetCubeSolved();
+            } else if (cmd.type === 'scramble') {
               const axes: Array<'x' | 'y' | 'z'> = ['x', 'y', 'z'];
               const layers: Array<-1 | 0 | 1> = [-1, 0, 1];
-              for (let s = 0; s < 8; s++) rotateCubeSlice(axes[s % 3], layers[(s * 2) % 3], s % 2 === 0 ? 1 : -1);
+              for (let s = 0; s < 8; s++) {
+                const mv = { axis: axes[s % 3], layer: layers[(s * 2) % 3], dir: (s % 2 === 0 ? 1 : -1) as 1 | -1 };
+                rotateCubeSlice(mv.axis, mv.layer, mv.dir);
+                cubeHistory.push(mv);
+              }
+            } else if (cmd.type === 'solve') {
+              while (cubeHistory.length > 0) {
+                const last = cubeHistory.pop()!;
+                solveQueue.push({ axis: last.axis, layer: last.layer, dir: (last.dir * -1) as 1 | -1 });
+              }
+              solveTimer = 0;
             } else if (cmd.type === 'turn') {
-              rotateCubeSlice(cmd.axis ?? 'y', cmd.layer ?? 1, cmd.dir ?? 1);
+              const mv = { axis: cmd.axis ?? 'y', layer: cmd.layer ?? 1, dir: cmd.dir ?? 1 };
+              rotateCubeSlice(mv.axis, mv.layer, mv.dir);
+              cubeHistory.push(mv);
+            }
+          }
+
+          if (solveQueue.length > 0) {
+            solveTimer += dt;
+            if (solveTimer >= 0.14) {
+              solveTimer = 0;
+              const nextMove = solveQueue.shift()!;
+              rotateCubeSlice(nextMove.axis, nextMove.layer, nextMove.dir);
             }
           }
 
@@ -1117,6 +1164,28 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
           }
 
           postfx.render(t);
+
+          // Update projected 3D spatial pins smoothly without React re-renders
+          if (stateRef.current.activeStation === 'overview' && stateRef.current.showPins) {
+            const w = mount.clientWidth;
+            const h = mount.clientHeight;
+            for (const anchor of SCENE_PIN_ANCHORS) {
+              const el = pinRefs.current[anchor.id];
+              if (!el) continue;
+              projVec.set(anchor.pos[0], anchor.pos[1], anchor.pos[2]).project(camera);
+              const visible = projVec.z >= -1 && projVec.z <= 1;
+              if (!visible) {
+                el.style.opacity = '0';
+                el.style.pointerEvents = 'none';
+              } else {
+                const px = (projVec.x * 0.5 + 0.5) * w;
+                const py = (-projVec.y * 0.5 + 0.5) * h;
+                el.style.transform = `translate3d(${px.toFixed(1)}px, ${py.toFixed(1)}px, 0) translate(-50%, -100%)`;
+                el.style.opacity = '1';
+                el.style.pointerEvents = 'auto';
+              }
+            }
+          }
         };
         raf = requestAnimationFrame(tick);
 
@@ -1146,5 +1215,30 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
     };
   }, []);
 
-  return <div ref={mountRef} className="absolute inset-0 w-full h-full touch-none" data-testid="universe-webgl-canvas" />;
+  return (
+    <div className="relative w-full h-full">
+      <div ref={mountRef} className="absolute inset-0 w-full h-full touch-none" data-testid="universe-webgl-canvas" />
+      {activeStation === 'overview' && showPins && (
+        <div className="pointer-events-none hidden md:block absolute inset-0 z-10 overflow-hidden">
+          {SCENE_PIN_ANCHORS.map((pin) => (
+            <button
+              key={pin.id}
+              ref={(el) => {
+                pinRefs.current[pin.id] = el;
+              }}
+              type="button"
+              onClick={() => onSelectStation(pin.id)}
+              onMouseEnter={() => onHoverStation(pin.id)}
+              onMouseLeave={() => onHoverStation(null)}
+              style={{ opacity: 0 }}
+              className="absolute top-0 left-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#090D16]/78 backdrop-blur-md border border-white/15 hover:border-[#C6A46B] text-[10px] font-semibold text-slate-100 shadow-lg transition-colors cursor-pointer"
+            >
+              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: pin.accent }} />
+              <span>{pin.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 };

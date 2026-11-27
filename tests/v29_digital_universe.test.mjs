@@ -79,6 +79,8 @@ test('GLSL Shaders, Physical Monitors, Whiteboard, Experiment Station & Reusable
   assert.ok(sceneSrc.includes('PostFX'));
   assert.ok(sceneSrc.includes('ExtrudeGeometry'));
   assert.ok(sceneSrc.includes('LatheGeometry'));
+  assert.ok(sceneSrc.includes('SCENE_PIN_ANCHORS'));
+  assert.ok(sceneSrc.includes('solveQueue'));
   assert.ok(sceneSrc.includes('onPointerUp'));
   assert.ok(sceneSrc.includes('renderer.dispose()'));
 
@@ -89,15 +91,23 @@ test('GLSL Shaders, Physical Monitors, Whiteboard, Experiment Station & Reusable
   assert.ok(wbSrc.includes('Eraser'));
   assert.ok(wbSrc.includes('Undo'));
   assert.ok(wbSrc.includes('Redo'));
+  assert.ok(wbSrc.includes('applyStencil'));
   assert.ok(wbSrc.includes('Explain with JARVIS'));
 
   const viewerSrc = read('src/components/three/EngineeringModelViewer.tsx');
   assert.ok(viewerSrc.includes('GLTFLoader.js'));
   assert.ok(viewerSrc.includes('STLLoader.js'));
   assert.ok(viewerSrc.includes('OBJLoader.js'));
+  assert.ok(viewerSrc.includes('STLExporter.js'));
   assert.ok(viewerSrc.includes('Exploded Assembly'));
   assert.ok(viewerSrc.includes('Wireframe'));
   assert.ok(viewerSrc.includes('renderer.dispose()'));
+
+  const overlaySrc = read('src/components/universe/StudioMonitorOverlay.tsx');
+  assert.ok(overlaySrc.includes('Auto-Solve'));
+
+  const jccSrc = read('src/components/jarvis/JarvisCommandCenter.tsx');
+  assert.ok(jccSrc.includes("onNavigate('universe')"));
 
   const universePageSrc = read('src/pages/UniversePage.tsx');
   assert.ok(!universePageSrc.includes('not optimized for mobile'), 'Never lock mobile users out');

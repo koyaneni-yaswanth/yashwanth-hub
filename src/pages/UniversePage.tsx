@@ -67,6 +67,7 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
   const [activeStation, setActiveStation] = useState<UniverseStationId>('overview');
   const [hoveredStation, setHoveredStation] = useState<UniverseStationId | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [showPins, setShowPins] = useState(true);
   const [use3D, setUse3D] = useState(true);
   const [webglUnavailable, setWebglUnavailable] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(false);
@@ -199,6 +200,22 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
 
           {!webglUnavailable && (
             <>
+              {use3D && (
+                <>
+                  <span className="h-3 w-px bg-white/15 hidden sm:inline-block" />
+                  <button
+                    type="button"
+                    onClick={() => setShowPins((p) => !p)}
+                    aria-pressed={showPins}
+                    className={`hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium cursor-pointer transition-colors ${
+                      showPins ? 'text-[#E9D7AE] bg-[#C6A46B]/18' : 'text-slate-400 hover:text-white'
+                    }`}
+                    title="Toggle 3D object labels"
+                  >
+                    <span>Labels</span>
+                  </button>
+                </>
+              )}
               <span className="h-3 w-px bg-white/15" />
               <button
                 type="button"
@@ -231,6 +248,7 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
               onSelectStation={selectStation}
               whiteboardDataUrl={whiteboardDataUrl}
               cubeCommand={cubeCommand}
+              showPins={showPins}
               statsSummary={statsSummary}
               onMetricsUpdate={setPerfMetrics}
               onWebglUnavailable={() => {

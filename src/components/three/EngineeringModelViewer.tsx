@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Box,
+  Download,
   Expand,
   Eye,
   EyeOff,
@@ -61,6 +62,7 @@ export const EngineeringModelViewer: React.FC<EngineeringModelViewerProps> = ({
   const [jointJ3Deg, setJointJ3Deg] = useState(42);
   const [uploadedBlobUrl, setUploadedBlobUrl] = useState<{ url: string; ext: string } | null>(null);
   const resetCamRef = useRef<() => void>(() => {});
+  const exportStlRef = useRef<(() => Promise<void>) | null>(null);
 
   const controlsRef = useRef({
     wireframe,
@@ -171,6 +173,23 @@ export const EngineeringModelViewer: React.FC<EngineeringModelViewerProps> = ({
 
         const rootGroup = new THREE.Group();
         scene.add(rootGroup);
+
+        exportStlRef.current = async () => {
+          const { STLExporter } = await import('three/examples/jsm/exporters/STLExporter.js');
+          const exporter = new STLExporter();
+          const binary = exporter.parse(rootGroup, { binary: true }) as DataView;
+          const bytes = new Uint8Array(binary.byteLength);
+          bytes.set(new Uint8Array(binary.buffer, binary.byteOffset, binary.byteLength));
+          const blob = new Blob([bytes], { type: 'application/octet-stream' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${preset}-reference.stl`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+        };
 
         const partNodes = new Map<string, { group: import('three').Object3D; basePos: import('three').Vector3; explodeVec: import('three').Vector3 }>();
         const managedMaterials: import('three').MeshStandardMaterial[] = [];
@@ -630,6 +649,15 @@ export const EngineeringModelViewer: React.FC<EngineeringModelViewerProps> = ({
             title="Reset camera"
           >
             <RotateCcw className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => void exportStlRef.current?.()}
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-[var(--hub-line)] text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer"
+            title="Export visible 3D assembly to binary STL"
+          >
+            <Download className="w-3.5 h-3.5 text-[var(--hub-accent)]" />
+            .STL
           </button>
           <button
             type="button"

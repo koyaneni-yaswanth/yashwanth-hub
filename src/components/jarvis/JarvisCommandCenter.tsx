@@ -8,7 +8,7 @@
  */
 import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Eye, Sparkles } from 'lucide-react';
+import { Compass, Eye, Sparkles } from 'lucide-react';
 import { db } from '../../db';
 import { buildWorkspaceNodes, type WorkspaceNode } from '../../lib/jarvisWorkspaces';
 import { DEFAULT_CORE, useJarvisHud } from '../../context/jarvisHudStore';
@@ -137,6 +137,16 @@ export const JarvisCommandCenter: React.FC<{
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => onNavigate('universe')}
+            className="inline-flex items-center gap-1.5 h-8 px-2.5 sm:px-3 rounded-xl hud-glass-pill text-xs font-semibold text-[#E9D7AE] hover:border-[#C6A46B]/70 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            title="Enter Interactive 3D Engineering Studio"
+          >
+            <Compass className="w-3.5 h-3.5 text-[#C6A46B] shrink-0" aria-hidden="true" />
+            <span className="hidden sm:inline">3D Studio</span>
+          </button>
+
           <button
             type="button"
             onClick={handleOpenCore}

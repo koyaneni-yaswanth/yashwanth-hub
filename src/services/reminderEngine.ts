@@ -3,6 +3,7 @@ import type { AppNotification } from '../types';
 import { generateId } from '../lib/utils';
 
 import { CapacitorService } from './native/capacitorService';
+import { AutomationService } from './automationService';
 import {
   DEFAULT_NOTIFICATION_PREFS,
   DUPLICATE_WINDOW_MS,
@@ -112,7 +113,6 @@ export class ReminderEngine {
 
     try {
       // 1. Execute task & meeting scanner strictly on the server
-      const { AutomationService } = await import('./automationService');
       const res = await AutomationService.triggerServerAutomation('task_deadline_scan', undefined, {
         lead_time_minutes: 45,
       });

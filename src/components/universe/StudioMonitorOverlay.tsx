@@ -34,7 +34,7 @@ import type { ProviderHealthReport } from '../../../api/_lib/aiProviderAdapters'
 
 export interface CubeActionCommand {
   seq: number;
-  type: 'scramble' | 'reset' | 'turn';
+  type: 'scramble' | 'reset' | 'turn' | 'solve';
   axis?: 'x' | 'y' | 'z';
   layer?: -1 | 0 | 1;
   dir?: 1 | -1;
@@ -446,43 +446,46 @@ export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
         {activeStation === 'cube' && (
           <div className="space-y-3">
             <p className="text-slate-300">
-              Drag directly across the studio canvas or use the calibrated face-turn controls below to spin rows/columns on the 3D 3×3×3 Rubik’s Cube.
+              Drag directly across the cube in 3D to tumble it, rotate any of the 6 layers below, scramble, or run the animated reverse Auto-Solver.
             </p>
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 font-mono text-[11px]">
+              {[
+                { label: 'U (Top)', axis: 'y' as const, layer: 1 as const, dir: 1 as const },
+                { label: 'D (Bot)', axis: 'y' as const, layer: -1 as const, dir: -1 as const },
+                { label: 'R (Right)', axis: 'x' as const, layer: 1 as const, dir: 1 as const },
+                { label: 'L (Left)', axis: 'x' as const, layer: -1 as const, dir: -1 as const },
+                { label: 'F (Front)', axis: 'z' as const, layer: 1 as const, dir: 1 as const },
+                { label: 'B (Back)', axis: 'z' as const, layer: -1 as const, dir: -1 as const },
+              ].map((m) => (
+                <button
+                  key={m.label}
+                  type="button"
+                  onClick={() => onCubeCommand({ type: 'turn', axis: m.axis, layer: m.layer, dir: m.dir })}
+                  className="py-2 px-2 rounded-xl bg-white/5 border border-white/15 hover:border-[#C6A46B] text-center cursor-pointer"
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
-                onClick={() => onCubeCommand({ type: 'turn', axis: 'y', layer: 1, dir: 1 })}
-                className="py-2 px-3 rounded-xl bg-white/5 border border-white/15 hover:border-[#C6A46B] font-mono cursor-pointer"
-              >
-                Rotate Top (U)
-              </button>
-              <button
-                type="button"
-                onClick={() => onCubeCommand({ type: 'turn', axis: 'x', layer: 1, dir: 1 })}
-                className="py-2 px-3 rounded-xl bg-white/5 border border-white/15 hover:border-[#C6A46B] font-mono cursor-pointer"
-              >
-                Rotate Right (R)
-              </button>
-              <button
-                type="button"
-                onClick={() => onCubeCommand({ type: 'turn', axis: 'z', layer: 1, dir: 1 })}
-                className="py-2 px-3 rounded-xl bg-white/5 border border-white/15 hover:border-[#C6A46B] font-mono cursor-pointer"
-              >
-                Rotate Front (F)
-              </button>
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
                 onClick={() => onCubeCommand({ type: 'scramble' })}
-                className="flex-1 py-2 rounded-xl bg-[#F97316]/20 border border-[#F97316]/40 text-orange-200 font-semibold cursor-pointer"
+                className="py-2 rounded-xl bg-[#F97316]/20 border border-[#F97316]/40 text-orange-200 font-semibold cursor-pointer"
               >
-                Scramble Cube
+                Scramble
+              </button>
+              <button
+                type="button"
+                onClick={() => onCubeCommand({ type: 'solve' })}
+                className="py-2 rounded-xl bg-[#3BE8FF]/20 border border-[#3BE8FF]/45 text-[#3BE8FF] font-semibold cursor-pointer"
+              >
+                Auto-Solve
               </button>
               <button
                 type="button"
                 onClick={() => onCubeCommand({ type: 'reset' })}
-                className="flex-1 py-2 rounded-xl bg-white/5 border border-white/15 text-slate-200 font-semibold cursor-pointer"
+                className="py-2 rounded-xl bg-white/5 border border-white/15 text-slate-200 font-semibold cursor-pointer"
               >
                 Reset Solved
               </button>

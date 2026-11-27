@@ -121,10 +121,11 @@ async function main() {
     await page.click('button:has-text("System / Labs")');
     await page.waitForSelector('[data-testid="studio-panel-research"]', { timeout: 8000 });
 
-    // Whiteboard drawing & persistence
+    // Whiteboard drawing, schematic stencil & persistence
     await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("Whiteboard")');
     await page.waitForSelector('[data-testid="studio-whiteboard"] canvas', { timeout: 8000 });
     await page.click('button[aria-label="Blue marker"]');
+    await page.click('[data-testid="studio-whiteboard"] button:has-text("+Turbine")');
     const wbBox = await page.locator('[data-testid="studio-whiteboard"] canvas').boundingBox();
     assert.ok(wbBox && wbBox.width > 100);
     await page.mouse.move(wbBox.x + 50, wbBox.y + 50);
@@ -141,14 +142,17 @@ async function main() {
     await page.waitForSelector('button:has-text("Branch:")', { timeout: 6000 });
     await page.click('button:has-text("77 GHz Chirp")');
 
-    // Rubik Cube
+    // Rubik Cube (6-face + Scramble + Auto-Solve + Reset)
     await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("Labs & Cube")');
     await page.click('button:has-text("Rubik Cube")');
     await page.waitForSelector('[data-testid="studio-panel-cube"]', { timeout: 8000 });
-    await page.click('button:has-text("Rotate Top (U)")');
+    await page.click('button:has-text("U (Top)")');
+    await page.click('button:has-text("Scramble")');
+    await page.click('button:has-text("Auto-Solve")');
+    await page.waitForTimeout(350);
     await page.click('button:has-text("Reset Solved")');
 
-    // Robotics Lab & Pawan Shakti 3D CAD Viewers
+    // Robotics Lab & Pawan Shakti 3D CAD Viewers + STL Export
     await page.goto(`${baseUrl}/?tab=robotics-lab`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-testid="cad-viewer-piper-arm"] canvas', { timeout: 12000 });
     await page.click('[data-testid="cad-viewer-piper-arm"] button:has-text("Wireframe")');
@@ -156,7 +160,11 @@ async function main() {
     await page.goto(`${baseUrl}/?tab=startup-command`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('button:has-text("3D Turbine CAD")', { timeout: 12000 });
     await page.click('button:has-text("3D Turbine CAD")');
-    await page.waitForSelector('[data-testid="cad-viewer-pawan-turbine"] canvas', { timeout: 12000 });
+    await page.waitForSelector('[data-testid="cad-viewer-pawan-turbine"] button:has-text(".STL")', { timeout: 12000 });
+
+    // Home HUD 1-click "3D Studio" button
+    await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('section[aria-labelledby="jarvis-cc-title"] button:has-text("3D Studio")', { timeout: 12000 });
 
     await ctx.close();
 
