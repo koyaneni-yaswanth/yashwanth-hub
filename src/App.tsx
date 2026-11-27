@@ -543,7 +543,7 @@ function HubMain() {
           isOpenMobile={isMobileMenuOpen}
           onCloseMobile={() => setIsMobileMenuOpen(false)}
           onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
-          compactRail={isHome || isBuddy}
+          compactRail={isHome}
         />
 
         {/* Dynamic Page Content */}

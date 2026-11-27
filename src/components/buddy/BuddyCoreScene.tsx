@@ -411,17 +411,17 @@ export const BuddyCoreScene: React.FC<Props> = ({
         </div>
       )}
 
-      <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-black/55 backdrop-blur-md border border-white/10 px-3 py-1 text-[11px] font-medium text-slate-200">
+      <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 max-w-[92%] whitespace-nowrap truncate flex items-center gap-2 rounded-full bg-black/60 backdrop-blur-md border border-white/10 px-3 py-1 text-[11px] font-medium text-slate-200">
         <span
-          className="inline-block h-2 w-2 rounded-full"
+          className="inline-block h-2 w-2 rounded-full shrink-0"
           style={{
             backgroundColor: spec.primaryHex,
             boxShadow: `0 0 10px ${spec.primaryHex}`,
           }}
         />
         <span>{spec.label}</span>
-        <span className="text-slate-400">·</span>
-        <span className="text-slate-400">{spec.shortHint}</span>
+        <span className="hidden sm:inline text-slate-400">·</span>
+        <span className="hidden sm:inline text-slate-400 truncate">{spec.shortHint}</span>
       </div>
     </div>
   );
