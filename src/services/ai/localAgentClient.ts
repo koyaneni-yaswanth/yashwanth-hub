@@ -81,6 +81,7 @@ export class LocalAgentClient {
     if (typeof window !== 'undefined') {
       localStorage.setItem(URL_KEY, clean);
       localStorage.setItem(TOKEN_KEY, String(token || '').trim());
+      window.dispatchEvent(new CustomEvent('jarvis-local-config-changed'));
     }
     return { valid: true };
   }
@@ -178,6 +179,37 @@ export class LocalAgentClient {
 
   public static async resume() {
     return this.request<{ paused: boolean }>('/control/resume', { method: 'POST', body: '{}' });
+  }
+
+  public static async listEvents() {
+    return this.request<{
+      events: Array<{
+        id: string;
+        level: string;
+        event_type: string;
+        type?: string;
+        message: string;
+        request_id?: string | null;
+        created_at: string;
+      }>;
+    }>('/events', { method: 'GET' });
+  }
+
+  public static async listAgents() {
+    return this.request<{
+      agents: Array<{ id: string; name: string; preference: string; tools: string[] }>;
+    }>('/agents', { method: 'GET' });
+  }
+
+  public static async executeTool(
+    toolName: string,
+    args: Record<string, any> = {},
+    approvedByHuman = false
+  ): Promise<{ status: string; tool_name?: string; output?: any; approval?: any }> {
+    return this.request('/tools/execute', {
+      method: 'POST',
+      body: JSON.stringify({ tool_name: toolName, args, approved_by_human: approvedByHuman }),
+    }, 15000);
   }
 
   public static async streamChat(

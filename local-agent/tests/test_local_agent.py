@@ -175,6 +175,7 @@ def test_pause_resume_and_authenticated_websocket_events(isolated_env):
     with client.websocket_connect("/events?token=jlocal_test_secret_token_0011223344") as ws:
         welcome = ws.receive_json()
         assert welcome["event_type"] == "connected"
+        assert welcome["type"] == "connected"
         ws.send_text("ping")
         pong = ws.receive_json()
         assert pong["event_type"] == "pong"

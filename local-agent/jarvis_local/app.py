@@ -389,7 +389,7 @@ def create_app(custom_settings: Optional[LocalAgentSettings] = None) -> FastAPI:
             return
         await ws_hub.connect(ws)
         try:
-            await ws.send_text(json.dumps({"event_type": "connected", "message": "Subscribed to JARVIS local events"}))
+            await ws.send_text(json.dumps({"type": "connected", "event_type": "connected", "message": "Subscribed to JARVIS local events"}))
             while True:
                 msg = await ws.receive_text()
                 if msg == "ping":

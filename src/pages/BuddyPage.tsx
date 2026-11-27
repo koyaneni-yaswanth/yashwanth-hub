@@ -206,26 +206,51 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
 
     // Live WebSocket telemetry from local-agent daemon (only when explicitly paired via token)
     let unsubLocalWs: (() => void) | null = null;
-    try {
-      if (LocalAgentClient.getConfig().token) {
-        unsubLocalWs = LocalAgentClient.subscribeEvents((ev) => {
-          if (ev?.type === 'status' || ev?.type === 'ollama_ready' || ev?.type === 'model_loaded' || ev?.type === 'task_completed') {
-            refreshSystemStatusPill().catch(() => {});
-          }
-          if (ev?.type === 'task_completed' || ev?.type === 'task_failed' || ev?.type === 'warning') {
-            refreshLocalState().catch(() => {});
-          }
-        });
+    const bindLocalWs = () => {
+      unsubLocalWs?.();
+      unsubLocalWs = null;
+      try {
+        if (LocalAgentClient.getConfig().token) {
+          unsubLocalWs = LocalAgentClient.subscribeEvents((ev) => {
+            const evType = String(ev?.type || ev?.event_type || '');
+            if (
+              evType === 'connected' ||
+              evType === 'status' ||
+              evType === 'ollama_ready' ||
+              evType === 'model_loaded' ||
+              evType === 'model_unloaded' ||
+              evType === 'runtime_paused' ||
+              evType === 'runtime_resumed' ||
+              evType === 'task_completed' ||
+              evType === 'approval_executed'
+            ) {
+              refreshSystemStatusPill().catch(() => {});
+            }
+            if (
+              evType === 'task_completed' ||
+              evType === 'task_failed' ||
+              evType === 'approval_requested' ||
+              evType === 'approval_executed' ||
+              evType === 'tool_executed' ||
+              evType === 'warning'
+            ) {
+              refreshLocalState().catch(() => {});
+            }
+          });
+        }
+      } catch {
+        // ignore storage errors in restricted environments
       }
-    } catch {
-      // ignore storage errors in restricted environments
-    }
+    };
+    bindLocalWs();
+    window.addEventListener('jarvis-local-config-changed', bindLocalWs);
 
     return () => {
       alive = false;
       window.removeEventListener('online', onOnlineChange);
       window.removeEventListener('offline', onOnlineChange);
       window.removeEventListener(EXTRA_CLOUD_UPDATE_EVENT, onExtra);
+      window.removeEventListener('jarvis-local-config-changed', bindLocalWs);
       unsubBroadcast();
       unsubLocalWs?.();
       voiceRef.current?.dispose();

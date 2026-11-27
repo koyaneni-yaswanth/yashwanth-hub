@@ -48,6 +48,11 @@ export const ProviderGatewayModal: React.FC<Props> = ({
   const [localUrl, setLocalUrl] = useState(() => LocalAgentClient.getConfig().baseUrl);
   const [localToken, setLocalToken] = useState(() => LocalAgentClient.getConfig().token);
   const [localStatus, setLocalStatus] = useState<LocalAgentStatusSnapshot | null>(null);
+  const [localApprovals, setLocalApprovals] = useState<any[]>([]);
+  const [localTasks, setLocalTasks] = useState<any[]>([]);
+  const [localEvents, setLocalEvents] = useState<any[]>([]);
+  const [localToolOutput, setLocalToolOutput] = useState<string | null>(null);
+  const [localToolBusy, setLocalToolBusy] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [localBusy, setLocalBusy] = useState(false);
 
@@ -61,7 +66,6 @@ export const ProviderGatewayModal: React.FC<Props> = ({
     setReliability(AIGateway.getReliabilitySnapshot());
     const hasLocalOptIn =
       forceOllamaProbe ||
-      Boolean(LocalAgentClient.getConfig().token) ||
       (typeof localStorage !== 'undefined' && localStorage.getItem('yash_enable_local_ollama') === '1');
     const [health, cfgRes] = await Promise.all([
       AIGateway.healthCheck({ includeLocalOllama: hasLocalOptIn }).catch(() => null),
@@ -82,23 +86,58 @@ export const ProviderGatewayModal: React.FC<Props> = ({
     const { token } = LocalAgentClient.getConfig();
     if (!token) {
       setLocalStatus(null);
+      setLocalApprovals([]);
+      setLocalTasks([]);
+      setLocalEvents([]);
       setLocalError('Not paired yet. Enter your jlocal_ token and click Connect & Verify Local Runtime.');
       return;
     }
 
     try {
-      const st = await LocalAgentClient.getStatus();
+      const [st, apRes, taskRes, evRes] = await Promise.all([
+        LocalAgentClient.getStatus(),
+        LocalAgentClient.listApprovals().catch(() => ({ approvals: [] })),
+        LocalAgentClient.listTasks().catch(() => ({ tasks: [] })),
+        LocalAgentClient.listEvents().catch(() => ({ events: [] })),
+      ]);
       setLocalStatus(st);
+      setLocalApprovals(apRes.approvals || []);
+      setLocalTasks(taskRes.tasks || []);
+      setLocalEvents(evRes.events || []);
       setLocalError(null);
     } catch (err: any) {
       setLocalStatus(null);
+      setLocalApprovals([]);
+      setLocalTasks([]);
+      setLocalEvents([]);
       setLocalError(err?.message || 'Local runtime unreachable on loopback');
     }
   }, []);
 
+  const isLocalPaired = Boolean(localStatus);
+
   useEffect(() => {
     if (isOpen) loadAll();
   }, [isOpen, loadAll]);
+
+  useEffect(() => {
+    if (!isOpen || !isLocalPaired) return;
+    const { token } = LocalAgentClient.getConfig();
+    if (!token) return;
+    const unsub = LocalAgentClient.subscribeEvents((ev) => {
+      if (ev?.event_type === 'pong') return;
+      if (ev?.message) {
+        setLocalEvents((prev) => [ev, ...prev].slice(0, 20));
+      }
+      void LocalAgentClient.listApprovals()
+        .then((r) => setLocalApprovals(r.approvals || []))
+        .catch(() => {});
+      void LocalAgentClient.listTasks()
+        .then((r) => setLocalTasks(r.tasks || []))
+        .catch(() => {});
+    });
+    return unsub;
+  }, [isOpen, isLocalPaired]);
 
   if (!isOpen) return null;
 
@@ -442,6 +481,116 @@ export const ProviderGatewayModal: React.FC<Props> = ({
                             <span className="text-slate-400">{rec.fallback}</span>
                           </div>
                         ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="rounded-xl border border-white/10 bg-[#121923] p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold text-slate-100">
+                          Queue ({localStatus.queue.queued}q / {localStatus.queue.completed} done / {localStatus.queue.dead_letter} dead)
+                        </span>
+                        {localStatus.queue.dead_letter > 0 && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await LocalAgentClient.retryDeadLetters();
+                              await loadAll();
+                            }}
+                            className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-400/30 text-amber-200 text-[10px]"
+                          >
+                            Retry Dead Letters
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(
+                          [
+                            { label: 'Repo Status', tool: 'repo_status', args: {} },
+                            { label: 'GPU VRAM', tool: 'run_diagnostic', args: { command: 'gpu_vram' } },
+                            { label: 'Python Version', tool: 'run_diagnostic', args: { command: 'python_version' } },
+                          ] as const
+                        ).map((btn) => (
+                          <button
+                            key={btn.label}
+                            type="button"
+                            disabled={localToolBusy}
+                            onClick={async () => {
+                              setLocalToolBusy(true);
+                              try {
+                                const res = await LocalAgentClient.executeTool(btn.tool, btn.args);
+                                setLocalToolOutput(JSON.stringify(res.output ?? res, null, 2));
+                                await loadAll();
+                              } catch (err: any) {
+                                setLocalToolOutput(`Error: ${err?.message || 'Tool failed'}`);
+                              } finally {
+                                setLocalToolBusy(false);
+                              }
+                            }}
+                            className="px-2 py-1 rounded border border-white/15 bg-white/5 hover:bg-white/10 text-[10px]"
+                          >
+                            Run {btn.label}
+                          </button>
+                        ))}
+                      </div>
+                      {localToolOutput && (
+                        <pre className="max-h-28 overflow-auto rounded-lg bg-black/40 p-2 text-[10px] text-emerald-200 whitespace-pre-wrap">
+                          {localToolOutput}
+                        </pre>
+                      )}
+                      {localTasks.length > 0 && (
+                        <div className="text-[10px] text-slate-400">
+                          Latest task: {localTasks[0]?.task_type} ({localTasks[0]?.status})
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="rounded-xl border border-white/10 bg-[#121923] p-3 space-y-2">
+                      <div className="font-semibold text-slate-100">
+                        Tier-2 Approvals ({localApprovals.filter((a) => a.status === 'pending').length} pending) &amp; Events
+                      </div>
+                      {localApprovals.filter((a) => a.status === 'pending').map((ap) => (
+                        <div key={ap.id} className="rounded-lg border border-amber-400/30 bg-amber-500/10 p-2 space-y-1">
+                          <div className="font-medium text-amber-200">
+                            {ap.tool_name} — {ap.reason}
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await LocalAgentClient.decideApproval(ap.id, 'approve');
+                                await loadAll();
+                              }}
+                              className="px-2 py-0.5 rounded bg-emerald-500 text-black font-semibold text-[10px]"
+                            >
+                              Approve &amp; Execute
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await LocalAgentClient.decideApproval(ap.id, 'reject');
+                                await loadAll();
+                              }}
+                              className="px-2 py-0.5 rounded border border-white/20 text-slate-300 text-[10px]"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="space-y-1 max-h-28 overflow-y-auto text-[10px]">
+                        {localEvents.length === 0 ? (
+                          <div className="text-slate-400">No local events recorded yet.</div>
+                        ) : (
+                          localEvents.slice(0, 8).map((ev) => (
+                            <div key={ev.id || `${ev.created_at}-${ev.message}`} className="flex justify-between gap-2 text-slate-300">
+                              <span className="truncate">
+                                <code className="text-cyan-300">{ev.type || ev.event_type}</code> · {ev.message}
+                              </span>
+                            </div>
+                          ))
+                        )}
                       </div>
                     </div>
                   </div>

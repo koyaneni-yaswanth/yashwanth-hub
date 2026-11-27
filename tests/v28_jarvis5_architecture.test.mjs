@@ -219,4 +219,9 @@ test('JARVIS 5.0 Hub Integration & Legacy Server Hardening Checks', () => {
 
   const buddyPage = fs.readFileSync(path.join(root, 'src', 'pages', 'BuddyPage.tsx'), 'utf8');
   assert.match(buddyPage, /LocalAgentClient\.subscribeEvents/);
+
+  const gatewayModal = fs.readFileSync(path.join(root, 'src', 'components', 'buddy', 'ProviderGatewayModal.tsx'), 'utf8');
+  assert.match(gatewayModal, /executeTool/);
+  assert.match(gatewayModal, /decideApproval/);
+  assert.match(gatewayModal, /retryDeadLetters/);
 });

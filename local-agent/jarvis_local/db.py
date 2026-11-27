@@ -225,6 +225,7 @@ class LocalStateStore:
         return {
             "id": eid,
             "level": level,
+            "type": event_type,
             "event_type": event_type,
             "message": message,
             "request_id": request_id,
