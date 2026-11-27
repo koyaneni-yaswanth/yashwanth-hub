@@ -519,6 +519,7 @@ function HubMain() {
       </a>
       {/* Top Header */}
       <Header
+        currentTab={currentTab}
         currentArea={currentArea}
         onAreaChange={setCurrentArea}
         areas={areas}

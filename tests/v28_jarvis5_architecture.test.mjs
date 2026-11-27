@@ -235,6 +235,16 @@ test('JARVIS 5.0 Hub Integration & Legacy Server Hardening Checks', () => {
 
   const settingsPage = fs.readFileSync(path.join(root, 'src', 'pages', 'SettingsPage.tsx'), 'utf8');
   assert.match(settingsPage, /ProviderGatewayModal/);
+
+  const headerSrc = fs.readFileSync(path.join(root, 'src', 'components', 'layout', 'Header.tsx'), 'utf8');
+  assert.match(headerSrc, /HEADER_QUICK_TABS/);
+
+  const sidebarSrc = fs.readFileSync(path.join(root, 'src', 'components', 'layout', 'Sidebar.tsx'), 'utf8');
+  assert.match(sidebarSrc, /PINNED_QUICK_LINKS/);
+  assert.match(sidebarSrc, /Jump to any page/);
+
+  const destBarSrc = fs.readFileSync(path.join(root, 'src', 'components', 'layout', 'HubDestinationBar.tsx'), 'utf8');
+  assert.match(destBarSrc, /Back to Home/);
 });
 
 test('JARVIS 5.0 Multimodal Image Sanitizer & Server Vision Routing', async () => {

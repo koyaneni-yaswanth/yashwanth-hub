@@ -24,6 +24,7 @@ import { SupabaseAuthService, type AuthState } from '../../services/auth/supabas
 import type { Area, NavigationTab } from '../../types';
 
 interface HeaderProps {
+  currentTab?: NavigationTab;
   currentArea: string;
   onAreaChange: (area: string) => void;
   areas: Area[];
@@ -36,7 +37,16 @@ interface HeaderProps {
   hudMode?: boolean;
 }
 
+const HEADER_QUICK_TABS: Array<{ tab: NavigationTab; label: string }> = [
+  { tab: 'dashboard', label: 'Home' },
+  { tab: 'buddy', label: 'JARVIS' },
+  { tab: 'tasks', label: 'Tasks' },
+  { tab: 'calendar', label: 'Calendar' },
+  { tab: 'projects', label: 'Projects' },
+];
+
 export const Header: React.FC<HeaderProps> = ({
+  currentTab,
   currentArea,
   onAreaChange,
   areas,
@@ -149,20 +159,47 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         </div>
 
-        {/* Center: Clean Search Bar (Desktop) */}
-        <button
-          onClick={onOpenCommandPalette}
-          aria-label="Search (Ctrl+K)"
-          className="hidden md:flex items-center gap-2 px-3.5 py-2 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)]/80 text-xs text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:border-[var(--hub-accent)] transition-all cursor-pointer md:w-52 lg:w-64 xl:w-72 min-w-0 justify-between"
-        >
-          <span className="flex items-center gap-2 min-w-0">
-            <Search className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">Search tasks, notes, projects...</span>
-          </span>
-          <kbd className="shrink-0 px-1.5 py-0.5 text-[10px] font-mono bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded">
-            Ctrl K
-          </kbd>
-        </button>
+        {/* Center: 1-Click Core Bar (xl+) + Search Bar */}
+        <div className="hidden md:flex items-center gap-2 min-w-0">
+          <nav aria-label="Quick switch" className="hidden xl:flex items-center gap-1 mr-1">
+            {HEADER_QUICK_TABS.map((item) => {
+              const active = currentTab === item.tab;
+              return (
+                <button
+                  key={item.tab}
+                  type="button"
+                  onClick={() => onNavigate(item.tab)}
+                  aria-current={active ? 'page' : undefined}
+                  className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                    active
+                      ? hudMode
+                        ? 'bg-[#3BE8FF]/20 text-[#3BE8FF] border border-[#3BE8FF]/45'
+                        : 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)]'
+                      : hudMode
+                      ? 'text-[#A8B8D0] hover:text-[#E6F1FF] hover:bg-white/5'
+                      : 'text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:bg-[var(--hub-bg)]'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+          </nav>
+
+          <button
+            onClick={onOpenCommandPalette}
+            aria-label="Search (Ctrl+K)"
+            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)]/80 text-xs text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:border-[var(--hub-accent)] transition-all cursor-pointer md:w-44 lg:w-52 xl:w-56 min-w-0 justify-between"
+          >
+            <span className="flex items-center gap-2 min-w-0">
+              <Search className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">Jump or search...</span>
+            </span>
+            <kbd className="shrink-0 px-1.5 py-0.5 text-[10px] font-mono bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded">
+              Ctrl K
+            </kbd>
+          </button>
+        </div>
 
         {/* Right: Essential Controls Only */}
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">

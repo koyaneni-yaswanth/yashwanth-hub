@@ -13,6 +13,11 @@ import {
   ChevronDown,
   ChevronRight,
   Grid,
+  CheckSquare,
+  Calendar,
+  FolderKanban,
+  Sun,
+  FileText,
 } from 'lucide-react';
 import {
   HUB_DESTINATIONS,
@@ -34,6 +39,17 @@ interface SidebarProps {
   /** On Home desktop, collapse sidebar into a 64px frosted glass icon rail. */
   compactRail?: boolean;
 }
+
+const PINNED_QUICK_LINKS: Array<{ tab: NavigationTab; label: string; icon: React.ElementType }> = [
+  { tab: 'dashboard', label: 'Home', icon: Home },
+  { tab: 'buddy', label: 'JARVIS', icon: Sparkles },
+  { tab: 'my-day', label: 'My Day', icon: Sun },
+  { tab: 'tasks', label: 'Tasks', icon: CheckSquare },
+  { tab: 'calendar', label: 'Calendar', icon: Calendar },
+  { tab: 'projects', label: 'Projects', icon: FolderKanban },
+  { tab: 'ai-assistant', label: 'Ask AI', icon: Brain },
+  { tab: 'notes', label: 'Notes', icon: FileText },
+];
 
 const DESTINATION_ICONS: Record<HubDestinationId, React.ElementType> = {
   home: Home,
@@ -60,6 +76,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [expandedDestId, setExpandedDestId] = useState<HubDestinationId>(activeDest.id);
   const [showSecondaryInDrawer, setShowSecondaryInDrawer] = useState<boolean>(false);
   const [flyoutOpen, setFlyoutOpen] = useState(false);
+  const [navFilter, setNavFilter] = useState('');
 
   useEffect(() => {
     setExpandedDestId(activeDest.id);
@@ -80,9 +97,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const handleNavClick = (tab: NavigationTab) => {
     setFlyoutOpen(false);
+    setNavFilter('');
     onSelectTab(tab);
     if (onCloseMobile) onCloseMobile();
   };
+
+  const trimmedNavFilter = navFilter.trim().toLowerCase();
+  const filteredNavRoutes = trimmedNavFilter
+    ? HUB_DESTINATIONS.flatMap((dest) =>
+        dest.routes
+          .filter(
+            (r) =>
+              r.label.toLowerCase().includes(trimmedNavFilter) ||
+              r.description.toLowerCase().includes(trimmedNavFilter) ||
+              dest.label.toLowerCase().includes(trimmedNavFilter)
+          )
+          .map((r) => ({ ...r, groupLabel: dest.label }))
+      )
+    : [];
 
   const badgeForDestination = (id: HubDestinationId): number | undefined => {
     if (id === 'workspace' && openTasksCount > 0) return openTasksCount;
@@ -100,7 +132,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             Yashwanth Hub
           </span>
           <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--hub-muted)]">
-            6 Destinations · System Online
+            Quick Jump &amp; All Pages
           </div>
         </div>
         <button
@@ -112,9 +144,93 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </button>
       </div>
 
-      {/* 6 Primary Destinations */}
+      {/* Live Page Filter + 1-Tap Quick Access */}
+      <div className="mb-3 space-y-2.5">
+        <div className="relative">
+          <Search className="w-3.5 h-3.5 text-[var(--hub-muted)] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            value={navFilter}
+            onChange={(e) => setNavFilter(e.target.value)}
+            aria-label="Jump to any page"
+            placeholder="Jump to page..."
+            className="w-full pl-8 pr-7 py-1.5 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs text-[var(--hub-ink)] placeholder:text-[var(--hub-muted)] focus:outline-none focus:border-[var(--hub-accent)]"
+          />
+          {navFilter && (
+            <button
+              type="button"
+              onClick={() => setNavFilter('')}
+              aria-label="Clear page filter"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--hub-muted)] hover:text-[var(--hub-ink)] cursor-pointer"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+
+        {!trimmedNavFilter && !focus.enabled && (
+          <div className="space-y-1">
+            <div className="px-1 text-[10px] font-mono uppercase tracking-[0.14em] text-[var(--hub-muted)]">
+              Quick Access
+            </div>
+            <div className="grid grid-cols-2 gap-1">
+              {PINNED_QUICK_LINKS.map((item) => {
+                const QIcon = item.icon;
+                const active = currentTab === item.tab;
+                return (
+                  <button
+                    key={item.tab}
+                    type="button"
+                    onClick={() => handleNavClick(item.tab)}
+                    className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer text-left truncate ${
+                      active
+                        ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] font-semibold'
+                        : 'bg-[var(--hub-bg)]/70 border border-[var(--hub-line)]/70 text-[var(--hub-ink)] hover:border-[var(--hub-accent)]/50'
+                    }`}
+                  >
+                    <QIcon className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Filtered Search Results OR 6 Structured Destinations */}
       <nav className="flex-1 space-y-1.5 overflow-y-auto pr-1" aria-label="Primary navigation">
-        {HUB_DESTINATIONS.map((dest) => {
+        {trimmedNavFilter ? (
+          <div className="space-y-1">
+            {filteredNavRoutes.length === 0 ? (
+              <div className="px-3 py-4 text-xs text-[var(--hub-muted)] text-center">
+                No page matching &ldquo;{navFilter}&rdquo;
+              </div>
+            ) : (
+              filteredNavRoutes.map((route) => {
+                const routeActive = currentTab === route.tab;
+                return (
+                  <button
+                    key={`${route.groupLabel}-${route.tab}`}
+                    type="button"
+                    onClick={() => handleNavClick(route.tab)}
+                    className={`w-full text-left px-3 py-2 rounded-xl text-xs transition-colors cursor-pointer ${
+                      routeActive
+                        ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] font-semibold'
+                        : 'text-[var(--hub-ink)] hover:bg-[var(--hub-bg)]'
+                    }`}
+                  >
+                    <div className="font-semibold">{route.label}</div>
+                    <div className="text-[10px] opacity-75 truncate">
+                      {route.groupLabel} · {route.description}
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        ) : (
+          HUB_DESTINATIONS.map((dest) => {
           const Icon = DESTINATION_ICONS[dest.id];
           const isActiveDest = activeDest.id === dest.id;
           const badge = badgeForDestination(dest.id);
@@ -220,7 +336,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               )}
             </div>
           );
-        })}
+          })
+        )}
 
         {/* Quick Focus Mode & Global Search */}
         <div className="pt-3 mt-2 border-t border-[var(--hub-line)]/70 space-y-1">
@@ -410,7 +527,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   >
                     <div className="flex items-center justify-between border-b border-[rgba(59,232,255,0.14)] pb-2">
                       <span className="font-heading text-xs font-bold uppercase tracking-wider text-[#E6F1FF]">
-                        All 6 Destinations
+                        All Pages
                       </span>
                       <button
                         type="button"
@@ -421,7 +538,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                    {HUB_DESTINATIONS.filter((d) => d.id !== 'home').map((dest) => (
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-[#7A8BA6] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={navFilter}
+                        onChange={(e) => setNavFilter(e.target.value)}
+                        aria-label="Filter pages"
+                        placeholder="Filter pages..."
+                        className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-[rgba(59,232,255,0.18)] bg-black/30 text-xs text-[#E6F1FF] placeholder:text-[#7A8BA6] focus:outline-none focus:border-[#3BE8FF]"
+                      />
+                    </div>
+                    {(trimmedNavFilter
+                      ? [{ id: 'filtered' as HubDestinationId, code: 'MATCH', label: 'Matching Pages', routes: filteredNavRoutes }]
+                      : HUB_DESTINATIONS.filter((d) => d.id !== 'home')
+                    ).map((dest) => (
                       <div key={dest.id} className="space-y-1">
                         <div className="px-2 text-[10px] font-mono uppercase tracking-[0.14em] text-[#7A8BA6]">
                           {dest.code} · {dest.label}

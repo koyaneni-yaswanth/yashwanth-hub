@@ -17,7 +17,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
 }) => {
   const leftItems = [
     { id: 'dashboard' as NavigationTab, label: 'Home', icon: Home },
-    { id: 'tasks' as NavigationTab, label: 'Workspace', icon: CheckSquare },
+    { id: 'tasks' as NavigationTab, label: 'Tasks', icon: CheckSquare },
   ];
 
   const rightItems = [
@@ -88,7 +88,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
         className="flex flex-col items-center justify-center py-1 px-3 rounded-xl text-[11px] font-medium text-[var(--hub-muted)] hover:text-[var(--hub-ink)] transition-colors cursor-pointer"
       >
         <MoreHorizontal className="w-5 h-5 mb-0.5" />
-        <span>More</span>
+        <span>Pages</span>
       </button>
     </nav>
   );

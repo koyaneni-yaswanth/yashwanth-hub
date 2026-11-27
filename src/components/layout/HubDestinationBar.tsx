@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Crosshair, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Crosshair, Home, X } from 'lucide-react';
 import { destinationForTab } from '../../lib/hubArchitecture';
 import { useFocusMode } from '../../context/FocusModeContext';
 import type { NavigationTab } from '../../types';
@@ -90,11 +90,21 @@ export const HubDestinationBar: React.FC<HubDestinationBarProps> = ({
   return (
     <div
       aria-label={`${dest.label} destination navigation`}
-      className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--hub-line)] pb-3"
+      className="mb-4 flex flex-wrap items-center justify-between gap-2.5 border-b border-[var(--hub-line)] pb-3"
     >
-      <div className="flex flex-wrap items-center gap-2 min-w-0">
-        <span className="text-[10px] font-mono uppercase tracking-[0.16em] px-2 py-1 rounded-lg bg-[var(--hub-surface)] border border-[var(--hub-line)] text-[var(--hub-muted)] shrink-0">
-          {dest.code} · {dest.label}
+      <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+        <button
+          type="button"
+          onClick={() => onSelectTab('dashboard')}
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-surface)] text-xs font-medium text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:border-[var(--hub-accent)]/50 cursor-pointer shrink-0"
+          title="Back to Home"
+        >
+          <Home className="w-3.5 h-3.5" aria-hidden="true" />
+          <span>Home</span>
+        </button>
+        <ChevronRight className="w-3.5 h-3.5 text-[var(--hub-muted)] shrink-0" aria-hidden="true" />
+        <span className="text-[11px] font-semibold px-2 py-1 rounded-lg bg-[var(--hub-surface)] border border-[var(--hub-line)] text-[var(--hub-ink)] shrink-0">
+          {dest.label}
         </span>
 
         <nav aria-label={`${dest.label} views`} className="flex flex-wrap items-center gap-1.5">
