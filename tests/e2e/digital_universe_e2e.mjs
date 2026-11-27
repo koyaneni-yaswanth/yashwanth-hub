@@ -104,14 +104,18 @@ async function main() {
     await page.screenshot({ path: `${artifactDir}/universe_start.png` });
     await page.click('[data-testid="universe-entry-screen"] button:has-text("START")');
     await page.waitForSelector('[data-testid="universe-webgl-canvas"] canvas', { timeout: 12000 });
-    await page.waitForTimeout(1100);
+    await page.waitForTimeout(1350);
     await page.screenshot({ path: `${artifactDir}/universe_studio_3d.png` });
 
-    // Interact with monitors & workbench stations via sleek bottom Dock
+    // Interact with lighting atmosphere + guided tour + monitors & workbench stations
+    await page.click('[data-testid="universe-mood-btn"]');
+    await page.waitForSelector('[data-testid="universe-mood-btn"]:has-text("Workshop")', { timeout: 4000 });
+    await page.click('[data-testid="universe-mood-btn"]');
+    await page.click('[data-testid="universe-mood-btn"]');
+
     await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("About Me")');
     await page.waitForSelector('[data-testid="studio-panel-about"]', { timeout: 8000 });
-
-    await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("Projects")');
+    await page.click('[data-testid="studio-panel-about"] button[aria-label="Next station"]');
     await page.waitForSelector('[data-testid="studio-panel-projects"]', { timeout: 8000 });
 
     await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("JARVIS Core")');

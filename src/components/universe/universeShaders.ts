@@ -27,25 +27,29 @@ export const STUDIO_FLOOR_FRAGMENT_SHADER = /* glsl */ `
   varying float vDist;
 
   void main() {
-    vec2 cell = abs(fract(vWorldXZ * 0.5 - 0.5) - 0.5) / max(fwidth(vWorldXZ * 0.5), vec2(0.001));
-    float gridLine = 1.0 - min(min(cell.x, cell.y), 1.0);
+    // Portable analytic grid lines (no fwidth/derivative extension pitfalls on mobile/SwiftShader)
+    vec2 gMajor = abs(fract(vWorldXZ * 0.5 - 0.5) - 0.5);
+    float majorLine = smoothstep(0.026, 0.004, min(gMajor.x, gMajor.y));
 
-    vec2 fineCell = abs(fract(vWorldXZ * 2.0 - 0.5) - 0.5) / max(fwidth(vWorldXZ * 2.0), vec2(0.001));
-    float fineGrid = 1.0 - min(min(fineCell.x, fineCell.y), 1.0);
+    vec2 gMinor = abs(fract(vWorldXZ * 2.0 - 0.5) - 0.5);
+    float minorLine = smoothstep(0.036, 0.006, min(gMinor.x, gMinor.y));
 
-    float ring = smoothstep(0.06, 0.0, abs(fract(vDist * 0.25 - uTime * 0.03) - 0.5));
-    float distFade = exp(-vDist * 0.14);
+    float archRingA = smoothstep(0.045, 0.008, abs(vDist - 4.35));
+    float archRingB = smoothstep(0.055, 0.01, abs(vDist - 7.1));
+    float pulseRing = smoothstep(0.06, 0.0, abs(fract(vDist * 0.18 - uTime * 0.032) - 0.5));
+    float distFade = exp(-vDist * 0.085);
 
     float cursorDist = length(vWorldXZ - uCursorWorld.xz);
-    float cursorGlow = exp(-cursorDist * cursorDist * 0.55);
+    float cursorGlow = exp(-cursorDist * cursorDist * 0.44);
 
-    vec3 col = uFloorBase;
-    col += uAccentSteel * fineGrid * 0.08 * distFade;
-    col += uAccentGold * gridLine * 0.24 * distFade;
-    col += uAccentGold * ring * 0.16 * distFade;
-    col += mix(uAccentGold, uAccentSteel, 0.35) * cursorGlow * 0.36;
+    vec3 col = uFloorBase + vec3(0.026, 0.034, 0.054) * distFade;
+    col += uAccentSteel * minorLine * 0.16 * distFade;
+    col += uAccentGold * majorLine * 0.36 * distFade;
+    col += uAccentGold * (archRingA + archRingB) * 0.48 * distFade;
+    col += uAccentGold * pulseRing * 0.18 * distFade;
+    col += mix(uAccentGold, uAccentSteel, 0.28) * cursorGlow * 0.45;
 
-    float alpha = clamp((0.88 - vDist * 0.045) + cursorGlow * 0.2, 0.0, 0.96);
+    float alpha = clamp((0.92 - vDist * 0.032) + cursorGlow * 0.16, 0.1, 0.98);
     gl_FragColor = vec4(col, alpha);
   }
 `;

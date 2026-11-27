@@ -20,9 +20,12 @@ import {
 import { db } from '../db';
 import { StudioAudioEngine } from '../lib/studioAudio';
 import {
+  STUDIO_LIGHTING_MOODS,
   UNIVERSE_EIGHT_ENVIRONMENTS,
   YASHWANTH_IDENTITY_PROFILE,
+  GUIDED_TOUR_ORDER,
   stationById,
+  type StudioLightingMood,
   type UniverseStationId,
 } from '../lib/universeConfig';
 import { StudioMonitorOverlay, type CubeActionCommand } from '../components/universe/StudioMonitorOverlay';
@@ -68,6 +71,7 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
   const [hoveredStation, setHoveredStation] = useState<UniverseStationId | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [showPins, setShowPins] = useState(true);
+  const [lightingMood, setLightingMood] = useState<StudioLightingMood>('cinema');
   const [use3D, setUse3D] = useState(true);
   const [webglUnavailable, setWebglUnavailable] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(false);
@@ -124,6 +128,50 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
     setActiveStation(id);
     setMoreOpen(false);
     audioRef.current?.playTone(id === 'overview' ? 392 : 528, 0.08);
+  };
+
+  useEffect(() => {
+    const onKeyDown = (ev: KeyboardEvent) => {
+      const target = ev.target as HTMLElement | null;
+      const inInput =
+        target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+      if (inInput) return;
+
+      if (!entered && ev.key === 'Enter') {
+        handleEnterStudio();
+        return;
+      }
+      if (!entered) return;
+
+      if (ev.key === 'Escape' && activeStation !== 'overview') {
+        setActiveStation('overview');
+        return;
+      }
+      if (ev.key === 'l' || ev.key === 'L') {
+        setShowPins((p) => !p);
+        return;
+      }
+      if (ev.key === 'ArrowRight' || ev.key === 'ArrowLeft') {
+        const idx = GUIDED_TOUR_ORDER.indexOf(activeStation);
+        const nextIdx =
+          ev.key === 'ArrowRight'
+            ? idx < 0 || idx >= GUIDED_TOUR_ORDER.length - 1
+              ? 0
+              : idx + 1
+            : idx <= 0
+            ? GUIDED_TOUR_ORDER.length - 1
+            : idx - 1;
+        setActiveStation(GUIDED_TOUR_ORDER[nextIdx]);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [entered, activeStation]);
+
+  const cycleMood = () => {
+    const order: StudioLightingMood[] = ['cinema', 'workshop', 'lab'];
+    const next = order[(order.indexOf(lightingMood) + 1) % order.length];
+    setLightingMood(next);
   };
 
   const toggleAudio = async () => {
@@ -205,12 +253,22 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
                   <span className="h-3 w-px bg-white/15 hidden sm:inline-block" />
                   <button
                     type="button"
+                    onClick={cycleMood}
+                    className="hidden md:inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-slate-200 hover:text-[#C6A46B] hover:bg-white/5 cursor-pointer transition-colors"
+                    title="Switch 3D studio lighting atmosphere"
+                    data-testid="universe-mood-btn"
+                  >
+                    <span>{STUDIO_LIGHTING_MOODS[lightingMood].label}</span>
+                  </button>
+                  <span className="h-3 w-px bg-white/15 hidden sm:inline-block" />
+                  <button
+                    type="button"
                     onClick={() => setShowPins((p) => !p)}
                     aria-pressed={showPins}
                     className={`hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium cursor-pointer transition-colors ${
                       showPins ? 'text-[#E9D7AE] bg-[#C6A46B]/18' : 'text-slate-400 hover:text-white'
                     }`}
-                    title="Toggle 3D object labels"
+                    title="Toggle 3D object labels (Shortcut: L)"
                   >
                     <span>Labels</span>
                   </button>
@@ -249,6 +307,8 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
               whiteboardDataUrl={whiteboardDataUrl}
               cubeCommand={cubeCommand}
               showPins={showPins}
+              lightingMood={lightingMood}
+              entered={entered}
               statsSummary={statsSummary}
               onMetricsUpdate={setPerfMetrics}
               onWebglUnavailable={() => {
@@ -372,10 +432,10 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
           onCubeCommand={(cmd) => setCubeCommand({ ...cmd, seq: Date.now() })}
         />
 
-        {/* Minimal, Cinematic START Screen */}
+        {/* Minimal, Cinematic Frosted Live START Veil (3D Studio visible behind rings!) */}
         {!entered && (
           <div
-            className="fixed inset-0 z-40 flex flex-col items-center justify-center bg-[#050608]/95 backdrop-blur-xl px-6 text-center"
+            className="fixed inset-0 z-40 flex flex-col items-center justify-center bg-[radial-gradient(circle_at_center,rgba(8,12,20,0.42)_0%,rgba(5,6,10,0.82)_100%)] backdrop-blur-[5px] px-6 text-center"
             data-testid="universe-entry-screen"
           >
             <div className="max-w-md space-y-7">
@@ -383,10 +443,10 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
                 <p className="font-mono text-[11px] tracking-[0.3em] uppercase text-[#C6A46B]">
                   Engineering · Robotics · AI
                 </p>
-                <h1 className="font-serif text-5xl sm:text-6xl text-[#F5F3EF] tracking-tight">
+                <h1 className="font-serif text-5xl sm:text-6xl text-[#F5F3EF] tracking-tight drop-shadow-[0_6px_28px_rgba(0,0,0,0.75)]">
                   Yashwanth
                 </h1>
-                <p className="text-sm text-slate-400">
+                <p className="text-sm text-slate-300">
                   An interactive 3D studio for hardware engineering, JARVIS AI, and creative work.
                 </p>
               </div>
@@ -395,17 +455,41 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
                 <button
                   type="button"
                   onClick={handleEnterStudio}
-                  className="group relative w-32 h-32 rounded-full flex flex-col items-center justify-center gap-1 bg-gradient-to-b from-[#131924] to-[#080B12] border border-[#C6A46B]/70 text-xs font-bold tracking-[0.22em] text-[#F5F3EF] hover:scale-105 hover:border-[#C6A46B] transition-all cursor-pointer shadow-[0_0_50px_rgba(198,164,107,0.28)]"
+                  className="group relative w-36 h-36 rounded-full flex flex-col items-center justify-center gap-1 bg-gradient-to-b from-[#151D2C]/92 to-[#080B12]/95 border border-[#C6A46B]/80 text-xs font-bold tracking-[0.22em] text-[#F5F3EF] hover:scale-105 hover:border-[#E8D5B0] transition-all cursor-pointer shadow-[0_0_65px_rgba(198,164,107,0.34)]"
                 >
-                  <Sparkles className="w-4 h-4 text-[#C6A46B]" />
+                  <svg
+                    viewBox="0 0 120 120"
+                    className="pointer-events-none absolute -inset-3 w-[calc(100%+1.5rem)] h-[calc(100%+1.5rem)] text-[#C6A46B]/45 group-hover:text-[#3BE8FF]/65 transition-colors"
+                    aria-hidden="true"
+                  >
+                    <circle
+                      cx="60"
+                      cy="60"
+                      r="56"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1"
+                      strokeDasharray="10 8"
+                    />
+                    <circle
+                      cx="60"
+                      cy="60"
+                      r="50"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="0.75"
+                      strokeOpacity="0.55"
+                    />
+                  </svg>
+                  <Sparkles className="w-4 h-4 text-[#C6A46B] group-hover:text-[#3BE8FF] transition-colors" />
                   <span>START</span>
                 </button>
-                <span className="font-mono text-[11px] text-slate-500">
-                  Studio Ready · {bootProgress}%
+                <span className="font-mono text-[11px] text-slate-400">
+                  Studio Ready · {bootProgress}% · Press Enter
                 </span>
               </div>
 
-              <div className="flex items-center justify-center gap-4 text-xs text-slate-400">
+              <div className="flex items-center justify-center gap-4 text-xs text-slate-300">
                 <button
                   type="button"
                   onClick={() => {

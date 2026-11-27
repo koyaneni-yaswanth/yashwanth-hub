@@ -39,8 +39,8 @@ export const UNIVERSE_STATIONS: UniverseStationMeta[] = [
     shortLabel: 'UNIVERSE',
     kind: 'overview',
     description: 'Central interactive engineering studio, monitors, robotics bench, turbine station, whiteboard, experiment deck & JARVIS core.',
-    cameraPos: [0.35, 3.35, 8.6],
-    lookAt: [0, 1.35, -0.35],
+    cameraPos: [0.18, 3.16, 8.35],
+    lookAt: [0, 1.48, -0.45],
     accentHex: '#C6A46B',
   },
   {
@@ -109,8 +109,8 @@ export const UNIVERSE_STATIONS: UniverseStationMeta[] = [
     shortLabel: 'ENERGY LAB',
     kind: 'station',
     description: 'Archimedes helical compact wind turbine, planetary vs magnetic gearbox R&D, CAD inspector & TRL 4->5 test rig.',
-    cameraPos: [2.95, 2.35, 2.55],
-    lookAt: [2.95, 1.55, 0.35],
+    cameraPos: [3.45, 2.36, 2.82],
+    lookAt: [3.65, 1.58, 0.68],
     accentHex: '#34D399',
     linkedTab: 'startup-command',
   },
@@ -275,6 +275,69 @@ export const CAD_ASSEMBLY_PRESETS: Record<CadModelPresetId, CadAssemblyPreset> =
     ],
   },
 };
+
+export type StudioLightingMood = 'cinema' | 'workshop' | 'lab';
+
+export const STUDIO_LIGHTING_MOODS: Record<
+  StudioLightingMood,
+  {
+    label: string;
+    bgHex: string;
+    fogHex: string;
+    floorHex: string;
+    keyHex: number;
+    rimHex: number;
+    keyIntensity: number;
+    exposure: number;
+    coveHex: string;
+  }
+> = {
+  cinema: {
+    label: 'Cinema',
+    bgHex: '#0A0E16',
+    fogHex: '#0C111B',
+    floorHex: '#0B1018',
+    keyHex: 0xffe4bd,
+    rimHex: 0x8fb3e8,
+    keyIntensity: 1.55,
+    exposure: 1.0,
+    coveHex: '#C6A46B',
+  },
+  workshop: {
+    label: 'Workshop',
+    bgHex: '#131924',
+    fogHex: '#141B27',
+    floorHex: '#141B27',
+    keyHex: 0xf7f5ef,
+    rimHex: 0xb7d1f2,
+    keyIntensity: 2.05,
+    exposure: 1.12,
+    coveHex: '#E8D5B0',
+  },
+  lab: {
+    label: 'Cyber Lab',
+    bgHex: '#060B14',
+    fogHex: '#08101C',
+    floorHex: '#08101B',
+    keyHex: 0xcbe8ff,
+    rimHex: 0x3be8ff,
+    keyIntensity: 1.48,
+    exposure: 1.02,
+    coveHex: '#3BE8FF',
+  },
+};
+
+export const GUIDED_TOUR_ORDER: UniverseStationId[] = [
+  'about',
+  'projects',
+  'jarvis',
+  'research',
+  'robotics',
+  'energy',
+  'whiteboard',
+  'experiment',
+  'cube',
+];
 
 export function stationById(id: UniverseStationId): UniverseStationMeta {
   return UNIVERSE_STATIONS.find((s) => s.id === id) || UNIVERSE_STATIONS[0];

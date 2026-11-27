@@ -1,6 +1,10 @@
 import React, { useEffect, useRef } from 'react';
-import type { UniverseStationId } from '../../lib/universeConfig';
-import { stationById } from '../../lib/universeConfig';
+import {
+  STUDIO_LIGHTING_MOODS,
+  type StudioLightingMood,
+  type UniverseStationId,
+  stationById,
+} from '../../lib/universeConfig';
 import { settleFactor } from '../momentum/cinema/cinemaConfig';
 import { LightingDirector } from '../momentum/cinema/LightingDirector';
 import { PostFX } from '../momentum/cinema/PostFX';
@@ -27,6 +31,8 @@ interface UniverseStudioSceneProps {
   whiteboardDataUrl: string | null;
   cubeCommand: CubeActionCommand | null;
   showPins?: boolean;
+  lightingMood?: StudioLightingMood;
+  entered?: boolean;
   statsSummary: {
     openTasks: number;
     projectCount: number;
@@ -44,12 +50,12 @@ const SCENE_PIN_ANCHORS: Array<{
   accent: string;
   pos: readonly [number, number, number];
 }> = [
-  { id: 'jarvis', label: 'JARVIS Core', accent: '#3BE8FF', pos: [0, 3.16, -1.28] },
-  { id: 'robotics', label: 'PiPER Arm', accent: '#38BDF8', pos: [-2.55, 2.04, -0.15] },
-  { id: 'energy', label: 'Pawan Turbine', accent: '#34D399', pos: [3.05, 2.38, 0.55] },
+  { id: 'jarvis', label: 'JARVIS Core', accent: '#3BE8FF', pos: [0, 3.02, -1.28] },
+  { id: 'robotics', label: 'PiPER Arm', accent: '#38BDF8', pos: [-2.55, 2.06, -0.15] },
+  { id: 'energy', label: 'Pawan Turbine', accent: '#34D399', pos: [3.68, 2.48, 0.68] },
   { id: 'whiteboard', label: 'Whiteboard', accent: '#F59E0B', pos: [-4.15, 2.88, -0.45] },
   { id: 'experiment', label: 'Sim Deck', accent: '#EC4899', pos: [-2.15, 1.58, 1.55] },
-  { id: 'cube', label: 'Cube', accent: '#F97316', pos: [0.15, 1.76, 0.72] },
+  { id: 'cube', label: 'Cube', accent: '#F97316', pos: [0.15, 1.78, 0.66] },
 ];
 
 function prefersReducedMotion(): boolean {
@@ -94,51 +100,71 @@ function makeMonitorCanvasTexture(
   linesFn: () => string[]
 ): { tex: import('three').CanvasTexture; draw: (nextLines: string[]) => void } {
   const canvas = document.createElement('canvas');
-  canvas.width = 768;
-  canvas.height = 450;
+  canvas.width = 1024;
+  canvas.height = 600;
   const ctx = canvas.getContext('2d')!;
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
+  tex.anisotropy = 8;
 
+  let pulsePhase = 0;
   const draw = (currentLines: string[]) => {
-    const bg = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    bg.addColorStop(0, '#090E18');
-    bg.addColorStop(1, '#05070C');
+    pulsePhase += 1;
+    const bg = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    bg.addColorStop(0, '#0B1220');
+    bg.addColorStop(0.55, '#070B14');
+    bg.addColorStop(1, '#05080F');
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Subtle top accent bar + corner UI marks
-    ctx.fillStyle = accent;
-    ctx.fillRect(36, 36, 110, 5);
-    ctx.fillStyle = 'rgba(255,255,255,0.06)';
-    ctx.fillRect(36, 152, 696, 1);
-
-    ctx.fillStyle = '#F5F3EF';
-    ctx.font = 'bold 36px sans-serif';
-    ctx.fillText(title, 36, 94);
-
-    ctx.fillStyle = accent;
-    ctx.font = 'bold 18px monospace';
-    ctx.fillText(subtitle, 36, 130);
-
-    // Live micro sparkline decorative bars in top-right
-    for (let i = 0; i < 12; i++) {
-      const h = 10 + ((i * 19 + currentLines.length * 7) % 34);
-      ctx.fillStyle = i % 3 === 0 ? accent : 'rgba(255,255,255,0.16)';
-      ctx.fillRect(540 + i * 16, 118 - h, 9, h);
+    // Subtle internal drafting grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.035)';
+    ctx.lineWidth = 1;
+    for (let gx = 48; gx < canvas.width; gx += 64) {
+      ctx.beginPath();
+      ctx.moveTo(gx, 24);
+      ctx.lineTo(gx, canvas.height - 24);
+      ctx.stroke();
     }
 
-    ctx.font = '21px monospace';
-    currentLines.slice(0, 5).forEach((ln, idx) => {
-      ctx.fillStyle = idx === 0 ? '#FFFFFF' : '#A6B8CE';
-      ctx.fillText(ln.slice(0, 44), 36, 200 + idx * 44);
+    // Top accent bar & corner reticle
+    ctx.fillStyle = accent;
+    ctx.fillRect(46, 44, 148, 6);
+    ctx.fillStyle = 'rgba(255,255,255,0.09)';
+    ctx.fillRect(46, 198, 932, 1.5);
+
+    ctx.fillStyle = '#F7F4EE';
+    ctx.font = 'bold 48px sans-serif';
+    ctx.fillText(title, 46, 118);
+
+    ctx.fillStyle = accent;
+    ctx.font = 'bold 22px monospace';
+    ctx.fillText(subtitle, 46, 162);
+
+    // Top-right animated telemetry bars + sinusoidal trace
+    for (let i = 0; i < 14; i++) {
+      const h = 14 + Math.round(Math.abs(Math.sin(i * 0.65 + pulsePhase * 0.7)) * 46);
+      ctx.fillStyle = i % 3 === 0 ? accent : 'rgba(255,255,255,0.22)';
+      ctx.fillRect(670 + i * 22, 146 - h, 12, h);
+    }
+
+    // Structured sleek content cards per row
+    currentLines.slice(0, 4).forEach((ln, idx) => {
+      const ry = 232 + idx * 78;
+      ctx.fillStyle = idx === 0 ? 'rgba(255,255,255,0.075)' : 'rgba(255,255,255,0.035)';
+      ctx.fillRect(46, ry, 932, 60);
+      ctx.fillStyle = idx === 0 ? accent : 'rgba(255,255,255,0.25)';
+      ctx.fillRect(46, ry, 5, 60);
+
+      ctx.font = idx === 0 ? 'bold 28px monospace' : '26px monospace';
+      ctx.fillStyle = idx === 0 ? '#FFFFFF' : '#CBD8E8';
+      ctx.fillText(ln.slice(0, 48), 72, ry + 39);
     });
 
-    // Bottom subtle status hairline
+    // Bottom status bar & live pill
     ctx.fillStyle = accent;
-    ctx.globalAlpha = 0.45;
-    ctx.fillRect(36, 412, 696, 2);
+    ctx.globalAlpha = 0.55;
+    ctx.fillRect(46, 558, 932, 3);
     ctx.globalAlpha = 1;
     tex.needsUpdate = true;
   };
@@ -155,6 +181,8 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
   whiteboardDataUrl,
   cubeCommand,
   showPins = true,
+  lightingMood = 'cinema',
+  entered = false,
   statsSummary,
   onMetricsUpdate,
   onWebglUnavailable,
@@ -166,6 +194,8 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
     hoveredStation,
     whiteboardDataUrl,
     showPins,
+    lightingMood,
+    entered,
     statsSummary,
   });
 
@@ -175,7 +205,15 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
   const onFallbackRef = useRef(onWebglUnavailable);
 
   useEffect(() => {
-    stateRef.current = { activeStation, hoveredStation, whiteboardDataUrl, showPins, statsSummary };
+    stateRef.current = {
+      activeStation,
+      hoveredStation,
+      whiteboardDataUrl,
+      showPins,
+      lightingMood,
+      entered,
+      statsSummary,
+    };
     onHoverRef.current = onHoverStation;
     onSelectRef.current = onSelectStation;
     onMetricsRef.current = onMetricsUpdate;
@@ -185,6 +223,8 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
     hoveredStation,
     whiteboardDataUrl,
     showPins,
+    lightingMood,
+    entered,
     statsSummary,
     onHoverStation,
     onSelectStation,
@@ -252,33 +292,47 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
         mount.innerHTML = '';
         mount.appendChild(renderer.domElement);
 
+        const moodInit = STUDIO_LIGHTING_MOODS[stateRef.current.lightingMood] || STUDIO_LIGHTING_MOODS.cinema;
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color('#050608');
-        scene.fog = new THREE.FogExp2('#07090E', 0.036);
+        scene.background = new THREE.Color(moodInit.bgHex);
+        scene.fog = new THREE.FogExp2(moodInit.fogHex, 0.026);
 
         const startMeta = stationById(stateRef.current.activeStation);
-        const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 85);
-        camera.position.set(...startMeta.cameraPos);
+        const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 90);
+        if (!stateRef.current.entered && stateRef.current.activeStation === 'overview') {
+          camera.position.set(0.28, 3.82, 9.7);
+        } else {
+          camera.position.set(...startMeta.cameraPos);
+        }
 
         const orbit = new OrbitControls(camera, renderer.domElement);
         orbit.enableDamping = true;
         orbit.dampingFactor = 0.065;
-        orbit.maxPolarAngle = Math.PI * 0.48;
+        orbit.maxPolarAngle = Math.PI * 0.485;
         orbit.minDistance = 1.6;
         orbit.maxDistance = 14.5;
         orbit.target.set(...startMeta.lookAt);
 
-        // Procedural Studio HDR + Three-Point Lighting + Restrained Bloom PostFX
+        // Procedural Studio HDR + Three-Point Lighting + Clean Bloom PostFX
         const lighting = new LightingDirector(THREE, renderer, scene, RoomEnvironment, {
           shadows: isMobile ? 'off' : 'medium',
-          keyColor: 0xffe4bd,
-          rimColor: 0x8fb3e8,
+          keyColor: moodInit.keyHex,
+          rimColor: moodInit.rimHex,
           coreColor: 0xc6a46b,
         });
-        lighting.keyLight.intensity = 1.35;
-        lighting.coreLight.intensity = 10;
-        lighting.coreLight.position.set(0, 2.7, -0.5);
+        lighting.keyLight.intensity = moodInit.keyIntensity;
+        lighting.coreLight.intensity = 7.5;
+        lighting.coreLight.position.set(0, 2.98, -1.22);
         scene.add(lighting.coreLight);
+
+        const studioRimLight = new THREE.DirectionalLight(moodInit.rimHex, 0.9);
+        studioRimLight.position.set(4.5, 4.2, -3.5);
+        scene.add(studioRimLight);
+
+        // Subtle warm architectural task lamp illumination on left desk wing
+        const deskLampLight = new THREE.PointLight('#FFCF8B', 3.4, 4.8, 1.8);
+        deskLampLight.position.set(-2.22, 1.62, -0.82);
+        scene.add(deskLampLight);
 
         const postfx = new PostFX(
           THREE,
@@ -292,8 +346,8 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
             grain: !isMobile,
             chromaticAberration: false,
             renderScale: isMobile ? 0.9 : 1,
-            bloomThreshold: 0.78,
-            bloomStrength: 0.16,
+            bloomThreshold: 0.91,
+            bloomStrength: 0.13,
           }
         );
 
@@ -338,7 +392,7 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
             roughness: 0.2,
             roughnessMap: pbrMaps.metalRoughness,
             emissive: '#4A3615',
-            emissiveIntensity: 0.2,
+            emissiveIntensity: 0.22,
           })
         );
         const cyanEmitMat = trackMat(
@@ -350,6 +404,9 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
             roughness: 0.2,
           })
         );
+        const coveEmitMat = trackMat(
+          new THREE.MeshBasicMaterial({ color: moodInit.coveHex })
+        );
         const shadowTex = makeRadialShadowTexture(THREE);
         managedTexs.push(shadowTex);
 
@@ -360,7 +417,7 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
           uCursorWorld: { value: cursorWorld },
           uAccentGold: { value: new THREE.Color('#C6A46B') },
           uAccentSteel: { value: new THREE.Color('#8BA8C8') },
-          uFloorBase: { value: new THREE.Color('#07090D') },
+          uFloorBase: { value: new THREE.Color(moodInit.floorHex) },
         };
         const floorMat = trackMat(
           new THREE.ShaderMaterial({
@@ -370,22 +427,99 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
             transparent: true,
           })
         );
-        const floorMesh = new THREE.Mesh(trackGeo(new THREE.PlaneGeometry(38, 38)), floorMat);
+        const floorMesh = new THREE.Mesh(trackGeo(new THREE.PlaneGeometry(42, 42)), floorMat);
         floorMesh.rotation.x = -Math.PI / 2;
         floorMesh.receiveShadow = true;
         scene.add(floorMesh);
 
+        // Architectural Studio Room: Curved Acoustic Matte Cyclorama + Instanced Slat Wall + Cove Strips
+        const wallMat = trackMat(
+          new THREE.MeshStandardMaterial({
+            color: '#111724',
+            metalness: 0.18,
+            roughness: 0.78,
+            side: THREE.BackSide,
+          })
+        );
+        const cycWall = new THREE.Mesh(
+          trackGeo(new THREE.CylinderGeometry(7.6, 7.6, 5.4, 56, 1, true, Math.PI * 0.42, Math.PI * 1.16)),
+          wallMat
+        );
+        cycWall.position.set(0, 2.7, -0.35);
+        cycWall.receiveShadow = true;
+        scene.add(cycWall);
+
+        // Instanced vertical walnut/titanium acoustic ribs around rear curve (1 draw call!)
+        const ribCount = isMobile ? 16 : 26;
+        const ribGeo = trackGeo(new THREE.BoxGeometry(0.11, 4.35, 0.08));
+        const ribMat = trackMat(
+          new THREE.MeshStandardMaterial({ color: '#1E2534', metalness: 0.46, roughness: 0.4 })
+        );
+        const ribInst = new THREE.InstancedMesh(ribGeo, ribMat, ribCount);
+        const ribDummy = new THREE.Object3D();
+        for (let r = 0; r < ribCount; r++) {
+          const frac = r / (ribCount - 1);
+          const ang = Math.PI * 0.56 + frac * Math.PI * 0.88;
+          const rx = Math.sin(ang) * 7.36;
+          const rz = Math.cos(ang) * 7.36 - 0.35;
+          ribDummy.position.set(rx, 2.25, rz);
+          ribDummy.rotation.y = ang + Math.PI;
+          ribDummy.updateMatrix();
+          ribInst.setMatrixAt(r, ribDummy.matrix);
+        }
+        ribInst.instanceMatrix.needsUpdate = true;
+        scene.add(ribInst);
+
+        // Recessed upper soffit + floor plinth cove LED rings
+        const lowerCove = new THREE.Mesh(
+          trackGeo(new THREE.TorusGeometry(7.28, 0.016, 8, 64, Math.PI * 0.94)),
+          coveEmitMat
+        );
+        lowerCove.rotation.x = Math.PI / 2;
+        lowerCove.rotation.z = Math.PI * 0.03;
+        lowerCove.position.set(0, 0.035, -0.35);
+        const upperCove = lowerCove.clone();
+        upperCove.position.y = 4.42;
+        scene.add(lowerCove, upperCove);
+
+        // Back wall etched titanium header plaque
+        const plaqueCanvas = document.createElement('canvas');
+        plaqueCanvas.width = 1024;
+        plaqueCanvas.height = 160;
+        const pCtx = plaqueCanvas.getContext('2d')!;
+        pCtx.fillStyle = '#0D131F';
+        pCtx.fillRect(0, 0, 1024, 160);
+        pCtx.strokeStyle = 'rgba(198,164,107,0.45)';
+        pCtx.lineWidth = 3;
+        pCtx.strokeRect(10, 10, 1004, 140);
+        pCtx.fillStyle = '#C6A46B';
+        pCtx.font = 'bold 20px monospace';
+        pCtx.textAlign = 'center';
+        pCtx.fillText('VNIT NAGPUR · PAWAN SHAKTI · JARVIS 5.0', 512, 54);
+        pCtx.fillStyle = '#F5F3EF';
+        pCtx.font = 'bold 42px sans-serif';
+        pCtx.fillText('YASHWANTH · DIGITAL ENGINEERING STUDIO', 512, 114);
+        const plaqueTex = new THREE.CanvasTexture(plaqueCanvas);
+        plaqueTex.colorSpace = THREE.SRGBColorSpace;
+        managedTexs.push(plaqueTex);
+        const plaqueMesh = new THREE.Mesh(
+          trackGeo(new THREE.PlaneGeometry(3.8, 0.6)),
+          trackMat(new THREE.MeshBasicMaterial({ map: plaqueTex }))
+        );
+        plaqueMesh.position.set(0, 4.02, -4.65);
+        scene.add(plaqueMesh);
+
         // Soft studio ambient motes
-        const particleCount = isMobile ? 65 : 170;
+        const particleCount = isMobile ? 55 : 140;
         const pPositions = new Float32Array(particleCount * 3);
         for (let i = 0; i < particleCount; i++) {
-          pPositions[i * 3] = (Math.random() - 0.5) * 18;
-          pPositions[i * 3 + 1] = 0.6 + Math.random() * 5.2;
-          pPositions[i * 3 + 2] = (Math.random() - 0.5) * 14;
+          pPositions[i * 3] = (Math.random() - 0.5) * 14;
+          pPositions[i * 3 + 1] = 0.6 + Math.random() * 4.4;
+          pPositions[i * 3 + 2] = (Math.random() - 0.5) * 10;
         }
         const pGeo = trackGeo(new THREE.BufferGeometry());
         pGeo.setAttribute('position', new THREE.BufferAttribute(pPositions, 3));
-        const pMat = trackMat(new THREE.PointsMaterial({ color: '#C6A46B', size: 0.036, transparent: true, opacity: 0.5 }));
+        const pMat = trackMat(new THREE.PointsMaterial({ color: '#C6A46B', size: 0.032, transparent: true, opacity: 0.42 }));
         const dustPoints = new THREE.Points(pGeo, pMat);
         scene.add(dustPoints);
 
@@ -407,12 +541,93 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
         deskSlab.castShadow = true;
         deskSlab.receiveShadow = true;
 
-        // Brass perimeter inlay strip + architectural arched monitor rail
+        // Brass perimeter inlay strip + architectural monitor bar
         const inlayShape = makeRoundedRectShape(THREE, 6.66, 2.96, 0.26);
         const inlayGeo = trackGeo(new THREE.ExtrudeGeometry(inlayShape, { depth: 0.018, bevelEnabled: false }));
         inlayGeo.rotateX(Math.PI / 2);
         const deskInlay = new THREE.Mesh(inlayGeo, brassMat);
         deskInlay.position.set(0, 1.03, -0.35);
+
+        // Tactile Stitched Neoprene Desk Mat + CNC Mechanical Keyboard + Mouse + Espresso Cup
+        const matGeo = trackGeo(
+          new THREE.ExtrudeGeometry(makeRoundedRectShape(THREE, 2.35, 0.84, 0.06), {
+            depth: 0.008,
+            bevelEnabled: false,
+          })
+        );
+        matGeo.rotateX(Math.PI / 2);
+        const deskMat = new THREE.Mesh(
+          matGeo,
+          trackMat(new THREE.MeshStandardMaterial({ color: '#171E2C', roughness: 0.85, metalness: 0.08 }))
+        );
+        deskMat.position.set(0.05, 1.1, 0.28);
+
+        const kbBody = new THREE.Mesh(
+          trackGeo(
+            new THREE.ExtrudeGeometry(makeRoundedRectShape(THREE, 0.72, 0.24, 0.02), {
+              depth: 0.022,
+              bevelEnabled: true,
+              bevelThickness: 0.005,
+              bevelSize: 0.005,
+              bevelSegments: 2,
+            })
+          ),
+          titaniumMat
+        );
+        kbBody.rotation.x = Math.PI / 2;
+        kbBody.position.set(-0.22, 1.128, 0.28);
+
+        const keyCapGeo = trackGeo(new THREE.BoxGeometry(0.032, 0.014, 0.032));
+        const keyCapMat = trackMat(new THREE.MeshStandardMaterial({ color: '#202837', roughness: 0.42, metalness: 0.2 }));
+        const keyInst = new THREE.InstancedMesh(keyCapGeo, keyCapMat, 48);
+        const kDummy = new THREE.Object3D();
+        let ki = 0;
+        for (let kr = 0; kr < 4; kr++) {
+          for (let kc = 0; kc < 12; kc++) {
+            kDummy.position.set(-0.5 + kc * 0.046, 1.132, 0.21 + kr * 0.046);
+            kDummy.updateMatrix();
+            keyInst.setMatrixAt(ki++, kDummy.matrix);
+          }
+        }
+        keyInst.instanceMatrix.needsUpdate = true;
+
+        const cadMouse = new THREE.Mesh(trackGeo(new THREE.CapsuleGeometry(0.038, 0.055, 6, 14)), titaniumMat);
+        cadMouse.rotation.x = Math.PI / 2;
+        cadMouse.scale.y = 0.65;
+        cadMouse.position.set(-0.78, 1.118, 0.3);
+
+        // Signature Machined Aluminum Coffee Cup (Studio Espresso)
+        const mugGroup = new THREE.Group();
+        mugGroup.position.set(0.88, 1.1, 0.32);
+        const mugWall = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.058, 0.05, 0.125, 24)), titaniumMat);
+        mugWall.position.y = 0.064;
+        const mugCoffee = new THREE.Mesh(
+          trackGeo(new THREE.CylinderGeometry(0.05, 0.05, 0.01, 20)),
+          trackMat(new THREE.MeshStandardMaterial({ color: '#3E2212', roughness: 0.15, metalness: 0.1 }))
+        );
+        mugCoffee.position.y = 0.118;
+        const mugHandle = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(0.032, 0.008, 8, 20, Math.PI)), brassMat);
+        mugHandle.rotation.z = -Math.PI / 2;
+        mugHandle.position.set(0.055, 0.068, 0);
+        mugGroup.add(mugWall, mugCoffee, mugHandle);
+
+        // Articulated Brass & Titanium Task Lamp on Left Desk Wing (clear of monitors & arm)
+        const lampGroup = new THREE.Group();
+        lampGroup.position.set(-2.36, 1.09, -1.04);
+        lampGroup.rotation.y = 0.42;
+        const lampBase = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.1, 0.12, 0.032, 24)), brassMat);
+        lampBase.position.y = 0.016;
+        const lampCurve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(0, 0.028, 0),
+          new THREE.Vector3(-0.06, 0.28, -0.04),
+          new THREE.Vector3(0.05, 0.52, 0.09),
+          new THREE.Vector3(0.15, 0.54, 0.19),
+        ]);
+        const lampNeck = new THREE.Mesh(trackGeo(new THREE.TubeGeometry(lampCurve, 18, 0.013, 10, false)), titaniumMat);
+        const lampShade = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(0.095, 0.12, 24)), brassMat);
+        lampShade.position.set(0.15, 0.51, 0.21);
+        lampShade.rotation.x = 0.42;
+        lampGroup.add(lampBase, lampNeck, lampShade);
 
         // Angled A-frame pedestal legs
         for (const lx of [-2.85, 2.85]) {
@@ -428,18 +643,28 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
         }
 
         // Suspended overhead architectural light bar casting warm illumination onto the bench
-        const lightBarMat = trackMat(
-          new THREE.MeshBasicMaterial({ color: '#E8D5B0' })
-        );
-        const overheadBar = new THREE.Mesh(trackGeo(new THREE.CapsuleGeometry(0.03, 3.8, 8, 16)), lightBarMat);
+        const lightBarMat = trackMat(new THREE.MeshBasicMaterial({ color: '#E8D5B0' }));
+        const overheadBar = new THREE.Mesh(trackGeo(new THREE.CapsuleGeometry(0.026, 3.9, 8, 16)), lightBarMat);
         overheadBar.rotation.z = Math.PI / 2;
-        overheadBar.position.set(0, 3.1, -0.8);
+        overheadBar.position.set(0, 3.16, -0.82);
         const cableL = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.008, 0.008, 2.5, 8)), titaniumMat);
-        cableL.position.set(-1.6, 4.35, -0.8);
+        cableL.position.set(-1.6, 4.41, -0.82);
         const cableR = cableL.clone();
         cableR.position.x = 1.6;
 
-        deskGroup.add(deskSlab, deskInlay, overheadBar, cableL, cableR);
+        deskGroup.add(
+          deskSlab,
+          deskInlay,
+          deskMat,
+          kbBody,
+          keyInst,
+          cadMouse,
+          mugGroup,
+          lampGroup,
+          overheadBar,
+          cableL,
+          cableR
+        );
         scene.add(deskGroup);
 
         // Centerpiece Halo: Floating JARVIS Holographic Gyro-Core above center console
@@ -605,8 +830,8 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
             'arXiv & Semantic Archive',
             'Click for diagnostics',
           ],
-          [2.72, 1.84, -0.78],
-          -0.64
+          [2.84, 1.84, -0.74],
+          -0.46
         );
 
         // Station 05: Sculpted PiPER 6-DOF Robotic Arm on Plinth
@@ -649,11 +874,18 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
         registerInteractive(roboticsGroup, 'robotics');
         scene.add(roboticsGroup);
 
-        // Station 06: Sculpted PAWAN SHAKTI Helical Wind Turbine (Lathe Nosecone + Twisted Catmull Blades + Gear Ring)
+        // Station 06: Sculpted PAWAN SHAKTI Helical Wind Turbine on Architectural Side Test Stand (zero Monitor 04 overlap)
         const energyGroup = new THREE.Group();
-        energyGroup.position.set(3.05, 1.09, 0.55);
+        energyGroup.position.set(3.68, 1.09, 0.68);
+        const eStandColumn = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.18, 0.26, 1.09, 24)), obsidianMat);
+        eStandColumn.position.y = -0.545;
+        const eStandFloorCollar = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.42, 0.46, 0.04, 32)), titaniumMat);
+        eStandFloorCollar.position.y = -1.07;
         const ePlinth = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.32, 0.36, 0.04, 32)), obsidianMat);
         ePlinth.position.y = 0.02;
+        const eCollar = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(0.34, 0.012, 10, 32)), brassMat);
+        eCollar.rotation.x = Math.PI / 2;
+        eCollar.position.y = 0.035;
         const eMast = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.042, 0.072, 0.94, 24)), titaniumMat);
         eMast.position.y = 0.47;
 
@@ -726,7 +958,7 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
         airflowRibbon.rotation.y = Math.PI / 2;
         airflowRibbon.position.set(0.32, 0.94, 0.15);
 
-        energyGroup.add(ePlinth, eMast, eNacelle, statorCoil, tRotor, airflowRibbon);
+        energyGroup.add(eStandColumn, eStandFloorCollar, ePlinth, eCollar, eMast, eNacelle, statorCoil, tRotor, airflowRibbon);
         registerInteractive(energyGroup, 'energy');
         scene.add(energyGroup);
 
@@ -838,7 +1070,7 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
 
         // Station 09: Precision Satin Speedcube Rubik Calibration Cube on Brass Turntable
         const cubePlinthGroup = new THREE.Group();
-        cubePlinthGroup.position.set(0.15, 1.09, 0.72);
+        cubePlinthGroup.position.set(0.15, 1.1, 0.72);
         const cTray = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.28, 0.31, 0.026, 32)), obsidianMat);
         cTray.position.y = 0.013;
         const cRim = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(0.295, 0.008, 10, 36)), brassMat);
@@ -849,11 +1081,14 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
 
         const cubeRoot = new THREE.Group();
         cubeRoot.position.set(0.15, 1.4, 0.72);
+        const cubePivot = new THREE.Group();
+        cubeRoot.add(cubePivot);
+
         const cubies: import('three').Group[] = [];
-        const coreBlackMat = trackMat(new THREE.MeshStandardMaterial({ color: '#0A0D14', metalness: 0.3, roughness: 0.55 }));
-        const stickerColors = ['#EF4444', '#F97316', '#C8CDD5', '#EAB308', '#22C55E', '#3B82F6']; // +X,-X,+Y,-Y,+Z,-Z
+        const coreBlackMat = trackMat(new THREE.MeshStandardMaterial({ color: '#0A0D14', metalness: 0.28, roughness: 0.56 }));
+        const stickerColors = ['#DC2626', '#EA580C', '#AEB6C2', '#CA8A04', '#16A34A', '#2563EB']; // +X,-X,+Y,-Y,+Z,-Z (glare-free satin)
         const stickerMats = stickerColors.map((hex) =>
-          trackMat(new THREE.MeshStandardMaterial({ color: hex, metalness: 0.15, roughness: 0.24 }))
+          trackMat(new THREE.MeshStandardMaterial({ color: hex, metalness: 0.08, roughness: 0.44 }))
         );
         const cubieBodyGeo = trackGeo(new THREE.BoxGeometry(0.106, 0.106, 0.106));
         const tileGeo = trackGeo(new THREE.BoxGeometry(0.088, 0.088, 0.006));
@@ -909,22 +1144,31 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
           }
         }
 
-        const rotateCubeSlice = (axis: 'x' | 'y' | 'z', layer: -1 | 0 | 1, dir: 1 | -1) => {
+        type CubeMove = { axis: 'x' | 'y' | 'z'; layer: -1 | 0 | 1; dir: 1 | -1 };
+        const cubeHistory: CubeMove[] = [];
+        const solveQueue: CubeMove[] = [];
+        let activeSliceTurn: {
+          move: CubeMove;
+          members: import('three').Group[];
+          progress: number;
+        } | null = null;
+
+        const snapCubeMoveInstant = (mv: CubeMove) => {
           const rotVec =
-            axis === 'x'
+            mv.axis === 'x'
               ? new THREE.Vector3(1, 0, 0)
-              : axis === 'y'
+              : mv.axis === 'y'
               ? new THREE.Vector3(0, 1, 0)
               : new THREE.Vector3(0, 0, 1);
-          const q = new THREE.Quaternion().setFromAxisAngle(rotVec, (Math.PI / 2) * dir);
+          const q = new THREE.Quaternion().setFromAxisAngle(rotVec, (Math.PI / 2) * mv.dir);
           for (const c of cubies) {
             const coord =
-              axis === 'x'
+              mv.axis === 'x'
                 ? Math.round(c.position.x / 0.118)
-                : axis === 'y'
+                : mv.axis === 'y'
                 ? Math.round(c.position.y / 0.118)
                 : Math.round(c.position.z / 0.118);
-            if (coord === layer) {
+            if (coord === mv.layer) {
               c.position.applyQuaternion(q);
               c.position.set(
                 Math.round(c.position.x / 0.118) * 0.118,
@@ -936,7 +1180,41 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
           }
         };
 
+        const finalizeActiveTurn = () => {
+          if (!activeSliceTurn) return;
+          const { move, members } = activeSliceTurn;
+          cubePivot.rotation.set(0, 0, 0);
+          for (const c of members) {
+            cubePivot.remove(c);
+            cubeRoot.add(c);
+          }
+          snapCubeMoveInstant(move);
+          activeSliceTurn = null;
+        };
+
+        const startNextTurnFromQueue = () => {
+          if (activeSliceTurn || solveQueue.length === 0) return;
+          const mv = solveQueue.shift()!;
+          const members: import('three').Group[] = [];
+          for (const c of cubies) {
+            const coord =
+              mv.axis === 'x'
+                ? Math.round(c.position.x / 0.118)
+                : mv.axis === 'y'
+                ? Math.round(c.position.y / 0.118)
+                : Math.round(c.position.z / 0.118);
+            if (coord === mv.layer) {
+              cubeRoot.remove(c);
+              cubePivot.add(c);
+              members.push(c);
+            }
+          }
+          cubePivot.rotation.set(0, 0, 0);
+          activeSliceTurn = { move: mv, members, progress: 0 };
+        };
+
         const resetCubeSolved = () => {
+          finalizeActiveTurn();
           cubeHistory.length = 0;
           solveQueue.length = 0;
           let idx = 0;
@@ -951,9 +1229,6 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
           }
           cubeRoot.rotation.set(0.28, -0.35, 0);
         };
-        const cubeHistory: Array<{ axis: 'x' | 'y' | 'z'; layer: -1 | 0 | 1; dir: 1 | -1 }> = [];
-        const solveQueue: Array<{ axis: 'x' | 'y' | 'z'; layer: -1 | 0 | 1; dir: 1 | -1 }> = [];
-        let solveTimer = 0;
         const projVec = new THREE.Vector3();
         cubeRoot.rotation.set(0.28, -0.35, 0);
         registerInteractive(cubeRoot, 'cube');
@@ -1049,6 +1324,15 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
         const desiredCam = new THREE.Vector3(...startMeta.cameraPos);
         const desiredTarget = new THREE.Vector3(...startMeta.lookAt);
         let lastStation = stateRef.current.activeStation;
+        let lastEntered = stateRef.current.entered;
+        let lastMood = stateRef.current.lightingMood;
+        let camTransitionLeft = lastEntered ? 0 : 1.05;
+        let rotorSpeedCurrent = 1.7;
+        const onOrbitStart = () => {
+          camTransitionLeft = 0;
+        };
+        orbit.addEventListener('start', onOrbitStart);
+
         let frames = 0;
         let fpsAccum = 0;
         let texRefreshAccum = 0;
@@ -1062,6 +1346,19 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
           lastNow = now;
           const t = now / 1000;
 
+          if (stateRef.current.lightingMood !== lastMood) {
+            lastMood = stateRef.current.lightingMood;
+            const mood = STUDIO_LIGHTING_MOODS[lastMood] || STUDIO_LIGHTING_MOODS.cinema;
+            scene.background = new THREE.Color(mood.bgHex);
+            scene.fog = new THREE.FogExp2(mood.fogHex, 0.026);
+            floorUniforms.uFloorBase.value.set(mood.floorHex);
+            coveEmitMat.color.set(mood.coveHex);
+            lighting.keyLight.color.setHex(mood.keyHex);
+            lighting.keyLight.intensity = mood.keyIntensity;
+            studioRimLight.color.setHex(mood.rimHex);
+            renderer.toneMappingExposure = mood.exposure;
+          }
+
           while (cubeQueueRef.current.length > 0) {
             const cmd = cubeQueueRef.current.shift()!;
             if (cmd.type === 'reset') {
@@ -1070,29 +1367,55 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
               const axes: Array<'x' | 'y' | 'z'> = ['x', 'y', 'z'];
               const layers: Array<-1 | 0 | 1> = [-1, 0, 1];
               for (let s = 0; s < 8; s++) {
-                const mv = { axis: axes[s % 3], layer: layers[(s * 2) % 3], dir: (s % 2 === 0 ? 1 : -1) as 1 | -1 };
-                rotateCubeSlice(mv.axis, mv.layer, mv.dir);
+                const mv: CubeMove = {
+                  axis: axes[s % 3],
+                  layer: layers[(s * 2) % 3],
+                  dir: (s % 2 === 0 ? 1 : -1) as 1 | -1,
+                };
                 cubeHistory.push(mv);
+                if (reduced) {
+                  snapCubeMoveInstant(mv);
+                } else {
+                  solveQueue.push(mv);
+                }
               }
             } else if (cmd.type === 'solve') {
               while (cubeHistory.length > 0) {
                 const last = cubeHistory.pop()!;
-                solveQueue.push({ axis: last.axis, layer: last.layer, dir: (last.dir * -1) as 1 | -1 });
+                const inv: CubeMove = { axis: last.axis, layer: last.layer, dir: (last.dir * -1) as 1 | -1 };
+                if (reduced) {
+                  snapCubeMoveInstant(inv);
+                } else {
+                  solveQueue.push(inv);
+                }
               }
-              solveTimer = 0;
             } else if (cmd.type === 'turn') {
-              const mv = { axis: cmd.axis ?? 'y', layer: cmd.layer ?? 1, dir: cmd.dir ?? 1 };
-              rotateCubeSlice(mv.axis, mv.layer, mv.dir);
+              const mv: CubeMove = { axis: cmd.axis ?? 'y', layer: cmd.layer ?? 1, dir: cmd.dir ?? 1 };
               cubeHistory.push(mv);
+              if (reduced) {
+                snapCubeMoveInstant(mv);
+              } else {
+                solveQueue.push(mv);
+              }
             }
           }
 
-          if (solveQueue.length > 0) {
-            solveTimer += dt;
-            if (solveTimer >= 0.14) {
-              solveTimer = 0;
-              const nextMove = solveQueue.shift()!;
-              rotateCubeSlice(nextMove.axis, nextMove.layer, nextMove.dir);
+          if (!activeSliceTurn && solveQueue.length > 0) {
+            startNextTurnFromQueue();
+          }
+          if (activeSliceTurn) {
+            activeSliceTurn.progress += dt / 0.14;
+            const rawP = Math.min(1, activeSliceTurn.progress);
+            const eased = 1 - Math.pow(1 - rawP, 3);
+            const angle = (Math.PI / 2) * activeSliceTurn.move.dir * eased;
+            cubePivot.rotation.set(
+              activeSliceTurn.move.axis === 'x' ? angle : 0,
+              activeSliceTurn.move.axis === 'y' ? angle : 0,
+              activeSliceTurn.move.axis === 'z' ? angle : 0
+            );
+            if (rawP >= 1) {
+              finalizeActiveTurn();
+              startNextTurnFromQueue();
             }
           }
 
@@ -1106,39 +1429,53 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
           }
 
           if (!reduced) {
-            tRotor.rotation.z -= dt * 1.65;
-            rShoulder.rotation.z = Math.sin(t * 0.65) * 0.14 - 0.12;
-            rElbow.rotation.z = Math.cos(t * 0.85) * 0.22 + 0.35;
-            gRing1.rotation.y += dt * 0.45;
+            const energyFocused = stateRef.current.activeStation === 'energy' || stateRef.current.hoveredStation === 'energy';
+            const roboticsFocused =
+              stateRef.current.activeStation === 'robotics' || stateRef.current.hoveredStation === 'robotics';
+            rotorSpeedCurrent += ((energyFocused ? 3.55 : 1.7) - rotorSpeedCurrent) * Math.min(1, dt * 4);
+            tRotor.rotation.z -= dt * rotorSpeedCurrent;
+
+            const armReach = roboticsFocused ? 0.24 : 0.14;
+            rShoulder.rotation.z = Math.sin(t * (roboticsFocused ? 0.95 : 0.65)) * armReach - 0.12;
+            rElbow.rotation.z = Math.cos(t * (roboticsFocused ? 1.15 : 0.85)) * (armReach + 0.08) + 0.35;
+
+            gRing1.rotation.y += dt * 0.48;
             gRing1.rotation.x = Math.sin(t * 0.4) * 0.25;
-            gRing2.rotation.z -= dt * 0.35;
-            gyroGroup.position.y = 2.72 + Math.sin(t * 1.4) * 0.03;
+            gRing2.rotation.z -= dt * 0.38;
+            gyroGroup.position.y = 2.74 + Math.sin(t * 1.4) * 0.032;
             if (!dragCube.active && stateRef.current.activeStation !== 'cube') {
               cubeRoot.rotation.y += dt * 0.32;
             }
-            dustPoints.rotation.y = t * 0.015;
+            dustPoints.rotation.y = t * 0.014;
           }
 
+          if (stateRef.current.entered && !lastEntered) {
+            lastEntered = true;
+            camTransitionLeft = 1.15;
+          }
           if (stateRef.current.activeStation !== lastStation) {
             lastStation = stateRef.current.activeStation;
             const m = stationById(lastStation);
             desiredCam.set(...m.cameraPos);
             desiredTarget.set(...m.lookAt);
+            camTransitionLeft = 0.95;
             if (reduced) {
               camera.position.copy(desiredCam);
               orbit.target.copy(desiredTarget);
+              camTransitionLeft = 0;
             }
           }
 
-          if (!reduced) {
+          if (!reduced && camTransitionLeft > 0) {
+            camTransitionLeft = Math.max(0, camTransitionLeft - dt);
             const f = settleFactor(4.8, dt);
-            if (stateRef.current.activeStation !== 'overview') camera.position.lerp(desiredCam, f);
+            camera.position.lerp(desiredCam, f);
             orbit.target.lerp(desiredTarget, f);
           }
           orbit.update();
 
           texRefreshAccum += dt;
-          if (texRefreshAccum >= 2.0) {
+          if (texRefreshAccum >= 1.4) {
             texRefreshAccum = 0;
             monitorTexUpdaters.forEach((fn) => fn());
           }
@@ -1157,6 +1494,7 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
                 fps,
                 webglActive: true,
                 activeStation: stateRef.current.activeStation,
+                lightingMood: stateRef.current.lightingMood,
               };
             }
             frames = 0;
@@ -1195,9 +1533,12 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
           renderer.domElement.removeEventListener('pointermove', onPointerMove);
           renderer.domElement.removeEventListener('pointerdown', onPointerDown);
           renderer.domElement.removeEventListener('pointerup', onPointerUp);
+          orbit.removeEventListener('start', onOrbitStart);
           orbit.dispose();
           postfx.dispose();
           lighting.dispose();
+          studioRimLight.dispose();
+          deskLampLight.dispose();
           pbrMaps.dispose();
           managedGeos.forEach((g) => g.dispose());
           managedMats.forEach((m) => m.dispose());

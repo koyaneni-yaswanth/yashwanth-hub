@@ -11,6 +11,8 @@ const {
   UNIVERSE_EIGHT_ENVIRONMENTS,
   EXPERIMENT_APPS,
   CAD_ASSEMBLY_PRESETS,
+  STUDIO_LIGHTING_MOODS,
+  GUIDED_TOUR_ORDER,
   YASHWANTH_IDENTITY_PROFILE,
   stationById,
 } = await import('../src/lib/universeConfig.ts');
@@ -27,6 +29,8 @@ test('Digital Universe defines 8 environments, 11 spatial hotspots, CAD presets 
   assert.equal(stationById('experiment').shortLabel, 'EXPERIMENTS');
   assert.equal(stationById('robotics').linkedTab, 'robotics-lab');
   assert.equal(stationById('energy').linkedTab, 'startup-command');
+  assert.ok(STUDIO_LIGHTING_MOODS.cinema && STUDIO_LIGHTING_MOODS.workshop && STUDIO_LIGHTING_MOODS.lab);
+  assert.ok(GUIDED_TOUR_ORDER.length >= 8 && GUIDED_TOUR_ORDER.includes('energy'));
 
   assert.equal(EXPERIMENT_APPS.length, 3);
   for (const app of EXPERIMENT_APPS) {
@@ -81,6 +85,8 @@ test('GLSL Shaders, Physical Monitors, Whiteboard, Experiment Station & Reusable
   assert.ok(sceneSrc.includes('LatheGeometry'));
   assert.ok(sceneSrc.includes('SCENE_PIN_ANCHORS'));
   assert.ok(sceneSrc.includes('solveQueue'));
+  assert.ok(sceneSrc.includes('cubePivot'));
+  assert.ok(sceneSrc.includes('cycWall'));
   assert.ok(sceneSrc.includes('onPointerUp'));
   assert.ok(sceneSrc.includes('renderer.dispose()'));
 

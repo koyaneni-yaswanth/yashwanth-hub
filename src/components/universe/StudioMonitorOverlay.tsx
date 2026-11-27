@@ -5,6 +5,8 @@ import {
   ArrowUpRight,
   Bot,
   Box,
+  ChevronLeft,
+  ChevronRight,
   Cpu,
   ExternalLink,
   FolderKanban,
@@ -20,6 +22,7 @@ import {
 } from 'lucide-react';
 import { db } from '../../db';
 import {
+  GUIDED_TOUR_ORDER,
   YASHWANTH_IDENTITY_PROFILE,
   stationById,
   type UniverseStationId,
@@ -157,7 +160,7 @@ export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
     >
       {/* Header */}
       <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-white/10 bg-black/30">
-        <div className="min-w-0 flex items-center gap-2.5">
+        <div className="min-w-0 flex items-center gap-2">
           <button
             type="button"
             onClick={() => onSelectStation('overview')}
@@ -167,6 +170,35 @@ export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Back</span>
           </button>
+          <div className="hidden sm:inline-flex items-center rounded-lg border border-white/15 bg-white/5 overflow-hidden shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                const idx = GUIDED_TOUR_ORDER.indexOf(activeStation);
+                const prevIdx = idx <= 0 ? GUIDED_TOUR_ORDER.length - 1 : idx - 1;
+                onSelectStation(GUIDED_TOUR_ORDER[prevIdx]);
+              }}
+              className="p-1 text-slate-300 hover:text-white hover:bg-white/10 cursor-pointer"
+              aria-label="Previous station"
+              title="Previous station (Left arrow)"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+            <span className="w-px h-3.5 bg-white/15" />
+            <button
+              type="button"
+              onClick={() => {
+                const idx = GUIDED_TOUR_ORDER.indexOf(activeStation);
+                const nextIdx = idx < 0 || idx >= GUIDED_TOUR_ORDER.length - 1 ? 0 : idx + 1;
+                onSelectStation(GUIDED_TOUR_ORDER[nextIdx]);
+              }}
+              className="p-1 text-slate-300 hover:text-white hover:bg-white/10 cursor-pointer"
+              aria-label="Next station"
+              title="Next station (Right arrow)"
+            >
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
           <div className="min-w-0">
             <p className="font-mono text-[10px] uppercase tracking-widest text-[#C6A46B]">
               STATION {station.code} · {station.shortLabel}
