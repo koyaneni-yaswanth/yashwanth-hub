@@ -10,6 +10,7 @@ import {
 import { db } from '../db';
 import { Badge } from '../components/common/Badge';
 import { StatCard } from '../components/common/StatCard';
+import { DailyHabitsCard } from '../components/day/DailyHabitsCard';
 import { getTodayISO } from '../lib/utils';
 
 const INITIAL_ROUTINE_CHECKS = [
@@ -228,6 +229,8 @@ export const HealthRoutinePage: React.FC = () => {
           ))}
         </div>
       </div>
+
+      <DailyHabitsCard today={today} />
     </div>
   );
 };

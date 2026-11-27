@@ -269,6 +269,27 @@ export const MyDayPage: React.FC<MyDayPageProps> = ({ onNavigate, areas = [] }) 
           <p className="text-sm text-[var(--hub-muted)]">A realistic plan for the time you actually have.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              const summaryLines = items
+                .slice(0, 6)
+                .map((it, idx) => {
+                  const t = tasksById.get(it.task_id);
+                  return `${idx + 1}. ${t?.text || 'Task'} (${it.minutes}m${t?.done ? ', done' : ''})`;
+                })
+                .join('\n');
+              const prompt = items.length
+                ? `Review my Daily Compass plan for ${today} (${formatMinutes(available)} budget, ${events.length} calendar events) and tell me the smartest order or risk:\n${summaryLines}`
+                : `Help me prioritize what matters most today (${today}) across my open tasks and ${events.length} scheduled events.`;
+              localStorage.setItem('yash_ai_prefill_prompt', prompt);
+              onNavigate('buddy');
+            }}
+            className={ghostBtn}
+          >
+            <Sparkles className="w-4 h-4 text-[var(--hub-accent)]" aria-hidden="true" />
+            Brief JARVIS
+          </button>
           <button type="button" onClick={() => setWrapOpen((o) => !o)} aria-expanded={wrapOpen} aria-controls="wrap-up" className={ghostBtn}>
             <Moon className="w-4 h-4" aria-hidden="true" />
             Evening wrap-up
@@ -304,11 +325,23 @@ export const MyDayPage: React.FC<MyDayPageProps> = ({ onNavigate, areas = [] }) 
                 ))}
             </select>
           </label>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => void makePlan({ rescue: false })} className={primaryBtn} disabled={loading}>
               <Sparkles className="w-4 h-4" aria-hidden="true" />
               {items.length ? 'Re-plan my day' : 'Plan my day'}
             </button>
+            {(() => {
+              const nextOpen = items.find((it) => {
+                const task = tasksById.get(it.task_id);
+                return task && !task.done;
+              });
+              return nextOpen ? (
+                <button type="button" onClick={() => focusOn(nextOpen.task_id)} className={ghostBtn}>
+                  <Timer className="w-4 h-4 text-[var(--hub-accent)]" aria-hidden="true" />
+                  Focus top task
+                </button>
+              ) : null;
+            })()}
             {!plan?.rescue && (
               <button type="button" onClick={() => void makePlan({ rescue: true })} className={ghostBtn} disabled={loading}>
                 <LifeBuoy className="w-4 h-4" aria-hidden="true" />
@@ -318,6 +351,30 @@ export const MyDayPage: React.FC<MyDayPageProps> = ({ onNavigate, areas = [] }) 
           </div>
         </div>
 
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-[var(--hub-muted)] mr-1">Quick budget:</span>
+          {[
+            { label: '1h', minutes: 60 },
+            { label: '2h', minutes: 120 },
+            { label: '4h', minutes: 240 },
+            { label: '6h', minutes: 360 },
+          ].map((preset) => (
+            <button
+              key={preset.minutes}
+              type="button"
+              onClick={() => void makePlan({ minutes: preset.minutes, rescue: false })}
+              aria-pressed={available === preset.minutes}
+              className={`px-2.5 py-1 rounded-lg border font-medium cursor-pointer transition-colors ${
+                available === preset.minutes
+                  ? 'bg-[var(--hub-accent)]/15 border-[var(--hub-accent)] text-[var(--hub-accent)]'
+                  : 'bg-[var(--hub-bg)] border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
+              }`}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+
         {items.length > 0 && !plan?.rescue && (
           <div>
             <div className="flex justify-between text-xs text-[var(--hub-muted)] mb-1">
@@ -325,7 +382,7 @@ export const MyDayPage: React.FC<MyDayPageProps> = ({ onNavigate, areas = [] }) 
                 Planned {formatMinutes(load.plannedMinutes)} of {formatMinutes(available)}
               </span>
               <span>
-                {doneCount} of {items.length} done
+                {doneCount} of {items.length} done ({Math.round((doneCount / items.length) * 100)}%)
               </span>
             </div>
             <div
@@ -503,6 +560,25 @@ export const MyDayPage: React.FC<MyDayPageProps> = ({ onNavigate, areas = [] }) 
               ))}
           </ul>
         )}
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[var(--hub-line)]">
+          <span className="text-xs text-[var(--hub-muted)]">Jump to:</span>
+          {[
+            { tab: 'tasks' as const, label: 'All Tasks' },
+            { tab: 'focus' as const, label: 'Focus Timer' },
+            { tab: 'learning-career' as const, label: 'Habits & Goals' },
+            { tab: 'notes' as const, label: 'Notes Vault' },
+          ].map((item) => (
+            <button
+              key={item.tab}
+              type="button"
+              onClick={() => onNavigate(item.tab)}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-medium text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer"
+            >
+              {item.label}
+              <ArrowRight className="w-3 h-3 text-[var(--hub-accent)]" aria-hidden="true" />
+            </button>
+          ))}
+        </div>
       </section>
 
       {/* ---------------- Evening wrap-up ---------------- */}

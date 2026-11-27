@@ -326,3 +326,117 @@ test('JARVIS 5.0 Multimodal Image Sanitizer & Server Vision Routing', async () =
     process.env.GEMINI_API_KEY = savedGemini;
   }
 });
+
+test('Notes enhancements export clean Markdown, convert notes to tasks, and filter pinned items', async () => {
+  const {
+    noteToFilename,
+    buildNoteMarkdown,
+    buildNoteTaskInput,
+    buildNoteAiPrompt,
+    filterNotesList,
+  } = await import('../src/lib/noteActions.ts');
+
+  assert.equal(noteToFilename('Rotor Balance: Test #2!'), 'rotor-balance-test-2.md');
+  assert.equal(noteToFilename('   '), 'note.md');
+
+  const md = buildNoteMarkdown({
+    title: 'Wind Gearbox Check',
+    body: '- Check bearing clearance\n- Verify torque specs',
+    area: 'PAWAN SHAKTI',
+    pinned: true,
+    tags: ['hardware', 'trl5'],
+    updated_at: '2026-11-28T00:00:00.000Z',
+  });
+  assert.ok(md.startsWith('# Wind Gearbox Check'));
+  assert.ok(md.includes('Area: PAWAN SHAKTI'));
+  assert.ok(md.includes('#hardware #trl5'));
+
+  const taskPayload = buildNoteTaskInput(
+    {
+      title: 'Inspect bearing torque',
+      body: 'Run cold spin check before assembly',
+      area: 'PAWAN SHAKTI',
+      pinned: true,
+      project_id: 'proj-pawan',
+    },
+    'General'
+  );
+  assert.equal(taskPayload.priority, 'high');
+  assert.equal(taskPayload.starred, true);
+  assert.equal(taskPayload.project_id, 'proj-pawan');
+
+  const prompt = buildNoteAiPrompt({
+    title: 'PiPER Kinematics',
+    body: 'Validate wrist singularity margin',
+    area: 'Robotics',
+    tags: ['piper'],
+  });
+  assert.ok(prompt.includes('PiPER Kinematics'));
+  assert.ok(prompt.includes('#piper'));
+
+  const filtered = filterNotesList(
+    [
+      { id: '1', title: 'Old Unpinned', body: 'rotor', area: 'Robotics', pinned: false, tags: ['mech'], created_at: '2026-11-01', updated_at: '2026-11-01' },
+      { id: '2', title: 'Pinned Note', body: 'torque', area: 'PAWAN SHAKTI', pinned: true, tags: ['rotor'], created_at: '2026-11-02', updated_at: '2026-11-02' },
+    ],
+    { query: 'rotor', pinnedOnly: true }
+  );
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].id, '2');
+
+  const notesPageSrc = fs.readFileSync(path.join(root, 'src/pages/NotesPage.tsx'), 'utf8');
+  assert.ok(notesPageSrc.includes('<SafeMarkdown'));
+  assert.ok(notesPageSrc.includes('Pinned only'));
+  assert.ok(notesPageSrc.includes('TaskService.create'));
+});
+
+test('Analytics AI telemetry, CSV/JSON export, MyDay, HealthRoutine Habits & QuickCapture upgrades wire cleanly', async () => {
+  const {
+    buildAnalyticsSnapshot,
+    buildAnalyticsCsv,
+    buildAnalyticsJson,
+  } = await import('../src/lib/analyticsExport.ts');
+
+  const snap = buildAnalyticsSnapshot({
+    range: 'week',
+    today: '2026-11-28',
+    tasks: [
+      { id: 't1', text: 'Done item', area: 'General', priority: 'high', starred: false, done: true, created_at: '2026-11-27', updated_at: '2026-11-27' },
+      { id: 't2', text: 'Overdue item', area: 'General', priority: 'urgent', starred: true, done: false, due_date: '2026-11-20', created_at: '2026-11-19', updated_at: '2026-11-19' },
+    ],
+    expenses: [
+      { id: 'e1', amount: 450, category: 'Parts', area: 'Robotics', note: 'Drivers', date: '2026-11-27', created_at: '2026-11-27', updated_at: '2026-11-27' },
+      { id: 'e2', amount: 900, category: 'Parts', area: 'Robotics', note: 'Old month', date: '2026-10-01', created_at: '2026-10-01', updated_at: '2026-10-01' },
+    ],
+    habitLogs: [{ id: 'h1:2026-11-28', habit_id: 'h1', date: '2026-11-28', created_at: '2026-11-28' }],
+    focusSessions: [{ id: 'f1', date: '2026-11-28', preset: '25-5', planned_minutes: 25, break_minutes: 5, label: 'Deep work', started_at: '2026-11-28T08:00:00Z', actual_minutes: 45, completed_full: true, distractions: [], created_at: '2026-11-28', updated_at: '2026-11-28' }],
+    aiLogs: [
+      { id: 'a1', provider: 'gemini', modelId: 'gemini-2.5-flash', taskMode: 'work', tokensInput: 100, tokensOutput: 200, latencyMs: 320, estimatedCostUSD: 0.0012, timestamp: '2026-11-28T09:00:00Z' },
+    ],
+    exportedAt: '2026-11-28T10:00:00.000Z',
+  });
+
+  assert.equal(snap.tasks.overdue, 1);
+  assert.equal(snap.spendInRangeINR, 450);
+  assert.equal(snap.focusMinutesInRange, 45);
+  assert.equal(snap.habitCheckinsInRange, 1);
+  assert.equal(snap.aiTelemetry.totalCalls, 1);
+  assert.equal(snap.aiTelemetry.totalTokens, 300);
+  assert.equal(snap.aiTelemetry.byProvider[0].label, 'gemini');
+
+  const csv = buildAnalyticsCsv(snap);
+  assert.ok(csv.includes('AI Provider,gemini,1'));
+  const parsedJson = JSON.parse(buildAnalyticsJson(snap));
+  assert.equal(parsedJson.aiTelemetry.totalCalls, 1);
+
+  const analyticsSrc = fs.readFileSync(path.join(root, 'src/pages/AnalyticsPage.tsx'), 'utf8');
+  const myDaySrc = fs.readFileSync(path.join(root, 'src/pages/MyDayPage.tsx'), 'utf8');
+  const quickCaptureSrc = fs.readFileSync(path.join(root, 'src/components/common/QuickCaptureModal.tsx'), 'utf8');
+  const healthSrc = fs.readFileSync(path.join(root, 'src/pages/HealthRoutinePage.tsx'), 'utf8');
+  assert.ok(analyticsSrc.includes('<AnalyticsExportControls'));
+  assert.ok(analyticsSrc.includes('<AiTelemetryPanel'));
+  assert.ok(myDaySrc.includes('Brief JARVIS'));
+  assert.ok(myDaySrc.includes('Focus top task'));
+  assert.ok(quickCaptureSrc.includes('Ctrl+Enter saves'));
+  assert.ok(healthSrc.includes('<DailyHabitsCard'));
+});

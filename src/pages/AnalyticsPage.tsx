@@ -11,6 +11,7 @@ import type { Area } from '../types';
 import { formatINR, getTodayISO, isOverdue } from '../lib/utils';
 import { StatCard } from '../components/common/StatCard';
 import { ChartCard } from '../components/charts/ChartCard';
+import { AnalyticsExportControls, AiTelemetryPanel } from '../components/analytics/AiTelemetryPanel';
 import { ColumnChart, type ColumnDatum } from '../components/charts/ColumnChart';
 import { RankedBars, type RankedDatum } from '../components/charts/RankedBars';
 import { SegmentedBar, type Segment } from '../components/charts/SegmentedBar';
@@ -190,6 +191,15 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
           </button>
         ))}
         <span className="text-xs text-[var(--hub-muted)]">Open-task charts always show right now.</span>
+        <AnalyticsExportControls
+          range={range}
+          today={today}
+          allTasks={allTasks}
+          allExpenses={allExpenses}
+          habitLogs={habitLogs}
+          focusSessions={focusSessions}
+          onNavigate={onNavigate}
+        />
       </div>
 
       {/* Weekly completions */}
@@ -287,6 +297,16 @@ export const AnalyticsPage: React.FC<AnalyticsPageProps> = ({
           <RankedBars data={spendRows.filter((r) => r.value > 0)} label="Spending by workspace" format={formatINR} showShare />
         </ChartCard>
       </div>
+
+      <AiTelemetryPanel
+        range={range}
+        today={today}
+        allTasks={allTasks}
+        allExpenses={allExpenses}
+        habitLogs={habitLogs}
+        focusSessions={focusSessions}
+        onNavigate={onNavigate}
+      />
     </div>
   );
 };

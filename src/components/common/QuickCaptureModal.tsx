@@ -245,7 +245,18 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 bg-black/60 backdrop-blur-sm">
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center pt-16 px-4 bg-black/60 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Quick Capture"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          onClose();
+        }
+      }}
+    >
       <div className="w-full max-w-xl rounded-2xl bg-[var(--hub-surface)] border border-[var(--hub-line)] shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--hub-line)] bg-[var(--hub-bg)]">
@@ -281,6 +292,15 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
                 setHasManualEdits(false);
                 setRawText(e.target.value);
               }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  onClose();
+                } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && rawText.trim() && !isSubmitting) {
+                  e.preventDefault();
+                  e.currentTarget.form?.requestSubmit();
+                }
+              }}
               placeholder="Speak or type: e.g. Create a task to test Pawan Shakti generator tomorrow at 4pm&#10;or: Meet Dr. Rao Friday 11am #robotics"
               className="w-full px-4 py-3 pr-12 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] text-sm text-[var(--hub-ink)] placeholder-[var(--hub-muted)] focus:outline-none focus:border-[var(--hub-accent)] font-medium leading-relaxed resize-none"
             />
@@ -298,6 +318,29 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
               {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
             </button>
           </div>
+
+          {!rawText.trim() && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] font-semibold text-[var(--hub-muted)] mr-1">Try:</span>
+              {[
+                'Task: Inspect PAWAN SHAKTI gearbox tomorrow 4pm',
+                'Expense: ₹450 stepper driver parts',
+                'Note: Key thermal observation from bench test',
+              ].map((sample) => (
+                <button
+                  key={sample}
+                  type="button"
+                  onClick={() => {
+                    setHasManualEdits(false);
+                    setRawText(sample);
+                  }}
+                  className="px-2.5 py-1 rounded-lg text-[11px] border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer truncate max-w-full"
+                >
+                  {sample}
+                </button>
+              ))}
+            </div>
+          )}
 
           {voiceError && (
             <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-800 dark:text-amber-300 flex items-center gap-2">
@@ -422,10 +465,23 @@ export const QuickCaptureModal: React.FC<QuickCaptureModalProps> = ({
           {/* Action Footer */}
           <div className="flex items-center justify-between pt-2">
             <span className="text-[11px] text-[var(--hub-muted)]">
-              {speechSupported ? 'Click mic for voice dictation • Esc closes' : 'Voice dictation unsupported in this browser • Esc closes'}
+              {speechSupported ? 'Mic dictation ready • Ctrl+Enter saves • Esc closes' : 'Ctrl+Enter saves • Esc closes'}
             </span>
 
             <div className="flex items-center gap-2">
+              {rawText.trim() && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRawText('');
+                    setManualType(undefined);
+                    setHasManualEdits(false);
+                  }}
+                  className="px-3 py-2 rounded-xl text-xs font-semibold text-[var(--hub-muted)] hover:text-[var(--hub-ink)] cursor-pointer"
+                >
+                  Clear
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onClose}
