@@ -27,9 +27,12 @@ import {
   VolumeX,
   X,
   Zap,
+  ImagePlus,
 } from 'lucide-react';
 import { BuddyCoreScene } from '../components/buddy/BuddyCoreScene';
 import { ProviderGatewayModal } from '../components/buddy/ProviderGatewayModal';
+import { SafeMarkdown } from '../components/common/SafeMarkdown';
+import { prepareImageFile, type PreparedImageAttachment } from '../lib/imageUpload';
 import { CompanionService } from '../services/companion/companionService';
 import { AIGateway } from '../services/ai/aiGateway';
 import { LocalAgentClient } from '../services/ai/localAgentClient';
@@ -114,6 +117,8 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
   const [privateOfflineOnly, setPrivateOfflineOnly] = useState(false);
   const [systemStatusPill, setSystemStatusPill] = useState<'LOCAL ONLINE' | 'CLOUD ONLINE' | 'DEGRADED' | 'OFFLINE'>('DEGRADED');
   const [showAllHistory, setShowAllHistory] = useState(false);
+  const [attachedImages, setAttachedImages] = useState<PreparedImageAttachment[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
 
   // Memory editing state inside modal
@@ -261,21 +266,60 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages.length, streamingReply]);
 
+  const handleAttachImages = useCallback(async (files: FileList | File[]) => {
+    const list = Array.from(files || []).slice(0, 3);
+    if (list.length === 0) return;
+    try {
+      const prepared = await Promise.all(list.map((f) => prepareImageFile(f)));
+      setAttachedImages((prev) => [...prev, ...prepared].slice(0, 3));
+      if (routeCategory === 'AUTO') setRouteCategory('MULTIMODAL');
+    } catch (err: any) {
+      setErrorBanner(err?.message || 'Unable to process image attachment.');
+    }
+  }, [routeCategory]);
+
+  const handleExportTranscript = async () => {
+    const md = [
+      `# JARVIS Companion Transcript (${new Date().toISOString().slice(0, 10)})`,
+      '',
+      ...messages.map((m) => `### ${m.role === 'user' ? 'Yashwanth' : `JARVIS (${m.provider || 'local'})`} — ${m.timestamp}\n\n${m.content}\n`),
+    ].join('\n');
+    const blob = new Blob([md], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `jarvis-transcript-${new Date().toISOString().slice(0, 10)}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleClearConversation = async () => {
+    setMessages([]);
+    setAttachedImages([]);
+    await CompanionService.saveConversationMessages([], 'executive');
+  };
+
   const handleSend = useCallback(
     async (overrideText?: string) => {
-      const text = (overrideText ?? input).trim();
+      const rawText = (overrideText ?? input).trim();
+      const imagesToSend = overrideText ? [] : attachedImages;
+      const text = rawText || (imagesToSend.length > 0 ? 'Analyze the attached image(s) carefully.' : '');
       if (!text || visualState === 'thinking' || visualState === 'working') return;
 
       // Barge-in stop voice output
       voiceRef.current?.stopSpeaking();
       setErrorBanner(null);
-      if (!overrideText) setInput('');
+      if (!overrideText) {
+        setInput('');
+        setAttachedImages([]);
+      }
 
       const userMsg: AIChatMessage = {
         id: `u_${Date.now()}`,
         role: 'user',
         content: text,
         timestamp: new Date().toISOString(),
+        images: imagesToSend.length > 0 ? imagesToSend : undefined,
       };
       const nextHistory = [...messages, userMsg];
       setMessages(nextHistory);
@@ -287,13 +331,21 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
       streamAbortRef.current = abortCtrl;
 
       try {
+        const effectiveRoute =
+          routeCategory === 'AUTO'
+            ? imagesToSend.length > 0
+              ? 'MULTIMODAL'
+              : undefined
+            : routeCategory;
+
         const res = await CompanionService.sendCompanionMessage({
           userMessage: text,
           history: messages,
           explicitAgent: selectedAgent === 'auto' ? undefined : selectedAgent,
-          routeCategory: routeCategory === 'AUTO' ? undefined : routeCategory,
+          routeCategory: effectiveRoute,
           privateOfflineOnly,
           allowCloudFallback: !privateOfflineOnly,
+          images: imagesToSend.length > 0 ? imagesToSend : undefined,
           signal: abortCtrl.signal,
           onToken: (partial) => setStreamingReply(partial),
         });
@@ -325,7 +377,7 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
         setErrorBanner(err?.message || 'Unable to generate reply.');
       }
     },
-    [input, messages, privateOfflineOnly, refreshLocalState, routeCategory, selectedAgent, settings.autoSpeakReplies, settings.voiceEnabled, settings.voiceRate, visualState, voiceCaps.ttsSupported]
+    [attachedImages, input, messages, privateOfflineOnly, refreshLocalState, routeCategory, selectedAgent, settings.autoSpeakReplies, settings.voiceEnabled, settings.voiceRate, visualState, voiceCaps.ttsSupported]
   );
 
   const handleStopStream = () => {
@@ -729,13 +781,25 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
               className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}
             >
               <div
-                className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
+                className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
                   m.role === 'user'
                     ? 'bg-amber-500/15 border border-amber-400/25 text-slate-100'
                     : 'bg-white/5 border border-white/10 text-slate-200'
                 }`}
               >
-                {m.content}
+                {Array.isArray(m.images) && m.images.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {m.images.map((img, i) => (
+                      <img
+                        key={`${m.id}-img-${i}`}
+                        src={img.dataUrl}
+                        alt={img.name || 'Attached image'}
+                        className="h-20 w-20 object-cover rounded-lg border border-white/15"
+                      />
+                    ))}
+                  </div>
+                )}
+                <SafeMarkdown content={m.content} />
                 {m.role === 'assistant' && m.provider && (
                   <div className="mt-1.5 flex items-center justify-between gap-3 text-[10px] text-slate-400">
                     <span>
@@ -762,8 +826,8 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
 
         {streamingReply && (
           <div className="flex flex-col items-start">
-            <div className="max-w-[88%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap bg-white/5 border border-cyan-400/25 text-slate-100">
-              {streamingReply}
+            <div className="max-w-[88%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed bg-white/5 border border-cyan-400/25 text-slate-100">
+              <SafeMarkdown content={streamingReply} />
               <span className="inline-block w-1.5 h-3.5 bg-cyan-400 ml-1 animate-pulse align-middle" />
             </div>
           </div>
@@ -828,6 +892,28 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
           </button>
         </div>
 
+        {attachedImages.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            {attachedImages.map((img, i) => (
+              <div
+                key={`att-${i}`}
+                className="relative inline-flex items-center gap-2 rounded-xl border border-amber-400/35 bg-[#10151d] p-1.5 pr-7 text-[11px] text-slate-200"
+              >
+                <img src={img.dataUrl} alt={img.name} className="h-9 w-9 object-cover rounded-lg" />
+                <span className="max-w-[120px] truncate">{img.name}</span>
+                <button
+                  type="button"
+                  aria-label="Remove attached image"
+                  onClick={() => setAttachedImages((prev) => prev.filter((_, idx) => idx !== i))}
+                  className="absolute right-1.5 top-1.5 p-0.5 rounded-full bg-white/10 hover:bg-white/20 text-slate-300"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -835,6 +921,28 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
           }}
           className="flex items-center gap-2 rounded-2xl border border-white/15 bg-[#10151d] px-3 py-2 focus-within:border-amber-400/50"
         >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files) void handleAttachImages(e.target.files);
+              e.target.value = '';
+            }}
+          />
+
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Attach image for vision analysis"
+            title="Attach screenshot or image (auto-routes MULTIMODAL)"
+            className="p-2 rounded-xl border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10 transition shrink-0"
+          >
+            <ImagePlus className="h-4 w-4" />
+          </button>
+
           <button
             type="button"
             onClick={toggleMic}
@@ -860,7 +968,15 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={micActive ? 'Listening... speak naturally' : 'Talk to JARVIS...'}
+            onPaste={(e) => {
+              const items = Array.from(e.clipboardData?.items || []);
+              const imgFiles = items
+                .filter((it) => it.type.startsWith('image/'))
+                .map((it) => it.getAsFile())
+                .filter(Boolean) as File[];
+              if (imgFiles.length > 0) void handleAttachImages(imgFiles);
+            }}
+            placeholder={micActive ? 'Listening... speak naturally' : 'Talk to JARVIS (or paste/attach screenshot)...'}
             className="flex-1 bg-transparent text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none min-w-0"
           />
 
@@ -901,7 +1017,7 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
           ) : (
             <button
               type="submit"
-              disabled={!input.trim()}
+              disabled={!input.trim() && attachedImages.length === 0}
               aria-label="Send message to JARVIS"
               className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-black font-semibold text-xs px-3.5 py-2 transition shrink-0"
             >
@@ -1480,6 +1596,23 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
                         }
                       />
                     </label>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleExportTranscript}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#121923] hover:bg-white/10 px-3 py-1.5 text-slate-200"
+                    >
+                      <Download className="h-3.5 w-3.5 text-sky-400" /> Export Transcript (.md)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleClearConversation}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-rose-400/25 bg-rose-500/10 hover:bg-rose-500/20 px-3 py-1.5 text-rose-200"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> Clear Conversation History
+                    </button>
                   </div>
                 </div>
               )}

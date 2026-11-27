@@ -224,4 +224,95 @@ test('JARVIS 5.0 Hub Integration & Legacy Server Hardening Checks', () => {
   assert.match(gatewayModal, /executeTool/);
   assert.match(gatewayModal, /decideApproval/);
   assert.match(gatewayModal, /retryDeadLetters/);
+
+  const safeMd = fs.readFileSync(path.join(root, 'src', 'components', 'common', 'SafeMarkdown.tsx'), 'utf8');
+  assert.ok(!/dangerouslySetInnerHTML\s*=/.test(safeMd));
+  assert.match(safeMd, /noopener noreferrer/);
+
+  const cmdPalette = fs.readFileSync(path.join(root, 'src', 'components', 'common', 'CommandPalette.tsx'), 'utf8');
+  assert.match(cmdPalette, /buddy/);
+  assert.match(cmdPalette, /AI Providers/);
+
+  const settingsPage = fs.readFileSync(path.join(root, 'src', 'pages', 'SettingsPage.tsx'), 'utf8');
+  assert.match(settingsPage, /ProviderGatewayModal/);
+});
+
+test('JARVIS 5.0 Multimodal Image Sanitizer & Server Vision Routing', async () => {
+  const { parseDataUrlToBase64 } = await import('../src/lib/imageUpload.ts');
+  const parsedPng = parseDataUrlToBase64('data:image/png;base64,iVBORw0KGgo=');
+  assert.equal(parsedPng?.mimeType, 'image/png');
+  assert.equal(parsedPng?.base64, 'iVBORw0KGgo=');
+  assert.equal(parseDataUrlToBase64('data:image/svg+xml;base64,PHN2Zz4='), null);
+  assert.equal(parseDataUrlToBase64('data:text/html;base64,PHNjcmlwdD4='), null);
+
+  let capturedOpenAiBody = null;
+  const savedOpenAi = process.env.OPENAI_API_KEY;
+  const savedGemini = process.env.GEMINI_API_KEY;
+  process.env.OPENAI_API_KEY = 'sk-mock-vision-key';
+  process.env.GEMINI_API_KEY = '';
+
+  try {
+    const fakeAuthDb = {
+      from: () => ({ select: () => ({ eq: () => ({ data: [], error: null }) }) }),
+      auth: { getUser: async () => ({ data: { user: { id: 'user-vision-1' } }, error: null }) },
+    };
+
+    const handler = createAiChatHandler(fakeAuthDb, async (url, init) => {
+      const u = String(url);
+      if (u.includes('openai.com')) {
+        capturedOpenAiBody = JSON.parse(String(init?.body || '{}'));
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            choices: [{ message: { content: 'Detected schematic waveform.' } }],
+            usage: { prompt_tokens: 45, completion_tokens: 12 },
+          }),
+        };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    // Confirm unauthorized without JWT fails 401 first
+    const unauthCall = createMockRes();
+    await handler(
+      {
+        method: 'POST',
+        query: {},
+        headers: {},
+        body: {
+          prompt: 'Describe this screenshot',
+          images: [{ mimeType: 'image/png', dataUrl: 'data:image/png;base64,iVBORw0KGgo=' }],
+        },
+      },
+      unauthCall.res
+    );
+    assert.equal(unauthCall.out.code, 401);
+    assert.equal(capturedOpenAiBody, null);
+
+    // Authenticated request with PNG attachment auto-selects MULTIMODAL & forwards vision parts
+    const authCall = createMockRes();
+    await handler(
+      {
+        method: 'POST',
+        query: {},
+        headers: { authorization: 'Bearer valid-mock-jwt' },
+        body: {
+          prompt: 'Inspect this wind rotor telemetry screenshot',
+          images: [{ mimeType: 'image/png', dataUrl: 'data:image/png;base64,iVBORw0KGgo=' }],
+          workspaceSnapshot: { tasks: [], projects: [{ id: 'p1', title: 'PAWAN SHAKTI' }] },
+        },
+      },
+      authCall.res
+    );
+    assert.equal(authCall.out.code, 200);
+    assert.equal(authCall.out.body.routeCategory, 'MULTIMODAL');
+    const userTurn = capturedOpenAiBody?.messages?.find((m) => m.role === 'user');
+    assert.ok(Array.isArray(userTurn?.content));
+    assert.equal(userTurn.content[1]?.type, 'image_url');
+    assert.equal(userTurn.content[1]?.image_url?.url, 'data:image/png;base64,iVBORw0KGgo=');
+  } finally {
+    process.env.OPENAI_API_KEY = savedOpenAi;
+    process.env.GEMINI_API_KEY = savedGemini;
+  }
 });

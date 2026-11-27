@@ -26,6 +26,7 @@ import {
 import { AWARENESS_PLATFORMS, summarizeHonestAwareness, type CredentialStatusItem } from '../../lib/awarenessCore';
 import { saveSyncedPreference, reconcileCompanionTables } from '../sync/extraCloudSync';
 import { AIGateway } from '../ai/aiGateway';
+import type { PreparedImageAttachment } from '../../lib/imageUpload';
 import type {
   AwarenessSourceRecord,
   BuddyAgentRole,
@@ -226,23 +227,49 @@ export class CompanionService {
         }
         return { sources: data.sources, observationsCreated: data.observationsCreated || [] };
       }
-      if (res.status === 401) {
-        return {
-          sources: await this.loadCachedAwareness(),
-          observationsCreated: [],
-          error: 'Sign in with Supabase to persist live cloud awareness cursors.',
-        };
-      }
-      return {
-        sources: await this.loadCachedAwareness(),
-        observationsCreated: [],
-        error: data?.error || 'Could not reach awareness endpoint.',
+      const localSync = async (notice?: string) => {
+        const cached = await this.loadCachedAwareness();
+        const [tasks, projects] = await Promise.all([
+          db.tasks.toArray().catch(() => []),
+          db.projects.toArray().catch(() => []),
+        ]);
+        const openTasks = tasks.filter((t) => !t.done).length;
+        const activeProj = projects.filter((p) => p.status === 'active').length;
+        const nowIso = new Date().toISOString();
+        const updated = cached.map((s) =>
+          s.id === 'workspace_hub'
+            ? {
+                ...s,
+                status: 'connected' as const,
+                latest_summary: `${openTasks} open task(s) across ${activeProj} active project(s) (local-first verified).`,
+                last_polled_at: nowIso,
+                updated_at: nowIso,
+              }
+            : s
+        );
+        await db.settings.put({ key: AWARENESS_CACHE_KEY, value: updated, updated_at: nowIso });
+        return { sources: updated, observationsCreated: [], error: notice };
       };
-    } catch (err: any) {
+
+      if (res.status === 401) {
+        return await localSync('Local workspace refreshed (sign in with Supabase to also sync external cloud sources).');
+      }
+      return await localSync(data?.error || 'Could not reach cloud awareness; refreshed local Hub state.');
+    } catch {
+      const cached = await this.loadCachedAwareness();
+      const tasks = await db.tasks.toArray().catch(() => []);
+      const openTasks = tasks.filter((t) => !t.done).length;
+      const nowIso = new Date().toISOString();
+      const updated = cached.map((s) =>
+        s.id === 'workspace_hub'
+          ? { ...s, status: 'connected' as const, latest_summary: `${openTasks} open task(s) (offline local check).`, updated_at: nowIso }
+          : s
+      );
+      await db.settings.put({ key: AWARENESS_CACHE_KEY, value: updated, updated_at: nowIso }).catch(() => {});
       return {
-        sources: await this.loadCachedAwareness(),
+        sources: updated,
         observationsCreated: [],
-        error: err?.message || 'Offline — using cached awareness state.',
+        error: 'Offline — refreshed local Hub awareness state.',
       };
     }
   }
@@ -485,6 +512,7 @@ export class CompanionService {
     routeCategory?: 'FAST' | 'REASONING' | 'CODING' | 'MULTIMODAL' | 'LOCAL';
     privateOfflineOnly?: boolean;
     allowCloudFallback?: boolean;
+    images?: PreparedImageAttachment[];
     signal?: AbortSignal;
     onToken?: (partial: string) => void;
   }): Promise<{
@@ -586,6 +614,7 @@ export class CompanionService {
             routeCategory: options.routeCategory,
             privateOfflineOnly: options.privateOfflineOnly,
             allowCloudFallback: options.allowCloudFallback,
+            images: options.images,
             signal: options.signal,
           },
           {

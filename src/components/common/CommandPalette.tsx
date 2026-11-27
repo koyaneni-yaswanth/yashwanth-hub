@@ -103,6 +103,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   if (!isOpen) return null;
 
   const navItems = [
+    { label: 'Go to JARVIS Buddy (3D Companion & Voice)', tab: 'buddy' as NavigationTab, icon: Bot, category: 'Navigation' },
     { label: 'Go to Home Dashboard', tab: 'dashboard' as NavigationTab, icon: Command, category: 'Navigation' },
     { label: 'Go to My Day (plan my day)', tab: 'my-day' as NavigationTab, icon: Sun, category: 'Navigation' },
     { label: 'Go to Deep Work (focus timer)', tab: 'focus' as NavigationTab, icon: Zap, category: 'Navigation' },
@@ -164,6 +165,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       label: 'System Health & Self-Healing Policy (Level 1 / 2 / 3)',
       action: () => onNavigate('system-health'),
       icon: Activity,
+      category: 'Quick Actions',
+    },
+    {
+      label: 'AI Providers, Encrypted Keys & Local Runtime',
+      action: () => onNavigate('system-health'),
+      icon: Zap,
       category: 'Quick Actions',
     },
     {

@@ -15,6 +15,7 @@ import { SUPPORTED_MODELS, getRecommendedModel, normaliseModelId } from './aiMod
 import { chooseGeminiModels } from '../../../api/_lib/geminiRanking';
 import type { CloudOrLocalProviderId, ProviderCapabilities, ProviderHealthReport } from '../../../api/_lib/aiProviderAdapters';
 import { LocalAgentClient } from './localAgentClient';
+import { parseDataUrlToBase64, type PreparedImageAttachment } from '../../lib/imageUpload';
 import {
   ProviderCircuitBreaker,
   classifyTaskCategory,
@@ -76,6 +77,7 @@ export interface AISendOptions {
   contextData?: any;
   projectId?: string;
   history?: Array<{ role: string; content: string }>;
+  images?: PreparedImageAttachment[];
 }
 
 export interface AIResponse {
@@ -541,6 +543,13 @@ export class AIGateway {
       const jwt = await SupabaseAuthService.getAccessToken();
       if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
 
+      const serializedImages = (options.images || [])
+        .map((img) => {
+          const parsed = parseDataUrlToBase64(img.dataUrl);
+          return parsed ? { name: img.name, mimeType: parsed.mimeType, base64: parsed.base64 } : null;
+        })
+        .filter(Boolean);
+
       const resp = await fetch('/api/ai/chat', {
         method: 'POST',
         headers,
@@ -549,6 +558,9 @@ export class AIGateway {
           provider,
           modelId: selectedModel.modelId,
           mode,
+          routeCategory: options.routeCategory,
+          hasImageInput: serializedImages.length > 0,
+          images: serializedImages.length > 0 ? serializedImages : undefined,
           projectId: options.projectId,
           history: options.history || [],
           systemPrompt: options.systemPrompt,
@@ -749,6 +761,7 @@ export class AIGateway {
     const routeCategory = classifyTaskCategory({
       prompt: userPrompt,
       explicitCategory: options.routeCategory,
+      hasImageInput: Boolean(options.images?.length),
       privateOfflineOnly: options.privateOfflineOnly,
     });
     const selectedModel =
@@ -856,6 +869,13 @@ export class AIGateway {
       const jwt = await SupabaseAuthService.getAccessToken();
       if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
 
+      const serializedImages = (options.images || [])
+        .map((img) => {
+          const parsed = parseDataUrlToBase64(img.dataUrl);
+          return parsed ? { name: img.name, mimeType: parsed.mimeType, base64: parsed.base64 } : null;
+        })
+        .filter(Boolean);
+
       const resp = await fetch('/api/ai/chat', {
         method: 'POST',
         headers,
@@ -866,6 +886,8 @@ export class AIGateway {
           modelId: selectedModel.modelId,
           mode,
           routeCategory,
+          hasImageInput: serializedImages.length > 0,
+          images: serializedImages.length > 0 ? serializedImages : undefined,
           privateOfflineOnly: Boolean(options.privateOfflineOnly),
           allowCloudFallback: Boolean(options.allowCloudFallback),
           projectId: options.projectId,

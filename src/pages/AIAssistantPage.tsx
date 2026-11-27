@@ -25,6 +25,7 @@ import {
   KeyRound,
   Square,
   Lock,
+  ImagePlus,
 } from 'lucide-react';
 import { db } from '../db';
 import type {
@@ -42,6 +43,8 @@ import { AIGateway } from '../services/ai/aiGateway';
 import { LocalAgentClient } from '../services/ai/localAgentClient';
 import type { TaskRouteCategory } from '../lib/modelRouter5';
 import { ProviderGatewayModal } from '../components/buddy/ProviderGatewayModal';
+import { SafeMarkdown } from '../components/common/SafeMarkdown';
+import { prepareImageFile, type PreparedImageAttachment } from '../lib/imageUpload';
 import { buildExecutiveDailyBriefing, type ExecutiveBriefingReport } from '../services/ai/executiveBriefing';
 import type { ProviderHealthReport } from '../../api/_lib/aiProviderAdapters';
 import { beginAiThinking, endAiThinking } from '../lib/aiActivity';
@@ -140,6 +143,8 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
     return localStorage.getItem('yash_ai_private_offline') === 'true';
   });
   const [localRuntimeOnline, setLocalRuntimeOnline] = useState(false);
+  const [attachedImages, setAttachedImages] = useState<PreparedImageAttachment[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [discoveredTools, setDiscoveredTools] = useState<AIToolSpec[]>([]);
   const [configuredProviders, setConfiguredProviders] = useState<Record<string, boolean>>({});
@@ -309,8 +314,21 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
     }
   };
 
+  const handleAttachImages = async (files: FileList | File[]) => {
+    const list = Array.from(files || []).slice(0, 3);
+    if (list.length === 0) return;
+    try {
+      const prepared = await Promise.all(list.map((f) => prepareImageFile(f)));
+      setAttachedImages((prev) => [...prev, ...prepared].slice(0, 3));
+      if (routeCategory === 'auto') setRouteCategory('MULTIMODAL');
+    } catch (err: any) {
+      toast(err?.message || 'Unable to attach image.', 'error');
+    }
+  };
+
   const sendPromptText = async (promptText: string) => {
-    const userText = promptText.trim();
+    const imagesToSend = attachedImages;
+    const userText = promptText.trim() || (imagesToSend.length > 0 ? 'Analyze the attached image(s).' : '');
     if (!userText || isProcessing) return;
 
     const convId = activeConversationId || generateId();
@@ -321,6 +339,7 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
       role: 'user',
       content: userText,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      images: imagesToSend.length > 0 ? imagesToSend : undefined,
     };
 
     const streamMsgId = generateId();
@@ -333,6 +352,7 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
     };
     setMessages([...withUser, streamingPlaceholder]);
     setInputMessage('');
+    setAttachedImages([]);
     setIsProcessing(true);
     beginAiThinking();
     let responded = false;
@@ -352,14 +372,22 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
               .join('\n')}`
           : '';
 
+      const effectiveRoute =
+        routeCategory === 'auto'
+          ? imagesToSend.length > 0
+            ? 'MULTIMODAL'
+            : undefined
+          : routeCategory;
+
       const response = await AIGateway.streamPrompt(
         userText,
         {
           provider: selectedProvider,
           modelId: selectedModelId,
           mode: selectedMode,
-          routeCategory: routeCategory === 'auto' ? undefined : routeCategory,
+          routeCategory: effectiveRoute,
           privateOfflineOnly,
+          images: imagesToSend.length > 0 ? imagesToSend : undefined,
           signal: abortCtrl.signal,
           projectId: selectedProjectId || undefined,
           history: withUser.slice(-8).map((m) => ({ role: m.role, content: m.content })),
@@ -1135,7 +1163,23 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
                         </span>
                       </div>
 
-                      <div className="whitespace-pre-wrap text-[13px]">{msg.content}</div>
+                      {Array.isArray(msg.images) && msg.images.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {msg.images.map((img, i) => (
+                            <img
+                              key={`${msg.id}-img-${i}`}
+                              src={img.dataUrl}
+                              alt={img.name || 'Attached image'}
+                              className="h-20 w-20 object-cover rounded-lg border border-black/15 dark:border-white/15"
+                            />
+                          ))}
+                        </div>
+                      )}
+                      {msg.role === 'assistant' ? (
+                        <SafeMarkdown content={msg.content} className="text-[13px]" />
+                      ) : (
+                        <div className="whitespace-pre-wrap text-[13px]">{msg.content}</div>
+                      )}
 
                       {/* Tool Call & Citation Trace */}
                       {msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0 && (
@@ -1229,17 +1273,68 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
               <div ref={chatEndRef} />
             </div>
 
+            {attachedImages.length > 0 && (
+              <div className="px-3.5 pt-2.5 flex flex-wrap gap-2 border-t border-[var(--hub-line)] bg-[var(--hub-bg)]/40">
+                {attachedImages.map((img, i) => (
+                  <div
+                    key={`ask-att-${i}`}
+                    className="relative inline-flex items-center gap-2 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-surface)] p-1.5 pr-6 text-xs text-[var(--hub-ink)]"
+                  >
+                    <img src={img.dataUrl} alt={img.name} className="h-8 w-8 object-cover rounded-lg" />
+                    <span className="max-w-[120px] truncate">{img.name}</span>
+                    <button
+                      type="button"
+                      aria-label="Remove attached image"
+                      onClick={() => setAttachedImages((prev) => prev.filter((_, idx) => idx !== i))}
+                      className="absolute right-1 top-1 p-0.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Chat Input */}
             <form
               onSubmit={handleSendMessage}
               className="p-3.5 border-t border-[var(--hub-line)] bg-[var(--hub-bg)]/60 flex items-center gap-2.5"
             >
               <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files) void handleAttachImages(e.target.files);
+                  e.target.value = '';
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                aria-label="Attach image for vision analysis"
+                title="Attach screenshot or image (auto-routes MULTIMODAL)"
+                disabled={isProcessing}
+                className="p-2.5 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-surface)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)] cursor-pointer disabled:opacity-50"
+              >
+                <ImagePlus className="w-4 h-4" />
+              </button>
+              <input
                 type="text"
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
+                onPaste={(e) => {
+                  const items = Array.from(e.clipboardData?.items || []);
+                  const imgFiles = items
+                    .filter((it) => it.type.startsWith('image/'))
+                    .map((it) => it.getAsFile())
+                    .filter(Boolean) as File[];
+                  if (imgFiles.length > 0) void handleAttachImages(imgFiles);
+                }}
                 aria-label="Message Jarvis AI"
-                placeholder="Ask your Chief of Staff (e.g., Plan my day, What is blocking Pawan Shakti?)..."
+                placeholder="Ask your Chief of Staff (or attach/paste screenshot)..."
                 disabled={isProcessing}
                 className="flex-1 px-4 py-2.5 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-surface)] text-sm text-[var(--hub-ink)] focus:outline-none focus:ring-2 focus:ring-[var(--hub-accent)]"
               />
@@ -1256,7 +1351,7 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
               )}
               <button
                 type="submit"
-                disabled={isProcessing || !inputMessage.trim()}
+                disabled={isProcessing || (!inputMessage.trim() && attachedImages.length === 0)}
                 className="p-2.5 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer disabled:opacity-50"
                 aria-label="Send message"
               >

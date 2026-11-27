@@ -841,6 +841,7 @@ export interface AIChatMessage {
     outputTokens?: number;
     estimatedCostUsd?: number;
   };
+  images?: Array<{ name: string; mimeType: string; dataUrl: string }>;
 }
 
 export interface AIConversation {

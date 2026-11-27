@@ -46,6 +46,7 @@ import { generateId } from '../lib/utils';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
+import { ProviderGatewayModal } from '../components/buddy/ProviderGatewayModal';
 import { toast } from '../lib/toast';
 
 interface SettingsPageProps {
@@ -85,6 +86,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const [installStatus, setInstallStatus] = useState<string | null>(null);
+  const [isGatewayModalOpen, setIsGatewayModalOpen] = useState(false);
 
   useEffect(() => {
     const checkStandalone = () => {
@@ -489,8 +491,30 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
           System Settings & Integrations
         </h2>
         <p className="text-sm text-[var(--hub-muted)] mt-0.5">
-          Configure Google Workspace, NeoSapien hardware, themes, and cloud backup
+          Configure AI providers, local daemon runtime, Google Workspace, NeoSapien hardware, themes, and cloud backup
         </p>
+      </div>
+
+      {/* JARVIS 5.0 Unified AI Providers, Vault & Local Runtime */}
+      <div className="bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <Badge variant="amber">JARVIS 5.0</Badge>
+            <h3 className="font-heading font-bold text-base text-[var(--hub-ink)]">
+              Unified AI Providers, Encrypted Vault &amp; Local Python Runtime
+            </h3>
+          </div>
+          <p className="text-xs text-[var(--hub-muted)]">
+            Configure OpenAI GPT, Claude, Gemini, OpenRouter, Hugging Face, encrypted server credentials, and local Ollama GPU pairing.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setIsGatewayModalOpen(true)}
+          className="px-4 py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer shrink-0"
+        >
+          Configure AI Providers &amp; Local Runtime
+        </button>
       </div>
 
       {/* 0. PWA & Multi-Device Installation */}
@@ -1220,6 +1244,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ areas }) => {
         }}
         title="Delete Workspace Area"
         message="Are you sure you want to delete this workspace area?"
+      />
+
+      <ProviderGatewayModal
+        isOpen={isGatewayModalOpen}
+        onClose={() => setIsGatewayModalOpen(false)}
+        initialTab="providers"
       />
     </div>
   );

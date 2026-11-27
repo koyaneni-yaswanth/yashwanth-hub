@@ -59,6 +59,38 @@ function toOpenAiTools() {
   }));
 }
 
+interface SanitizedImagePart {
+  name?: string;
+  mimeType: string;
+  base64: string;
+}
+
+function sanitizeImageAttachments(raw: any): SanitizedImagePart[] {
+  if (!Array.isArray(raw)) return [];
+  const allowed = /^image\/(png|jpeg|jpg|webp|gif)$/i;
+  const out: SanitizedImagePart[] = [];
+  for (const item of raw.slice(0, 3)) {
+    if (!item || typeof item !== 'object') continue;
+    let mimeType = String(item.mimeType || '').trim().toLowerCase();
+    let base64 = String(item.base64 || '').trim();
+    if (!base64 && typeof item.dataUrl === 'string') {
+      const m = item.dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/);
+      if (m) {
+        mimeType = m[1].toLowerCase();
+        base64 = m[2];
+      }
+    }
+    if (mimeType === 'image/jpg') mimeType = 'image/jpeg';
+    if (!allowed.test(mimeType) || !base64 || base64.length > 5_600_000) continue;
+    out.push({
+      name: typeof item.name === 'string' ? item.name.slice(0, 80) : undefined,
+      mimeType,
+      base64,
+    });
+  }
+  return out;
+}
+
 function toGeminiFunctionDeclarations() {
   return AI_TOOL_DEFINITIONS.map((t) => ({
     name: t.name,
@@ -301,7 +333,9 @@ async function runGeminiWithTools(
   history: Array<{ role: string; content: string }>,
   systemPrompt: string,
   snapshot: WorkspaceSnapshot,
-  fallbackModel: string | null = null
+  fallbackModel: string | null = null,
+  images: SanitizedImagePart[] = [],
+  fetchImpl: typeof fetch = fetch
 ) {
   let activeModel = modelId;
 
@@ -312,7 +346,11 @@ async function runGeminiWithTools(
       parts: [{ text: msg.content }],
     });
   }
-  contents.push({ role: 'user', parts: [{ text: userPrompt }] });
+  const userParts: any[] = [{ text: userPrompt }];
+  for (const img of images) {
+    userParts.push({ inlineData: { mimeType: img.mimeType, data: img.base64 } });
+  }
+  contents.push({ role: 'user', parts: userParts });
 
   const toolCallsTrace: Array<{ tool: string; args: Record<string, any>; summary: string }> = [];
   const proposedActions: ProposedActionPreview[] = [];
@@ -328,7 +366,7 @@ async function runGeminiWithTools(
       tools: [{ functionDeclarations: toGeminiFunctionDeclarations() }],
     });
 
-    let resp = await fetch(
+    let resp = await fetchImpl(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(activeModel)}:generateContent`,
       {
         method: 'POST',
@@ -350,7 +388,7 @@ async function runGeminiWithTools(
     // Automatic fallback if primary model is unavailable or spikes (404/503/400)
     if (!resp.ok && fallbackModel && activeModel !== fallbackModel && (resp.status === 404 || resp.status === 503 || resp.status === 400)) {
       activeModel = fallbackModel;
-      resp = await fetch(
+      resp = await fetchImpl(
         `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(activeModel)}:generateContent`,
         {
           method: 'POST',
@@ -424,7 +462,8 @@ async function runGeminiStreamingWithTools(
   fallbackModel: string | null = null,
   onToken?: (delta: string) => void,
   onTool?: (toolMeta: { tool: string; summary: string }) => void,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
+  images: SanitizedImagePart[] = []
 ) {
   let activeModel = modelId;
   const contents: any[] = [];
@@ -434,7 +473,11 @@ async function runGeminiStreamingWithTools(
       parts: [{ text: msg.content }],
     });
   }
-  contents.push({ role: 'user', parts: [{ text: userPrompt }] });
+  const userParts: any[] = [{ text: userPrompt }];
+  for (const img of images) {
+    userParts.push({ inlineData: { mimeType: img.mimeType, data: img.base64 } });
+  }
+  contents.push({ role: 'user', parts: userParts });
 
   const toolCallsTrace: Array<{ tool: string; args: Record<string, any>; summary: string }> = [];
   const proposedActions: ProposedActionPreview[] = [];
@@ -601,6 +644,8 @@ async function runOpenAiCompatibleWithTools(params: {
   systemPrompt: string;
   snapshot: WorkspaceSnapshot;
   allowToolFallback?: boolean;
+  images?: SanitizedImagePart[];
+  fetchImpl?: typeof fetch;
 }) {
   const {
     providerLabel,
@@ -613,13 +658,28 @@ async function runOpenAiCompatibleWithTools(params: {
     systemPrompt,
     snapshot,
     allowToolFallback = false,
+    images = [],
+    fetchImpl = fetch,
   } = params;
 
   const messages: any[] = [{ role: 'system', content: systemPrompt }];
   for (const m of history.slice(-6)) {
     messages.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content });
   }
-  messages.push({ role: 'user', content: userPrompt });
+  if (images.length > 0) {
+    messages.push({
+      role: 'user',
+      content: [
+        { type: 'text', text: userPrompt },
+        ...images.map((img) => ({
+          type: 'image_url',
+          image_url: { url: `data:${img.mimeType};base64,${img.base64}` },
+        })),
+      ],
+    });
+  } else {
+    messages.push({ role: 'user', content: userPrompt });
+  }
 
   const toolCallsTrace: Array<{ tool: string; args: Record<string, any>; summary: string }> = [];
   const proposedActions: ProposedActionPreview[] = [];
@@ -639,7 +699,7 @@ async function runOpenAiCompatibleWithTools(params: {
       reqBody.tool_choice = 'auto';
     }
 
-    const resp = await fetch(endpoint, {
+    const resp = await fetchImpl(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -708,13 +768,28 @@ async function runAnthropicWithTools(
   userPrompt: string,
   history: Array<{ role: string; content: string }>,
   systemPrompt: string,
-  snapshot: WorkspaceSnapshot
+  snapshot: WorkspaceSnapshot,
+  images: SanitizedImagePart[] = [],
+  fetchImpl: typeof fetch = fetch
 ) {
   const messages: any[] = [];
   for (const m of history.slice(-6)) {
     messages.push({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content });
   }
-  messages.push({ role: 'user', content: userPrompt });
+  if (images.length > 0) {
+    messages.push({
+      role: 'user',
+      content: [
+        ...images.map((img) => ({
+          type: 'image',
+          source: { type: 'base64', media_type: img.mimeType, data: img.base64 },
+        })),
+        { type: 'text', text: userPrompt },
+      ],
+    });
+  } else {
+    messages.push({ role: 'user', content: userPrompt });
+  }
 
   const toolCallsTrace: Array<{ tool: string; args: Record<string, any>; summary: string }> = [];
   const proposedActions: ProposedActionPreview[] = [];
@@ -724,7 +799,7 @@ async function runAnthropicWithTools(
   let finalText = '';
 
   for (let round = 0; round < 4; round++) {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    const resp = await fetchImpl('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -884,9 +959,10 @@ async function generateTextEmbedding(
 
 export function createAiChatHandler(
   dbClient: any = supabaseServer,
-  fetchImpl: typeof fetch = fetch
+  customFetch?: typeof fetch
 ) {
   return async function handler(req: any, res: any) {
+    const fetchImpl = customFetch ?? fetch;
     applyCors(req, res, 'GET, POST, OPTIONS');
 
     if (req.method === 'OPTIONS') {
@@ -1084,6 +1160,7 @@ export function createAiChatHandler(
           ? detectConfiguredProviders(effectiveEnv)
           : extractConfigMap(providerCtx.configs);
 
+      const images = sanitizeImageAttachments(body.images);
       const history = Array.isArray(body.history) ? body.history : [];
       const projectId = body.projectId ? String(body.projectId) : undefined;
       const mode = String(body.mode || 'personal');
@@ -1102,7 +1179,7 @@ export function createAiChatHandler(
         prompt,
         requestedProvider: requestedProvider as any,
         explicitCategory: body.routeCategory as TaskRouteCategory | undefined,
-        hasImageInput: Boolean(body.hasImageInput),
+        hasImageInput: Boolean(body.hasImageInput) || images.length > 0,
         hasAudioInput: Boolean(body.hasAudioInput),
         requiresTools: body.requiresTools !== false,
         privateOfflineOnly: Boolean(body.privateOfflineOnly),
@@ -1157,7 +1234,8 @@ export function createAiChatHandler(
                   resolved.fallback,
                   (delta) => writeSseEvent(res, { type: 'token', delta }),
                   (toolMeta) => writeSseEvent(res, { type: 'tool', ...toolMeta }),
-                  fetchImpl
+                  fetchImpl,
+                  images
                 );
               }
               return await runGeminiWithTools(
@@ -1167,7 +1245,9 @@ export function createAiChatHandler(
                 history,
                 systemPrompt,
                 snapshot,
-                resolved.fallback
+                resolved.fallback,
+                images,
+                fetchImpl
               );
             }
             if (candidateProvider === 'openrouter') {
@@ -1186,6 +1266,8 @@ export function createAiChatHandler(
                 systemPrompt,
                 snapshot,
                 allowToolFallback: true,
+                images,
+                fetchImpl,
               });
             }
             if (candidateProvider === 'openai') {
@@ -1199,11 +1281,13 @@ export function createAiChatHandler(
                 history,
                 systemPrompt,
                 snapshot,
+                images,
+                fetchImpl,
               });
             }
             if (candidateProvider === 'anthropic') {
               const anthropicKey = (effectiveEnv.ANTHROPIC_API_KEY || '').trim();
-              return await runAnthropicWithTools(anthropicKey, modelId, prompt, history, systemPrompt, snapshot);
+              return await runAnthropicWithTools(anthropicKey, modelId, prompt, history, systemPrompt, snapshot, images, fetchImpl);
             }
             if (candidateProvider === 'huggingface') {
               const hfKey = (effectiveEnv.HF_TOKEN || effectiveEnv.HUGGINGFACE_API_KEY || '').trim();
@@ -1217,6 +1301,8 @@ export function createAiChatHandler(
                 systemPrompt,
                 snapshot,
                 allowToolFallback: true,
+                images,
+                fetchImpl,
               });
             }
             if (candidateProvider === 'ollama') {
@@ -1231,6 +1317,8 @@ export function createAiChatHandler(
                 systemPrompt,
                 snapshot,
                 allowToolFallback: true,
+                images,
+                fetchImpl,
               });
             }
             return null;
