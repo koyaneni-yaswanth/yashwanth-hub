@@ -27,12 +27,13 @@ import { repairTaskDueDates } from './services/sync/dueDateRepair';
 import { installLifeSyncHooks, startLifeSync } from './services/sync/lifeSync';
 import { installWorkspaceSyncHooks } from './services/sync/workspaceSync';
 import { PageSkeleton } from './components/common/PageSkeleton';
-import { TAB_TITLES, buildTabUrl, canonicalTab, documentTitleFor, readTabFromSearch } from './lib/navigation';
+import { TAB_TITLES, buildTabUrl, canonicalTab, documentTitleFor, readTabFromLocation } from './lib/navigation';
 import { Toaster } from './components/common/Toaster';
 import { AmbientBackground } from './components/layout/AmbientBackground';
 
 // Pages are code-split: each one downloads only when first opened (or prefetched while idle).
 const pageLoaders = {
+  BuddyPage: () => import('./pages/BuddyPage'),
   DashboardPage: () => import('./pages/DashboardPage'),
   ProjectsPage: () => import('./pages/ProjectsPage'),
   TasksPage: () => import('./pages/TasksPage'),
@@ -90,13 +91,14 @@ const MyDayPage = lazy(() => pageLoaders.MyDayPage().then((m) => ({ default: m.M
 const LearningCareerPage = lazy(() => pageLoaders.LearningCareerPage().then((m) => ({ default: m.LearningCareerPage })));
 const GoalsHabitsPage = lazy(() => pageLoaders.GoalsHabitsPage().then((m) => ({ default: m.GoalsHabitsPage })));
 const FocusPage = lazy(() => pageLoaders.FocusPage().then((m) => ({ default: m.FocusPage })));
+const BuddyPage = lazy(() => pageLoaders.BuddyPage().then((m) => ({ default: m.BuddyPage })));
 const MomentumPage = lazy(() => pageLoaders.MomentumPage().then((m) => ({ default: m.MomentumPage })));
 
 function HubMain() {
   const { isDark } = useTheme();
-  // The active tab lives in the URL (?tab=...), so refresh, Back/Forward and shared links all work.
+  // The active tab lives in the URL (/buddy or ?tab=...), so refresh, Back/Forward and shared links all work.
   const [currentTab, setCurrentTabRaw] = useState<NavigationTab>(
-    () => (typeof window !== 'undefined' && readTabFromSearch(window.location.search)) || 'dashboard'
+    () => (typeof window !== 'undefined' && readTabFromLocation(window.location.pathname, window.location.search)) || 'dashboard'
   );
   // Duplicate routes (e.g. 'wind-plan') always resolve to their canonical tab.
   const setCurrentTab = useCallback((tab: NavigationTab) => setCurrentTabRaw(canonicalTab(tab)), []);
@@ -121,11 +123,9 @@ function HubMain() {
     params.delete('tab');
     // Another flow (e.g. a NeoSapien OAuth callback) still owns the query string — leave it alone.
     if ([...params.keys()].length > 0) return;
-    // Compare the raw value so an unknown ?tab=... (which fell back to Home) is cleaned up too.
-    const urlTab = new URLSearchParams(search).get('tab');
-    const expectedTab = currentTab === 'dashboard' ? null : currentTab;
-    if (urlTab !== expectedTab) {
-      const url = buildTabUrl(currentTab, pathname);
+    const url = buildTabUrl(currentTab, pathname);
+    const currentUrl = `${pathname}${search}`;
+    if (currentUrl !== url) {
       // The first sync (e.g. landing on Integrations after an OAuth redirect) replaces rather than adds an entry.
       if (hasSyncedUrlRef.current) window.history.pushState({ tab: currentTab }, '', url);
       else window.history.replaceState({ tab: currentTab }, '', url);
@@ -135,7 +135,8 @@ function HubMain() {
 
   // Browser Back / Forward.
   useEffect(() => {
-    const onPopState = () => setCurrentTabRaw(readTabFromSearch(window.location.search) || 'dashboard');
+    const onPopState = () =>
+      setCurrentTabRaw(readTabFromLocation(window.location.pathname, window.location.search) || 'dashboard');
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
@@ -155,7 +156,7 @@ function HubMain() {
   useEffect(() => {
     if (!isRoutingReady) return;
     const warm = () => {
-      [pageLoaders.TasksPage, pageLoaders.GoalsHabitsPage, pageLoaders.AIAssistantPage]
+      [pageLoaders.TasksPage, pageLoaders.GoalsHabitsPage, pageLoaders.AIAssistantPage, pageLoaders.BuddyPage]
         .forEach((load) => load().catch(() => {}));
     };
     const w = window as Window & {
@@ -217,7 +218,7 @@ function HubMain() {
       const searchParams = new URLSearchParams(search);
       const hashParams = new URLSearchParams(hash.replace(/^#/, ''));
 
-      const requestedTab = readTabFromSearch(search);
+      const requestedTab = readTabFromLocation(window.location.pathname, search);
       if (requestedTab) {
         setCurrentTabRaw(requestedTab);
       }
@@ -443,6 +444,8 @@ function HubMain() {
         return <RoboticsLabPage />;
       case 'health-routine':
         return <HealthRoutinePage />;
+      case 'buddy':
+        return <BuddyPage onNavigate={(tab) => setCurrentTab(tab)} />;
       case 'ai-assistant':
         return (
           <AIAssistantPage
@@ -501,15 +504,16 @@ function HubMain() {
   };
 
   const isHome = currentTab === 'dashboard';
+  const isBuddy = currentTab === 'buddy';
 
   return (
     <FocusModeProvider onAreaChange={setCurrentArea}>
     <div
       className={`min-h-screen flex flex-col font-sans transition-colors duration-200 ${
-        isHome ? 'jarvis-hud text-[#E6F1FF]' : 'text-[var(--hub-ink)]'
+        isHome ? 'jarvis-hud text-[#E6F1FF]' : isBuddy ? 'bg-[#05070D] text-slate-100' : 'text-[var(--hub-ink)]'
       }`}
     >
-      {!isHome && <AmbientBackground />}
+      {!isHome && !isBuddy && <AmbientBackground />}
       <a href="#main-content" className="hub-skip-link">
         Skip to content
       </a>
@@ -539,7 +543,7 @@ function HubMain() {
           isOpenMobile={isMobileMenuOpen}
           onCloseMobile={() => setIsMobileMenuOpen(false)}
           onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
-          compactRail={isHome}
+          compactRail={isHome || isBuddy}
         />
 
         {/* Dynamic Page Content */}

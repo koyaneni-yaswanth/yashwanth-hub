@@ -21,7 +21,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
   ];
 
   const rightItems = [
-    { id: 'ai-assistant' as NavigationTab, label: 'AI Studio', icon: Sparkles },
+    { id: 'buddy' as NavigationTab, label: 'JARVIS', icon: Sparkles },
   ];
 
   return (

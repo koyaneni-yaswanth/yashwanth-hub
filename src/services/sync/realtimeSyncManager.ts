@@ -169,8 +169,14 @@ export class RealtimeSyncManager {
         });
       }
 
-      // 6. Extra Cloud Tables (ai_conversations, memories, user_preferences)
-      for (const table of ['ai_conversations', 'memories', 'user_preferences'] as const) {
+      // 6. Extra Cloud Tables (ai_conversations, memories, user_preferences, companion_memories, companion_timeline)
+      for (const table of [
+        'ai_conversations',
+        'memories',
+        'user_preferences',
+        'companion_memories',
+        'companion_timeline',
+      ] as const) {
         unifiedChannel = unifiedChannel.on('postgres_changes', { event: '*', schema: 'public', table }, (payload: any) => {
           applyExtraRealtime(table, payload).catch((err) => console.warn(`[extraSync] Realtime ${table} failed:`, err));
         });

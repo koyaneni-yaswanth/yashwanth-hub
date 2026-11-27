@@ -7,6 +7,7 @@
 import { hasServiceRoleKey, isServerSupabaseConfigured, supabaseServer } from '../_lib/db.ts';
 import { processAutomationTick } from '../_lib/queueEngine.ts';
 import { executeAutomationRun } from '../_lib/runner.ts';
+import { runProactiveCompanionTick } from '../_lib/buddyEngine.ts';
 import { applyCors } from '../_lib/http.ts';
 
 export function createCronTriggersHandler(dbClient: any = supabaseServer) {
@@ -66,9 +67,28 @@ export function createCronTriggersHandler(dbClient: any = supabaseServer) {
         timeZone: 'Asia/Kolkata',
       });
 
+      // Evaluate proactive JARVIS companion briefings for active preference owners
+      let companionBriefingsEvaluated = 0;
+      try {
+        const { data: prefUsers } = await dbClient
+          .from('user_preferences')
+          .select('user_id')
+          .eq('id', 'jarvis_companion_settings_v1')
+          .limit(25);
+        for (const row of prefUsers || []) {
+          if (row?.user_id) {
+            await runProactiveCompanionTick({ db: dbClient, userId: row.user_id });
+            companionBriefingsEvaluated++;
+          }
+        }
+      } catch {
+        /* non-fatal if companion tables not present yet */
+      }
+
       return res.status(200).json({
         success: true,
         ...summary,
+        companionBriefingsEvaluated,
         processedAutomationsCount: summary.executedCount,
         executed: summary.executedRuns,
       });

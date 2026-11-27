@@ -600,6 +600,7 @@ export interface AIComparisonResult {
 
 export type NavigationTab =
   | 'dashboard'
+  | 'buddy'
   | 'my-day'
   | 'projects'
   | 'ai-assistant'
@@ -973,3 +974,126 @@ export interface FocusSession {
   focus_rating?: number;
   reflection?: string;
 }
+
+// ==========================================
+// PROJECT JARVIS 4.0 — AI COMPANION OS MODELS
+// ==========================================
+
+export type BuddyVisualState =
+  | 'idle'
+  | 'listening'
+  | 'thinking'
+  | 'speaking'
+  | 'observing'
+  | 'working'
+  | 'attention'
+  | 'error';
+
+export type JarvisPersonalityTone = 'friendly' | 'professional' | 'technical';
+export type JarvisPersonalityStyle = 'concise' | 'detailed';
+
+export type CompanionMemoryCategory =
+  | 'preference'
+  | 'goal'
+  | 'project'
+  | 'milestone'
+  | 'architecture'
+  | 'decision'
+  | 'unfinished_task'
+  | 'learning'
+  | 'workflow'
+  | 'contact';
+
+export interface CompanionMemoryRecord {
+  id: string;
+  user_id?: string;
+  category: CompanionMemoryCategory;
+  title: string;
+  content: string;
+  source: 'conversation' | 'awareness' | 'manual' | 'briefing' | 'tool';
+  source_ref?: string;
+  project?: string;
+  importance: number; // 1-10
+  confidence: number; // 0-1
+  durability: 'long_term' | 'temporary';
+  expires_at?: string;
+  verified_by_user: boolean;
+  contradicts_id?: string;
+  status: 'active' | 'superseded' | 'archived';
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export type CompanionTimelineKind =
+  | 'live_observation'
+  | 'historical_info'
+  | 'ai_inference'
+  | 'recommendation'
+  | 'pending_approval'
+  | 'executed_action'
+  | 'learned_memory'
+  | 'error';
+
+export interface CompanionTimelineItem {
+  id: string;
+  user_id?: string;
+  kind: CompanionTimelineKind;
+  source: string;
+  agent_id?: string;
+  project?: string;
+  title: string;
+  summary: string;
+  importance: 'low' | 'normal' | 'high' | 'critical';
+  status: 'recorded' | 'pending_approval' | 'approved' | 'rejected' | 'executed' | 'failed' | 'dismissed';
+  action_url?: string;
+  metadata?: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AwarenessSourceRecord {
+  id: string;
+  status: 'connected' | 'not_configured' | 'degraded' | 'error' | 'paused';
+  enabled: boolean;
+  poll_interval_minutes: number;
+  cursor_token?: string;
+  last_checked_at?: string;
+  last_event_at?: string;
+  last_error?: string;
+  latest_summary?: string;
+  metadata?: Record<string, any>;
+  updated_at: string;
+}
+
+export type BuddyAgentRole =
+  | 'executive'
+  | 'startup'
+  | 'robotics'
+  | 'research'
+  | 'developer'
+  | 'productivity'
+  | 'knowledge';
+
+export interface JarvisCompanionSettings {
+  personalityTone: JarvisPersonalityTone;
+  personalityStyle: JarvisPersonalityStyle;
+  preferredProvider: 'auto' | 'gemini' | 'openai' | 'anthropic' | 'openrouter' | 'huggingface' | 'ollama';
+  costBudget: 'low' | 'balanced' | 'best';
+  voiceEnabled: boolean;
+  autoSpeakReplies: boolean;
+  voiceRate: number;
+  proactiveEnabled: boolean;
+  morningBriefingTime: string; // HH:mm
+  eveningBriefingTime: string; // HH:mm
+  weeklyReviewDay: number; // 0 = Sun
+  weeklyReviewTime: string; // HH:mm
+  quietHoursEnabled: boolean;
+  quietHoursStart: string; // HH:mm
+  quietHoursEnd: string; // HH:mm
+  minProactiveImportance: number; // 1-10
+  autoExtractMemories: boolean;
+  allowExternalContactsMemory: boolean;
+  updated_at: string;
+}
+

@@ -30,6 +30,7 @@ const VALID_MEMORY_PLATFORMS = new Set([
 export const SYNCED_PREFERENCE_KEYS = [
   'v3f_assessment_v2',
   'pawan_pv_telemetry_v1',
+  'jarvis_companion_settings_v1',
 ] as const;
 
 export type SyncedPreferenceKey = (typeof SYNCED_PREFERENCE_KEYS)[number];

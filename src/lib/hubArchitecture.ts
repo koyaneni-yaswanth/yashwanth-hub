@@ -68,8 +68,9 @@ export const HUB_DESTINATIONS: HubDestinationMeta[] = [
     label: 'AI Studio',
     shortLabel: 'AI Studio',
     tagline: 'Multi-AI assistants, specialized agents, models & automations',
-    defaultTab: 'ai-assistant',
+    defaultTab: 'buddy',
     routes: [
+      { tab: 'buddy', label: 'JARVIS Buddy', description: 'Personal 3D AI companion, memory & briefings', tier: 'primary' },
       { tab: 'ai-assistant', label: 'AI Assistant', description: 'Chief of Staff, agents & model router', tier: 'primary' },
       { tab: 'automations', label: 'Automations', description: 'Scheduled workflows & approval queue', tier: 'primary' },
       { tab: 'notifications', label: 'Alerts & Inbox', description: 'System alerts & reminders', tier: 'secondary' },
@@ -135,6 +136,7 @@ const TAB_TO_DESTINATION: Partial<Record<NavigationTab, HubDestinationId>> = {
   'learning-career': 'command',
   goals: 'command',
   momentum: 'command',
+  buddy: 'ai-studio',
   'ai-assistant': 'ai-studio',
   automations: 'ai-studio',
   tasks: 'workspace',

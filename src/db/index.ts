@@ -40,6 +40,8 @@ import type {
   DailyPlan,
   FocusSession,
   RoboticsProjectRecord,
+  CompanionMemoryRecord,
+  CompanionTimelineItem,
 } from '../types';
 import { generateId, getTodayISO } from '../lib/utils';
 
@@ -81,6 +83,8 @@ export class YashwanthHubDatabase extends Dexie {
   habit_logs!: Table<HabitLog, string>;
   daily_plans!: Table<DailyPlan, string>;
   focus_sessions!: Table<FocusSession, string>;
+  companion_memories!: Table<CompanionMemoryRecord, string>;
+  companion_timeline!: Table<CompanionTimelineItem, string>;
 
   constructor() {
     super('YashwanthHubDB');
@@ -148,6 +152,12 @@ export class YashwanthHubDatabase extends Dexie {
     this.version(9).stores({
       daily_plans: 'id, updated_at',
       focus_sessions: 'id, date, task_id, goal_id, started_at',
+    });
+
+    // PROJECT JARVIS 4.0 companion long-term memory & activity timeline. Additive only.
+    this.version(10).stores({
+      companion_memories: 'id, category, project, status, durability, importance, updated_at',
+      companion_timeline: 'id, kind, source, status, importance, created_at',
     });
   }
 }

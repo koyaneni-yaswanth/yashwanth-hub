@@ -6,6 +6,7 @@ import type { NavigationTab } from '../types';
  */
 export const TAB_TITLES: Record<NavigationTab, string> = {
   dashboard: 'Home',
+  buddy: 'JARVIS Buddy',
   'my-day': 'My Day',
   projects: 'Projects',
   'ai-assistant': 'Ask AI',
@@ -66,11 +67,22 @@ export function readTabFromSearch(search: string): NavigationTab | null {
   return isNavigationTab(tab) ? canonicalTab(tab) : null;
 }
 
-/** Builds the URL for a tab, keeping the path and dropping other query params. Home is the bare path. */
+/** Reads the active tab from `/buddy` pathname or `?tab=` in a URL search string. */
+export function readTabFromLocation(pathname: string, search: string): NavigationTab | null {
+  const cleanPath = (pathname || '/').replace(/\/+$/, '') || '/';
+  if (cleanPath === '/buddy') return 'buddy';
+  return readTabFromSearch(search);
+}
+
+/** Builds the URL for a tab, keeping clean `/buddy` route and `?tab=` deep links for workspace routes. */
 export function buildTabUrl(tab: NavigationTab, pathname: string): string {
-  return tab === 'dashboard' ? pathname : `${pathname}?tab=${encodeURIComponent(tab)}`;
+  const cleanPath = (pathname || '/').replace(/\/+$/, '') || '/';
+  if (tab === 'buddy') return '/buddy';
+  const basePath = cleanPath === '/buddy' ? '/' : (pathname || '/');
+  return tab === 'dashboard' ? basePath : `${basePath}?tab=${encodeURIComponent(tab)}`;
 }
 
 export function documentTitleFor(tab: NavigationTab): string {
+  if (tab === 'buddy') return `JARVIS — Personal AI Companion · ${APP_NAME}`;
   return tab === 'dashboard' ? `${APP_NAME} — Command Center` : `${TAB_TITLES[tab]} · ${APP_NAME}`;
 }

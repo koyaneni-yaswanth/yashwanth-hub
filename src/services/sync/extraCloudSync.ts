@@ -29,7 +29,10 @@ function getTabChannel(): BroadcastChannel | null {
   return tabChannel;
 }
 
-export function broadcastExtraUpdate(kind: 'ai_conversations' | 'neo_memories' | 'user_preferences', key?: string): void {
+export function broadcastExtraUpdate(
+  kind: 'ai_conversations' | 'neo_memories' | 'user_preferences' | 'companion_memories' | 'companion_timeline',
+  key?: string
+): void {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(EXTRA_CLOUD_UPDATE_EVENT, { detail: { kind, key } }));
   }
@@ -180,8 +183,57 @@ export async function reconcileExtraCloudData(): Promise<{
   return { pulled, uploaded, errors };
 }
 
+export async function reconcileCompanionTables(client: any, userId: string): Promise<number> {
+  let synced = 0;
+  try {
+    const { data: remoteMems } = await client
+      .from('companion_memories')
+      .select('id, category, title, content, source, source_ref, project, importance, confidence, durability, expires_at, verified_by_user, contradicts_id, status, tags, created_at, updated_at')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false })
+      .limit(120);
+    if (Array.isArray(remoteMems)) {
+      const localMems = await db.companion_memories.toArray();
+      const localMap = new Map(localMems.map((m) => [m.id, m]));
+      for (const r of remoteMems) {
+        const l = localMap.get(r.id);
+        if (!l || rowTimestampMs(r) > rowTimestampMs(l as any)) {
+          await db.companion_memories.put(r as any);
+          synced++;
+        }
+      }
+      broadcastExtraUpdate('companion_memories');
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    const { data: remoteTl } = await client
+      .from('companion_timeline')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(60);
+    if (Array.isArray(remoteTl)) {
+      const localTl = await db.companion_timeline.toArray();
+      const localMap = new Map(localTl.map((t) => [t.id, t]));
+      for (const r of remoteTl) {
+        const l = localMap.get(r.id);
+        if (!l || rowTimestampMs(r) > rowTimestampMs(l as any)) {
+          await db.companion_timeline.put(r as any);
+          synced++;
+        }
+      }
+      broadcastExtraUpdate('companion_timeline');
+    }
+  } catch {
+    /* ignore */
+  }
+  return synced;
+}
+
 export async function applyExtraRealtime(
-  table: 'ai_conversations' | 'memories' | 'user_preferences',
+  table: 'ai_conversations' | 'memories' | 'user_preferences' | 'companion_memories' | 'companion_timeline',
   payload: { eventType: string; new?: Row; old?: Row },
 ): Promise<void> {
   if (payload.eventType === 'DELETE') {
@@ -197,6 +249,12 @@ export async function applyExtraRealtime(
     } else if (table === 'user_preferences') {
       await db.settings.delete(id);
       broadcastExtraUpdate('user_preferences', id);
+    } else if (table === 'companion_memories') {
+      await db.companion_memories.delete(id);
+      broadcastExtraUpdate('companion_memories', id);
+    } else if (table === 'companion_timeline') {
+      await db.companion_timeline.delete(id);
+      broadcastExtraUpdate('companion_timeline', id);
     }
     return;
   }
@@ -224,5 +282,13 @@ export async function applyExtraRealtime(
       updated_at: String(payload.new.updated_at || new Date().toISOString()),
     });
     broadcastExtraUpdate('user_preferences', id);
+  } else if (table === 'companion_memories') {
+    const cleanRow = { ...(payload.new as Record<string, any>) };
+    delete cleanRow.embedding;
+    await db.companion_memories.put(cleanRow as any);
+    broadcastExtraUpdate('companion_memories', id);
+  } else if (table === 'companion_timeline') {
+    await db.companion_timeline.put(payload.new as any);
+    broadcastExtraUpdate('companion_timeline', id);
   }
 }
