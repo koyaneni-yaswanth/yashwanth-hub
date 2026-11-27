@@ -150,9 +150,9 @@ export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
   return (
     <aside
       aria-label={station.label}
-      className={`fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 md:left-auto md:translate-x-0 md:right-6 z-30 w-[calc(100vw-1.5rem)] ${
+      className={`fixed bottom-32 md:bottom-24 left-1/2 -translate-x-1/2 md:left-auto md:translate-x-0 md:right-6 z-25 w-[calc(100vw-1.5rem)] ${
         isWide ? 'max-w-3xl' : 'max-w-xl'
-      } max-h-[72vh] flex flex-col rounded-2xl border border-white/15 bg-[#0A0E17]/92 backdrop-blur-xl text-[#F5F3EF] shadow-2xl overflow-hidden`}
+      } max-h-[calc(100vh-12.5rem)] flex flex-col rounded-2xl border border-white/15 bg-[#0A0E17]/92 backdrop-blur-xl text-[#F5F3EF] shadow-2xl overflow-hidden`}
       data-testid={`studio-panel-${activeStation}`}
     >
       {/* Header */}

@@ -75,6 +75,10 @@ test('GLSL Shaders, Physical Monitors, Whiteboard, Experiment Station & Reusable
   const sceneSrc = read('src/components/universe/UniverseStudioScene.tsx');
   assert.ok(sceneSrc.includes('monitorTexUpdaters'));
   assert.ok(sceneSrc.includes('OrbitControls'));
+  assert.ok(sceneSrc.includes('LightingDirector'));
+  assert.ok(sceneSrc.includes('PostFX'));
+  assert.ok(sceneSrc.includes('ExtrudeGeometry'));
+  assert.ok(sceneSrc.includes('LatheGeometry'));
   assert.ok(sceneSrc.includes('onPointerUp'));
   assert.ok(sceneSrc.includes('renderer.dispose()'));
 

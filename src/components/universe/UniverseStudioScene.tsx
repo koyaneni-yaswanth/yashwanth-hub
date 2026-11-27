@@ -2,6 +2,13 @@ import React, { useEffect, useRef } from 'react';
 import type { UniverseStationId } from '../../lib/universeConfig';
 import { stationById } from '../../lib/universeConfig';
 import { settleFactor } from '../momentum/cinema/cinemaConfig';
+import { LightingDirector } from '../momentum/cinema/LightingDirector';
+import { PostFX } from '../momentum/cinema/PostFX';
+import { createProceduralDetailMaps } from '../momentum/cinema/proceduralMaterials';
+import {
+  JARVIS_CORE_FRAGMENT_SHADER,
+  JARVIS_CORE_VERTEX_SHADER,
+} from '../jarvis/jarvisShaders';
 import {
   AIRFLOW_STREAM_FRAGMENT_SHADER,
   AIRFLOW_STREAM_VERTEX_SHADER,
@@ -34,55 +41,95 @@ function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
 }
 
+function makeRoundedRectShape(THREE: typeof import('three'), w: number, h: number, r: number): import('three').Shape {
+  const s = new THREE.Shape();
+  const x = -w / 2;
+  const y = -h / 2;
+  s.moveTo(x + r, y);
+  s.lineTo(x + w - r, y);
+  s.quadraticCurveTo(x + w, y, x + w, y + r);
+  s.lineTo(x + w, y + h - r);
+  s.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  s.lineTo(x + r, y + h);
+  s.quadraticCurveTo(x, y + h, x, y + h - r);
+  s.lineTo(x, y + r);
+  s.quadraticCurveTo(x, y, x + r, y);
+  return s;
+}
+
+function makeRadialShadowTexture(THREE: typeof import('three'), tint = 'rgba(0,0,0,0.65)'): import('three').CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const ctx = c.getContext('2d')!;
+  const grad = ctx.createRadialGradient(128, 128, 12, 128, 128, 124);
+  grad.addColorStop(0, tint);
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 256, 256);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 function makeMonitorCanvasTexture(
   THREE: typeof import('three'),
   title: string,
   subtitle: string,
   accent: string,
-  lines: string[]
-): { tex: import('three').CanvasTexture; canvas: HTMLCanvasElement; draw: (nextLines: string[]) => void } {
+  linesFn: () => string[]
+): { tex: import('three').CanvasTexture; draw: (nextLines: string[]) => void } {
   const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 300;
+  canvas.width = 768;
+  canvas.height = 450;
   const ctx = canvas.getContext('2d')!;
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
 
   const draw = (currentLines: string[]) => {
-    ctx.fillStyle = '#070B13';
+    const bg = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    bg.addColorStop(0, '#090E18');
+    bg.addColorStop(1, '#05070C');
+    ctx.fillStyle = bg;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Subtle header rule
+    // Subtle top accent bar + corner UI marks
     ctx.fillStyle = accent;
-    ctx.fillRect(24, 24, 96, 4);
+    ctx.fillRect(36, 36, 110, 5);
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    ctx.fillRect(36, 152, 696, 1);
 
-    ctx.fillStyle = '#E6F1FF';
-    ctx.font = 'bold 26px sans-serif';
-    ctx.fillText(title, 24, 62);
+    ctx.fillStyle = '#F5F3EF';
+    ctx.font = 'bold 36px sans-serif';
+    ctx.fillText(title, 36, 94);
 
     ctx.fillStyle = accent;
-    ctx.font = 'bold 14px monospace';
-    ctx.fillText(subtitle, 24, 88);
+    ctx.font = 'bold 18px monospace';
+    ctx.fillText(subtitle, 36, 130);
 
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-    ctx.beginPath();
-    ctx.moveTo(24, 108);
-    ctx.lineTo(488, 108);
-    ctx.stroke();
+    // Live micro sparkline decorative bars in top-right
+    for (let i = 0; i < 12; i++) {
+      const h = 10 + ((i * 19 + currentLines.length * 7) % 34);
+      ctx.fillStyle = i % 3 === 0 ? accent : 'rgba(255,255,255,0.16)';
+      ctx.fillRect(540 + i * 16, 118 - h, 9, h);
+    }
 
-    ctx.font = '15px monospace';
+    ctx.font = '21px monospace';
     currentLines.slice(0, 5).forEach((ln, idx) => {
-      ctx.fillStyle = idx === 0 ? '#F5F3EF' : '#9FB1C8';
-      ctx.fillText(ln.slice(0, 48), 24, 140 + idx * 30);
+      ctx.fillStyle = idx === 0 ? '#FFFFFF' : '#A6B8CE';
+      ctx.fillText(ln.slice(0, 44), 36, 200 + idx * 44);
     });
 
-    ctx.fillStyle = 'rgba(198,164,107,0.35)';
-    ctx.fillRect(24, 272, 464, 2);
+    // Bottom subtle status hairline
+    ctx.fillStyle = accent;
+    ctx.globalAlpha = 0.45;
+    ctx.fillRect(36, 412, 696, 2);
+    ctx.globalAlpha = 1;
     tex.needsUpdate = true;
   };
 
-  draw(lines);
-  return { tex, canvas, draw };
+  draw(linesFn());
+  return { tex, draw };
 }
 
 export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
@@ -147,8 +194,22 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
     (async () => {
       try {
         const THREE = await import('three');
-        const [{ OrbitControls }] = await Promise.all([
+        const [
+          { OrbitControls },
+          { EffectComposer },
+          { RenderPass },
+          { UnrealBloomPass },
+          { OutputPass },
+          { ShaderPass },
+          { RoomEnvironment },
+        ] = await Promise.all([
           import('three/examples/jsm/controls/OrbitControls.js'),
+          import('three/examples/jsm/postprocessing/EffectComposer.js'),
+          import('three/examples/jsm/postprocessing/RenderPass.js'),
+          import('three/examples/jsm/postprocessing/UnrealBloomPass.js'),
+          import('three/examples/jsm/postprocessing/OutputPass.js'),
+          import('three/examples/jsm/postprocessing/ShaderPass.js'),
+          import('three/examples/jsm/environments/RoomEnvironment.js'),
         ]);
         if (!mounted || !mount) return;
 
@@ -168,36 +229,56 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
         renderer.setPixelRatio(dpr);
         renderer.setSize(width, height);
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.08;
+        renderer.toneMappingExposure = 0.96;
         mount.innerHTML = '';
         mount.appendChild(renderer.domElement);
 
         const scene = new THREE.Scene();
         scene.background = new THREE.Color('#050608');
-        scene.fog = new THREE.FogExp2('#07090E', 0.042);
+        scene.fog = new THREE.FogExp2('#07090E', 0.036);
 
         const startMeta = stationById(stateRef.current.activeStation);
-        const camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 80);
+        const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 85);
         camera.position.set(...startMeta.cameraPos);
 
         const orbit = new OrbitControls(camera, renderer.domElement);
         orbit.enableDamping = true;
-        orbit.dampingFactor = 0.07;
+        orbit.dampingFactor = 0.065;
         orbit.maxPolarAngle = Math.PI * 0.48;
         orbit.minDistance = 1.6;
-        orbit.maxDistance = 14;
+        orbit.maxDistance = 14.5;
         orbit.target.set(...startMeta.lookAt);
 
-        // Lighting
-        const hemi = new THREE.HemisphereLight('#8BA8C8', '#090B10', 0.65);
-        const keyLight = new THREE.DirectionalLight('#FFE5BE', 2.15);
-        keyLight.position.set(6, 8, 5);
-        const rimLight = new THREE.DirectionalLight('#60A5FA', 1.45);
-        rimLight.position.set(-7, 5, -6);
-        const deskSpot = new THREE.PointLight('#C6A46B', 9, 10, 1.8);
-        deskSpot.position.set(0, 3.2, -0.4);
-        scene.add(hemi, keyLight, rimLight, deskSpot);
+        // Procedural Studio HDR + Three-Point Lighting + Restrained Bloom PostFX
+        const lighting = new LightingDirector(THREE, renderer, scene, RoomEnvironment, {
+          shadows: isMobile ? 'off' : 'medium',
+          keyColor: 0xffe4bd,
+          rimColor: 0x8fb3e8,
+          coreColor: 0xc6a46b,
+        });
+        lighting.keyLight.intensity = 1.35;
+        lighting.coreLight.intensity = 10;
+        lighting.coreLight.position.set(0, 2.7, -0.5);
+        scene.add(lighting.coreLight);
 
+        const postfx = new PostFX(
+          THREE,
+          { EffectComposer, RenderPass, UnrealBloomPass, OutputPass, ShaderPass },
+          renderer,
+          scene,
+          camera,
+          { width, height },
+          {
+            bloom: !isMobile,
+            grain: !isMobile,
+            chromaticAberration: false,
+            renderScale: isMobile ? 0.9 : 1,
+            bloomThreshold: 0.78,
+            bloomStrength: 0.16,
+          }
+        );
+
+        const pbrMaps = createProceduralDetailMaps(THREE);
         const managedGeos: import('three').BufferGeometry[] = [];
         const managedMats: import('three').Material[] = [];
         const managedTexs: import('three').Texture[] = [];
@@ -210,7 +291,50 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
           return m;
         };
 
-        // Custom GLSL Studio Floor
+        // Procedural Studio Materials with PMREM specular reflections
+        const obsidianMat = trackMat(
+          new THREE.MeshStandardMaterial({
+            color: '#111621',
+            metalness: 0.45,
+            roughness: 0.42,
+            roughnessMap: pbrMaps.metalRoughness,
+            bumpMap: pbrMaps.metalBump,
+            bumpScale: 0.008,
+          })
+        );
+        const titaniumMat = trackMat(
+          new THREE.MeshStandardMaterial({
+            color: '#2A3446',
+            metalness: 0.88,
+            roughness: 0.24,
+            roughnessMap: pbrMaps.metalRoughness,
+            bumpMap: pbrMaps.metalBump,
+            bumpScale: 0.01,
+          })
+        );
+        const brassMat = trackMat(
+          new THREE.MeshStandardMaterial({
+            color: '#C6A46B',
+            metalness: 0.92,
+            roughness: 0.2,
+            roughnessMap: pbrMaps.metalRoughness,
+            emissive: '#4A3615',
+            emissiveIntensity: 0.2,
+          })
+        );
+        const cyanEmitMat = trackMat(
+          new THREE.MeshStandardMaterial({
+            color: '#3BE8FF',
+            emissive: '#3BE8FF',
+            emissiveIntensity: 1.3,
+            metalness: 0.3,
+            roughness: 0.2,
+          })
+        );
+        const shadowTex = makeRadialShadowTexture(THREE);
+        managedTexs.push(shadowTex);
+
+        // Custom GLSL Studio Floor with interactive cursor spotlight
         const cursorWorld = new THREE.Vector3(0, 0, 0);
         const floorUniforms = {
           uTime: { value: 0 },
@@ -227,45 +351,105 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
             transparent: true,
           })
         );
-        const floorMesh = new THREE.Mesh(trackGeo(new THREE.PlaneGeometry(36, 36)), floorMat);
+        const floorMesh = new THREE.Mesh(trackGeo(new THREE.PlaneGeometry(38, 38)), floorMat);
         floorMesh.rotation.x = -Math.PI / 2;
+        floorMesh.receiveShadow = true;
         scene.add(floorMesh);
 
-        // Ambient particles (reduced cleanly on mobile)
-        const particleCount = isMobile ? 70 : 180;
+        // Soft studio ambient motes
+        const particleCount = isMobile ? 65 : 170;
         const pPositions = new Float32Array(particleCount * 3);
         for (let i = 0; i < particleCount; i++) {
           pPositions[i * 3] = (Math.random() - 0.5) * 18;
-          pPositions[i * 3 + 1] = 0.5 + Math.random() * 5.2;
+          pPositions[i * 3 + 1] = 0.6 + Math.random() * 5.2;
           pPositions[i * 3 + 2] = (Math.random() - 0.5) * 14;
         }
         const pGeo = trackGeo(new THREE.BufferGeometry());
         pGeo.setAttribute('position', new THREE.BufferAttribute(pPositions, 3));
-        const pMat = trackMat(new THREE.PointsMaterial({ color: '#C6A46B', size: 0.038, transparent: true, opacity: 0.55 }));
+        const pMat = trackMat(new THREE.PointsMaterial({ color: '#C6A46B', size: 0.036, transparent: true, opacity: 0.5 }));
         const dustPoints = new THREE.Points(pGeo, pMat);
         scene.add(dustPoints);
 
-        // Engineering Workbench Desk
+        // Sculpted Chamfered Architectural Engineering Desk (ExtrudeGeometry with Bevel!)
         const deskGroup = new THREE.Group();
-        const darkSlateMat = trackMat(new THREE.MeshStandardMaterial({ color: '#141923', metalness: 0.55, roughness: 0.42 }));
-        const brushedMetalMat = trackMat(new THREE.MeshStandardMaterial({ color: '#273142', metalness: 0.85, roughness: 0.25 }));
-        const brassTrimMat = trackMat(new THREE.MeshStandardMaterial({ color: '#C6A46B', metalness: 0.88, roughness: 0.22 }));
+        const slabShape = makeRoundedRectShape(THREE, 6.6, 2.9, 0.24);
+        const slabGeo = trackGeo(
+          new THREE.ExtrudeGeometry(slabShape, {
+            depth: 0.09,
+            bevelEnabled: true,
+            bevelThickness: 0.025,
+            bevelSize: 0.025,
+            bevelSegments: 3,
+          })
+        );
+        slabGeo.rotateX(Math.PI / 2);
+        const deskSlab = new THREE.Mesh(slabGeo, obsidianMat);
+        deskSlab.position.set(0, 1.07, -0.35);
+        deskSlab.castShadow = true;
+        deskSlab.receiveShadow = true;
 
-        const deskTop = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(6.4, 0.12, 2.8)), darkSlateMat);
-        deskTop.position.set(0, 1.02, -0.35);
-        const deskTrim = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(6.46, 0.04, 2.86)), brassTrimMat);
-        deskTrim.position.set(0, 1.06, -0.35);
-        deskGroup.add(deskTop, deskTrim);
+        // Brass perimeter inlay strip + architectural arched monitor rail
+        const inlayShape = makeRoundedRectShape(THREE, 6.66, 2.96, 0.26);
+        const inlayGeo = trackGeo(new THREE.ExtrudeGeometry(inlayShape, { depth: 0.018, bevelEnabled: false }));
+        inlayGeo.rotateX(Math.PI / 2);
+        const deskInlay = new THREE.Mesh(inlayGeo, brassMat);
+        deskInlay.position.set(0, 1.03, -0.35);
 
-        for (const [lx, lz] of [[-2.95, -1.5], [2.95, -1.5], [-2.95, 0.85], [2.95, 0.85]]) {
-          const leg = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(0.14, 1.0, 0.14)), brushedMetalMat);
-          leg.position.set(lx, 0.5, lz);
-          deskGroup.add(leg);
+        // Angled A-frame pedestal legs
+        for (const lx of [-2.85, 2.85]) {
+          const legPostF = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.055, 0.075, 1.02, 16)), titaniumMat);
+          legPostF.position.set(lx, 0.5, 0.65);
+          legPostF.rotation.x = 0.14;
+          const legPostB = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.055, 0.075, 1.02, 16)), titaniumMat);
+          legPostB.position.set(lx, 0.5, -1.25);
+          legPostB.rotation.x = -0.14;
+          const runner = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(0.18, 0.06, 2.2)), brassMat);
+          runner.position.set(lx, 0.03, -0.3);
+          deskGroup.add(legPostF, legPostB, runner);
         }
+
+        // Suspended overhead architectural light bar casting warm illumination onto the bench
+        const lightBarMat = trackMat(
+          new THREE.MeshBasicMaterial({ color: '#E8D5B0' })
+        );
+        const overheadBar = new THREE.Mesh(trackGeo(new THREE.CapsuleGeometry(0.03, 3.8, 8, 16)), lightBarMat);
+        overheadBar.rotation.z = Math.PI / 2;
+        overheadBar.position.set(0, 3.1, -0.8);
+        const cableL = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.008, 0.008, 2.5, 8)), titaniumMat);
+        cableL.position.set(-1.6, 4.35, -0.8);
+        const cableR = cableL.clone();
+        cableR.position.x = 1.6;
+
+        deskGroup.add(deskSlab, deskInlay, overheadBar, cableL, cableR);
         scene.add(deskGroup);
 
+        // Centerpiece Halo: Floating JARVIS Holographic Gyro-Core above center console
+        const gyroGroup = new THREE.Group();
+        gyroGroup.position.set(0, 2.72, -1.28);
+        const coreShaderMat = trackMat(
+          new THREE.ShaderMaterial({
+            uniforms: {
+              uTime: { value: 0 },
+              uPulseRate: { value: 0.45 },
+              uDispAmp: { value: 0.045 },
+              uPrimaryColor: { value: new THREE.Color('#3BE8FF') },
+              uSecondaryColor: { value: new THREE.Color('#C6A46B') },
+              uEnergy: { value: 0.75 },
+            },
+            vertexShader: JARVIS_CORE_VERTEX_SHADER,
+            fragmentShader: JARVIS_CORE_FRAGMENT_SHADER,
+            transparent: true,
+          })
+        );
+        const gyroCoreMesh = new THREE.Mesh(trackGeo(new THREE.IcosahedronGeometry(0.18, 3)), coreShaderMat);
+        const gRing1 = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(0.28, 0.012, 12, 48)), brassMat);
+        const gRing2 = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(0.34, 0.01, 12, 48)), cyanEmitMat);
+        gRing2.rotation.x = Math.PI / 3;
+        gyroGroup.add(gyroCoreMesh, gRing1, gRing2);
+        scene.add(gyroGroup);
+
         const interactiveTargets: import('three').Object3D[] = [];
-        const monitorHoloUniforms: Map<UniverseStationId, { uHovered: { value: number }; uTime: { value: number } }> = new Map();
+        const monitorHoloUniforms = new Map<UniverseStationId, { uHovered: { value: number }; uTime: { value: number } }>();
 
         const registerInteractive = (obj: import('three').Object3D, id: UniverseStationId) => {
           obj.traverse((child) => {
@@ -274,8 +458,19 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
           interactiveTargets.push(obj);
         };
 
-        // Helper: Sculpted Physical 3D Monitor
+        // Sculpted Extruded Chamfered Monitors with Articulated Cantilever Arms
         const monitorTexUpdaters: Array<() => void> = [];
+        const bezelShape = makeRoundedRectShape(THREE, 1.42, 0.88, 0.06);
+        const bezelGeo = trackGeo(
+          new THREE.ExtrudeGeometry(bezelShape, {
+            depth: 0.045,
+            bevelEnabled: true,
+            bevelThickness: 0.012,
+            bevelSize: 0.012,
+            bevelSegments: 2,
+          })
+        );
+
         const addMonitor = (
           id: UniverseStationId,
           title: string,
@@ -289,24 +484,43 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
           g.position.set(...pos);
           g.rotation.y = rotY;
 
-          const bezel = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(1.38, 0.84, 0.06)), brushedMetalMat);
-          const stand = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.04, 0.06, 0.42, 16)), brushedMetalMat);
-          stand.position.set(0, -0.58, -0.04);
-          g.add(bezel, stand);
+          const bezel = new THREE.Mesh(bezelGeo, titaniumMat);
+          bezel.position.z = -0.025;
+          bezel.castShadow = true;
 
-          const scr = makeMonitorCanvasTexture(THREE, title, subtitle, accent, linesFn());
+          // Sculpted articulated desk arm + foot base
+          const neckCurve = new THREE.CatmullRomCurve3([
+            new THREE.Vector3(0, 0, -0.03),
+            new THREE.Vector3(0, -0.25, -0.18),
+            new THREE.Vector3(0, -0.78, -0.14),
+          ]);
+          const arm = new THREE.Mesh(trackGeo(new THREE.TubeGeometry(neckCurve, 14, 0.028, 10, false)), titaniumMat);
+          const armBase = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.11, 0.13, 0.035, 20)), brassMat);
+          armBase.position.set(0, -0.78, -0.14);
+
+          const chinAccent = new THREE.Mesh(
+            trackGeo(new THREE.BoxGeometry(0.32, 0.014, 0.018)),
+            trackMat(new THREE.MeshBasicMaterial({ color: accent }))
+          );
+          chinAccent.position.set(0, -0.415, 0.032);
+
+          g.add(bezel, arm, armBase, chinAccent);
+
+          const scr = makeMonitorCanvasTexture(THREE, title, subtitle, accent, linesFn);
           managedTexs.push(scr.tex);
           monitorTexUpdaters.push(() => scr.draw(linesFn()));
 
-          const scrMat = trackMat(new THREE.MeshBasicMaterial({ map: scr.tex }));
-          const scrMesh = new THREE.Mesh(trackGeo(new THREE.PlaneGeometry(1.28, 0.75)), scrMat);
-          scrMesh.position.z = 0.032;
+          const scrMesh = new THREE.Mesh(
+            trackGeo(new THREE.PlaneGeometry(1.3, 0.76)),
+            trackMat(new THREE.MeshBasicMaterial({ map: scr.tex }))
+          );
+          scrMesh.position.z = 0.035;
           g.add(scrMesh);
 
           const holoUni = { uTime: { value: 0 }, uColor: { value: new THREE.Color(accent) }, uHovered: { value: 0 } };
           monitorHoloUniforms.set(id, holoUni);
           const holoFrame = new THREE.Mesh(
-            trackGeo(new THREE.PlaneGeometry(1.42, 0.88)),
+            trackGeo(new THREE.PlaneGeometry(1.44, 0.9)),
             trackMat(
               new THREE.ShaderMaterial({
                 uniforms: holoUni,
@@ -317,7 +531,7 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
               })
             )
           );
-          holoFrame.position.z = 0.036;
+          holoFrame.position.z = 0.04;
           g.add(holoFrame);
 
           registerInteractive(g, id);
@@ -327,102 +541,153 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
         addMonitor(
           'about',
           'ABOUT ME',
-          'MONITOR 01 · YASHWANTH',
+          'MONITOR 01 · IDENTITY',
           '#C6A46B',
-          () => ['VNIT Nagpur · Mechanical Eng.', 'Founder · PAWAN SHAKTI Wind', 'Robotics · ROS2 / PiPER / Swarm', 'Click to read profile'],
-          [-1.55, 1.84, -1.28],
+          () => ['Yashwanth · VNIT Nagpur', 'PAWAN SHAKTI Wind Founder', 'Robotics & AI Systems', 'Click to read profile'],
+          [-1.56, 1.86, -1.26],
           0.32
         );
         addMonitor(
           'projects',
           'PROJECTS',
-          'MONITOR 02 · LIVE ARCHIVE',
+          'MONITOR 02 · ARCHIVE',
           '#8BA8C8',
           () => [
             `Tracked Projects: ${stateRef.current.statsSummary.projectCount}`,
-            `Open Tasks: ${stateRef.current.statsSummary.openTasks}`,
-            'Wind Turbine · Robotics · AI OS',
+            `Open Actions: ${stateRef.current.statsSummary.openTasks}`,
+            'Wind · Robotics · Software',
             'Click to open Projects',
           ],
-          [0.0, 1.86, -1.48],
+          [0.0, 1.88, -1.48],
           0.0
         );
         addMonitor(
           'jarvis',
           'JARVIS CORE',
-          'MONITOR 03 · PERSONAL AI',
+          'MONITOR 03 · COMPANION',
           '#3BE8FF',
           () => [
-            `Providers Ready: ${stateRef.current.statsSummary.providersReady}`,
+            `Cloud Providers: ${stateRef.current.statsSummary.providersReady} active`,
             `Local Agent: ${stateRef.current.statsSummary.localOnline ? 'ONLINE' : 'UNPAIRED'}`,
             'Gemini · GPT · Claude · Ollama',
-            'Click to chat on Monitor 03',
+            'Click for live AI terminal',
           ],
-          [1.55, 1.84, -1.28],
+          [1.56, 1.86, -1.26],
           -0.32
         );
         addMonitor(
           'research',
           'SYSTEM / LABS',
-          'MONITOR 04 · DIAGNOSTICS',
+          'MONITOR 04 · TELEMETRY',
           '#A78BFA',
           () => [
-            `Robotics Logs: ${stateRef.current.statsSummary.roboticsCount}`,
-            'GitHub CI + Vercel Prod Health',
-            'arXiv & Semantic Memory Vault',
-            'Click to inspect diagnostics',
+            `Lab Records: ${stateRef.current.statsSummary.roboticsCount}`,
+            'CI / Production Deployment',
+            'arXiv & Semantic Archive',
+            'Click for diagnostics',
           ],
-          [2.58, 1.82, -0.78],
-          -0.78
+          [2.72, 1.84, -0.78],
+          -0.64
         );
 
-        // Station 05: Left Robotics Workbench (Articulated 6-DOF Arm)
+        // Station 05: Sculpted PiPER 6-DOF Robotic Arm on Plinth
         const roboticsGroup = new THREE.Group();
-        roboticsGroup.position.set(-2.55, 1.08, -0.15);
-        const rBase = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.24, 0.28, 0.14, 24)), brushedMetalMat);
-        rBase.position.y = 0.07;
+        roboticsGroup.position.set(-2.55, 1.09, -0.15);
+        const rPlinth = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.32, 0.36, 0.04, 32)), obsidianMat);
+        rPlinth.position.y = 0.02;
+        const rRing = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(0.34, 0.012, 12, 36)), cyanEmitMat);
+        rRing.rotation.x = Math.PI / 2;
+        rRing.position.y = 0.02;
+        const rPedestal = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.18, 0.24, 0.14, 24)), titaniumMat);
+        rPedestal.position.y = 0.11;
+
         const rShoulder = new THREE.Group();
-        rShoulder.position.y = 0.14;
-        const rLink1 = new THREE.Mesh(
-          trackGeo(new THREE.BoxGeometry(0.11, 0.56, 0.11)),
-          trackMat(new THREE.MeshStandardMaterial({ color: '#38BDF8', metalness: 0.65, roughness: 0.25 }))
-        );
-        rLink1.position.y = 0.28;
+        rShoulder.position.y = 0.2;
+        const j1Servo = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.08, 0.08, 0.14, 20)), brassMat);
+        j1Servo.rotation.x = Math.PI / 2;
+        // Twin CNC side struts
+        const strutL = new THREE.Mesh(trackGeo(new THREE.CapsuleGeometry(0.036, 0.44, 6, 12)), titaniumMat);
+        strutL.position.set(0, 0.26, 0.045);
+        const strutR = strutL.clone();
+        strutR.position.z = -0.045;
+
         const rElbow = new THREE.Group();
-        rElbow.position.y = 0.56;
-        const rLink2 = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.045, 0.06, 0.48, 16)), brassTrimMat);
-        rLink2.position.y = 0.24;
-        const rGripper = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(0.14, 0.08, 0.08)), brushedMetalMat);
-        rGripper.position.y = 0.5;
-        rElbow.add(rLink2, rGripper);
-        rShoulder.add(rLink1, rElbow);
-        roboticsGroup.add(rBase, rShoulder);
+        rElbow.position.y = 0.52;
+        const j2Servo = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.065, 0.065, 0.12, 20)), cyanEmitMat);
+        j2Servo.rotation.x = Math.PI / 2;
+        const rForearm = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.038, 0.055, 0.46, 18)), brassMat);
+        rForearm.position.y = 0.23;
+        const wrist = new THREE.Mesh(trackGeo(new THREE.SphereGeometry(0.055, 16, 16)), titaniumMat);
+        wrist.position.y = 0.48;
+        const jawL = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(0.018, 0.12, 0.03)), cyanEmitMat);
+        jawL.position.set(-0.04, 0.55, 0);
+        const jawR = jawL.clone();
+        jawR.position.x = 0.04;
+
+        rElbow.add(j2Servo, rForearm, wrist, jawL, jawR);
+        rShoulder.add(j1Servo, strutL, strutR, rElbow);
+        roboticsGroup.add(rPlinth, rRing, rPedestal, rShoulder);
         registerInteractive(roboticsGroup, 'robotics');
         scene.add(roboticsGroup);
 
-        // Station 06: Right Energy Lab (PAWAN SHAKTI Helical Turbine + Airflow Shader)
+        // Station 06: Sculpted PAWAN SHAKTI Helical Wind Turbine (Lathe Nosecone + Twisted Catmull Blades + Gear Ring)
         const energyGroup = new THREE.Group();
-        energyGroup.position.set(2.75, 1.08, 0.15);
-        const tMast = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.055, 0.08, 0.92, 20)), brushedMetalMat);
-        tMast.position.y = 0.46;
-        const tNacelle = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.14, 0.14, 0.42, 20)), darkSlateMat);
-        tNacelle.rotation.x = Math.PI / 2;
-        tNacelle.position.set(0, 0.92, -0.05);
+        energyGroup.position.set(3.05, 1.09, 0.55);
+        const ePlinth = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.32, 0.36, 0.04, 32)), obsidianMat);
+        ePlinth.position.y = 0.02;
+        const eMast = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.042, 0.072, 0.94, 24)), titaniumMat);
+        eMast.position.y = 0.47;
+
+        const nacelleProfile = [
+          new THREE.Vector2(0.01, -0.25),
+          new THREE.Vector2(0.11, -0.22),
+          new THREE.Vector2(0.145, -0.05),
+          new THREE.Vector2(0.135, 0.16),
+          new THREE.Vector2(0.08, 0.24),
+        ];
+        const eNacelle = new THREE.Mesh(trackGeo(new THREE.LatheGeometry(nacelleProfile, 28)), titaniumMat);
+        eNacelle.rotation.x = Math.PI / 2;
+        eNacelle.position.set(0, 0.94, -0.04);
+
+        const statorCoil = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(0.145, 0.022, 12, 32)), brassMat);
+        statorCoil.position.set(0, 0.94, 0.08);
+
         const tRotor = new THREE.Group();
-        tRotor.position.set(0, 0.92, 0.18);
-        const tBladeMat = trackMat(new THREE.MeshStandardMaterial({ color: '#34D399', metalness: 0.45, roughness: 0.3 }));
+        tRotor.position.set(0, 0.94, 0.2);
+        const bladeMat = trackMat(
+          new THREE.MeshStandardMaterial({
+            color: '#34D399',
+            metalness: 0.5,
+            roughness: 0.26,
+            emissive: '#064E3B',
+            emissiveIntensity: 0.25,
+          })
+        );
         for (let i = 0; i < 3; i++) {
-          const b = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(0.09, 0.55, 0.025)), tBladeMat);
-          b.position.y = 0.27;
-          b.rotation.y = 0.35;
-          const h = new THREE.Group();
-          h.rotation.z = (i * Math.PI * 2) / 3;
-          h.add(b);
-          tRotor.add(h);
+          const pts: import('three').Vector3[] = [];
+          for (let s = 0; s <= 12; s++) {
+            const u = s / 12;
+            const twist = u * 1.45;
+            pts.push(new THREE.Vector3(Math.sin(twist) * 0.14, u * 0.56, -u * 0.24));
+          }
+          const bladeCurve = new THREE.CatmullRomCurve3(pts);
+          const bladeGeo = trackGeo(new THREE.TubeGeometry(bladeCurve, 20, 0.042, 10, false));
+          bladeGeo.scale(1.65, 1, 0.35);
+          const bladeMesh = new THREE.Mesh(bladeGeo, bladeMat);
+          const holder = new THREE.Group();
+          holder.rotation.z = (i * Math.PI * 2) / 3;
+          holder.add(bladeMesh);
+          tRotor.add(holder);
         }
-        const tHub = new THREE.Mesh(trackGeo(new THREE.ConeGeometry(0.09, 0.2, 20)), brassTrimMat);
+        const hubProfile = [
+          new THREE.Vector2(0.0, 0.15),
+          new THREE.Vector2(0.06, 0.08),
+          new THREE.Vector2(0.095, 0.0),
+          new THREE.Vector2(0.095, -0.04),
+        ];
+        const tHub = new THREE.Mesh(trackGeo(new THREE.LatheGeometry(hubProfile, 24)), brassMat);
         tHub.rotation.x = Math.PI / 2;
-        tHub.position.z = 0.06;
+        tHub.position.z = 0.04;
         tRotor.add(tHub);
 
         const airflowUniforms = { uTime: { value: 0 }, uColor: { value: new THREE.Color('#34D399') } };
@@ -440,36 +705,66 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
           )
         );
         airflowRibbon.rotation.y = Math.PI / 2;
-        airflowRibbon.position.set(0.28, 0.92, 0.15);
-        energyGroup.add(tMast, tNacelle, tRotor, airflowRibbon);
+        airflowRibbon.position.set(0.32, 0.94, 0.15);
+
+        energyGroup.add(ePlinth, eMast, eNacelle, statorCoil, tRotor, airflowRibbon);
         registerInteractive(energyGroup, 'energy');
         scene.add(energyGroup);
 
-        // Station 07: Functional Physical Whiteboard (left studio wall)
+        // Station 07: Sculpted Architectural Easel Whiteboard + Tray with Colored Markers
         const wbGroup = new THREE.Group();
-        wbGroup.position.set(-4.15, 2.05, -0.45);
+        wbGroup.position.set(-4.15, 2.02, -0.45);
         wbGroup.rotation.y = 1.15;
-        const wbFrame = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(2.35, 1.3, 0.08)), brushedMetalMat);
+        const wbBezel = new THREE.Mesh(
+          trackGeo(new THREE.ExtrudeGeometry(makeRoundedRectShape(THREE, 2.38, 1.34, 0.05), { depth: 0.05, bevelEnabled: true, bevelThickness: 0.01, bevelSize: 0.01, bevelSegments: 2 })),
+          titaniumMat
+        );
+        wbBezel.position.z = -0.025;
+        const wbTray = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(1.8, 0.035, 0.1)), brassMat);
+        wbTray.position.set(0, -0.68, 0.06);
+        const easelLegL = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.025, 0.03, 2.3, 12)), titaniumMat);
+        easelLegL.position.set(-0.9, -1.0, -0.1);
+        const easelLegR = easelLegL.clone();
+        easelLegR.position.x = 0.9;
+        // 4 tactile colored markers on the tray
+        ['#14171C', '#DC2626', '#059669', '#2563EB'].forEach((mc, idx) => {
+          const m = new THREE.Mesh(
+            trackGeo(new THREE.CylinderGeometry(0.014, 0.014, 0.14, 12)),
+            trackMat(new THREE.MeshStandardMaterial({ color: mc, roughness: 0.35 }))
+          );
+          m.rotation.z = Math.PI / 2;
+          m.position.set(-0.45 + idx * 0.22, -0.65, 0.08);
+          wbGroup.add(m);
+        });
+
         const wbCanvas = document.createElement('canvas');
-        wbCanvas.width = 512;
-        wbCanvas.height = 270;
+        wbCanvas.width = 768;
+        wbCanvas.height = 405;
         const wbCtx = wbCanvas.getContext('2d')!;
-        wbCtx.fillStyle = '#F7F5F0';
-        wbCtx.fillRect(0, 0, 512, 270);
+        wbCtx.fillStyle = '#CFCAC0';
+        wbCtx.fillRect(0, 0, 768, 405);
+        wbCtx.strokeStyle = 'rgba(20,23,28,0.08)';
+        wbCtx.lineWidth = 1;
+        for (let gx = 32; gx < 768; gx += 32) {
+          wbCtx.beginPath();
+          wbCtx.moveTo(gx, 0);
+          wbCtx.lineTo(gx, 405);
+          wbCtx.stroke();
+        }
         wbCtx.fillStyle = '#14171C';
-        wbCtx.font = 'bold 20px sans-serif';
-        wbCtx.fillText('WHITEBOARD · CLICK TO DRAW', 28, 128);
-        wbCtx.fillStyle = '#A88650';
-        wbCtx.font = '14px monospace';
-        wbCtx.fillText('PAWAN SHAKTI · ROBOTICS SKETCHPAD', 28, 158);
+        wbCtx.font = 'bold 30px sans-serif';
+        wbCtx.fillText('ENGINEERING WHITEBOARD', 48, 185);
+        wbCtx.fillStyle = '#6B532F';
+        wbCtx.font = '20px monospace';
+        wbCtx.fillText('CLICK TO SKETCH · SYNC WITH JARVIS', 48, 228);
         const wbTex = new THREE.CanvasTexture(wbCanvas);
         wbTex.colorSpace = THREE.SRGBColorSpace;
         managedTexs.push(wbTex);
         whiteboardUpdateRef.current = (dataUrl: string) => {
           const img = new Image();
           img.onload = () => {
-            wbCtx.clearRect(0, 0, 512, 270);
-            wbCtx.drawImage(img, 0, 0, 512, 270);
+            wbCtx.clearRect(0, 0, 768, 405);
+            wbCtx.drawImage(img, 0, 0, 768, 405);
             wbTex.needsUpdate = true;
           };
           img.src = dataUrl;
@@ -477,64 +772,124 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
         if (stateRef.current.whiteboardDataUrl) whiteboardUpdateRef.current(stateRef.current.whiteboardDataUrl);
 
         const wbSurface = new THREE.Mesh(
-          trackGeo(new THREE.PlaneGeometry(2.22, 1.18)),
+          trackGeo(new THREE.PlaneGeometry(2.24, 1.2)),
           trackMat(new THREE.MeshBasicMaterial({ map: wbTex }))
         );
-        wbSurface.position.z = 0.045;
-        wbGroup.add(wbFrame, wbSurface);
+        wbSurface.position.z = 0.036;
+        wbGroup.add(wbBezel, wbTray, easelLegL, easelLegR, wbSurface);
         registerInteractive(wbGroup, 'whiteboard');
         scene.add(wbGroup);
 
-        // Station 08: Simulation & Experiment Arcade Cabinet (front-left)
+        // Station 08: Sleek Industrial Simulation Console (inclined anodized aluminum + brass rotary dials!)
         const expGroup = new THREE.Group();
-        expGroup.position.set(-2.15, 0.9, 1.55);
+        expGroup.position.set(-2.15, 0.88, 1.55);
         expGroup.rotation.y = 0.52;
-        const expCabinet = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(0.82, 1.45, 0.72)), darkSlateMat);
-        expCabinet.position.y = -0.18;
-        const expTrim = new THREE.Mesh(trackGeo(new THREE.BoxGeometry(0.86, 0.06, 0.76)), brassTrimMat);
-        expTrim.position.y = 0.56;
+        const expPedestal = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.18, 0.26, 0.9, 24)), obsidianMat);
+        expPedestal.position.y = -0.45;
+        const expChassis = new THREE.Mesh(
+          trackGeo(new THREE.ExtrudeGeometry(makeRoundedRectShape(THREE, 0.86, 0.72, 0.07), { depth: 0.12, bevelEnabled: true, bevelThickness: 0.018, bevelSize: 0.018, bevelSegments: 2 })),
+          titaniumMat
+        );
+        expChassis.position.set(0, 0.22, -0.04);
+        expChassis.rotation.x = -0.38;
         const expScreenScr = makeMonitorCanvasTexture(
           THREE,
           'EXPERIMENTS',
           'SIMULATION DECK',
           '#EC4899',
-          ['01 Wind TSR / Betz Curve', '02 Planar 2-Link IK', '03 77 GHz FMCW Chirp', 'Click to launch sims']
+          () => ['01 Wind TSR Envelope', '02 Planar 2-Link IK', '03 77 GHz Chirp Wave', 'Click to simulate']
         );
         managedTexs.push(expScreenScr.tex);
         const expScrMesh = new THREE.Mesh(
-          trackGeo(new THREE.PlaneGeometry(0.66, 0.44)),
+          trackGeo(new THREE.PlaneGeometry(0.72, 0.44)),
           trackMat(new THREE.MeshBasicMaterial({ map: expScreenScr.tex }))
         );
-        expScrMesh.position.set(0, 0.34, 0.365);
-        expScrMesh.rotation.x = -0.18;
-        expGroup.add(expCabinet, expTrim, expScrMesh);
+        expScrMesh.position.set(0, 0.24, 0.115);
+        expScrMesh.rotation.x = -0.38;
+        // Brass rotary knobs along console chin
+        for (const kx of [-0.22, 0, 0.22]) {
+          const knob = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.032, 0.035, 0.04, 16)), brassMat);
+          knob.rotation.x = Math.PI / 2 - 0.38;
+          knob.position.set(kx, -0.02, 0.21);
+          expGroup.add(knob);
+        }
+        expGroup.add(expPedestal, expChassis, expScrMesh);
         registerInteractive(expGroup, 'experiment');
         scene.add(expGroup);
 
-        // Station 09: Interactive 27-Cubie Rubik Calibration Cube (front-center workbench)
+        // Station 09: Precision Satin Speedcube Rubik Calibration Cube on Brass Turntable
+        const cubePlinthGroup = new THREE.Group();
+        cubePlinthGroup.position.set(0.15, 1.09, 0.72);
+        const cTray = new THREE.Mesh(trackGeo(new THREE.CylinderGeometry(0.28, 0.31, 0.026, 32)), obsidianMat);
+        cTray.position.y = 0.013;
+        const cRim = new THREE.Mesh(trackGeo(new THREE.TorusGeometry(0.295, 0.008, 10, 36)), brassMat);
+        cRim.rotation.x = Math.PI / 2;
+        cRim.position.y = 0.024;
+        cubePlinthGroup.add(cTray, cRim);
+        scene.add(cubePlinthGroup);
+
         const cubeRoot = new THREE.Group();
-        cubeRoot.position.set(0.15, 1.36, 0.72);
-        const cubies: import('three').Mesh[] = [];
-        const faceMats = [
-          trackMat(new THREE.MeshStandardMaterial({ color: '#EF4444', roughness: 0.3 })), // +X red
-          trackMat(new THREE.MeshStandardMaterial({ color: '#F97316', roughness: 0.3 })), // -X orange
-          trackMat(new THREE.MeshStandardMaterial({ color: '#F8FAFC', roughness: 0.3 })), // +Y white
-          trackMat(new THREE.MeshStandardMaterial({ color: '#FACC15', roughness: 0.3 })), // -Y yellow
-          trackMat(new THREE.MeshStandardMaterial({ color: '#22C55E', roughness: 0.3 })), // +Z green
-          trackMat(new THREE.MeshStandardMaterial({ color: '#3B82F6', roughness: 0.3 })), // -Z blue
-        ];
-        const cubieGeo = trackGeo(new THREE.BoxGeometry(0.11, 0.11, 0.11));
+        cubeRoot.position.set(0.15, 1.4, 0.72);
+        const cubies: import('three').Group[] = [];
+        const coreBlackMat = trackMat(new THREE.MeshStandardMaterial({ color: '#0A0D14', metalness: 0.3, roughness: 0.55 }));
+        const stickerColors = ['#EF4444', '#F97316', '#C8CDD5', '#EAB308', '#22C55E', '#3B82F6']; // +X,-X,+Y,-Y,+Z,-Z
+        const stickerMats = stickerColors.map((hex) =>
+          trackMat(new THREE.MeshStandardMaterial({ color: hex, metalness: 0.15, roughness: 0.24 }))
+        );
+        const cubieBodyGeo = trackGeo(new THREE.BoxGeometry(0.106, 0.106, 0.106));
+        const tileGeo = trackGeo(new THREE.BoxGeometry(0.088, 0.088, 0.006));
+
         for (let cx = -1; cx <= 1; cx++) {
           for (let cy = -1; cy <= 1; cy++) {
             for (let cz = -1; cz <= 1; cz++) {
-              const cubie = new THREE.Mesh(cubieGeo, faceMats);
-              cubie.position.set(cx * 0.12, cy * 0.12, cz * 0.12);
-              cubie.userData.grid = new THREE.Vector3(cx, cy, cz);
-              cubeRoot.add(cubie);
-              cubies.push(cubie);
+              const cell = new THREE.Group();
+              const inner = new THREE.Mesh(cubieBodyGeo, coreBlackMat);
+              cell.add(inner);
+
+              // Attach raised satin outer color tiles ONLY on exposed exterior faces!
+              if (cx === 1) {
+                const t = new THREE.Mesh(tileGeo, stickerMats[0]);
+                t.rotation.y = Math.PI / 2;
+                t.position.x = 0.055;
+                cell.add(t);
+              }
+              if (cx === -1) {
+                const t = new THREE.Mesh(tileGeo, stickerMats[1]);
+                t.rotation.y = -Math.PI / 2;
+                t.position.x = -0.055;
+                cell.add(t);
+              }
+              if (cy === 1) {
+                const t = new THREE.Mesh(tileGeo, stickerMats[2]);
+                t.rotation.x = -Math.PI / 2;
+                t.position.y = 0.055;
+                cell.add(t);
+              }
+              if (cy === -1) {
+                const t = new THREE.Mesh(tileGeo, stickerMats[3]);
+                t.rotation.x = Math.PI / 2;
+                t.position.y = -0.055;
+                cell.add(t);
+              }
+              if (cz === 1) {
+                const t = new THREE.Mesh(tileGeo, stickerMats[4]);
+                t.position.z = 0.055;
+                cell.add(t);
+              }
+              if (cz === -1) {
+                const t = new THREE.Mesh(tileGeo, stickerMats[5]);
+                t.rotation.y = Math.PI;
+                t.position.z = -0.055;
+                cell.add(t);
+              }
+
+              cell.position.set(cx * 0.118, cy * 0.118, cz * 0.118);
+              cubeRoot.add(cell);
+              cubies.push(cell);
             }
           }
         }
+
         const rotateCubeSlice = (axis: 'x' | 'y' | 'z', layer: -1 | 0 | 1, dir: 1 | -1) => {
           const rotVec =
             axis === 'x'
@@ -542,38 +897,51 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
               : axis === 'y'
               ? new THREE.Vector3(0, 1, 0)
               : new THREE.Vector3(0, 0, 1);
-          const angle = (Math.PI / 2) * dir;
-          const q = new THREE.Quaternion().setFromAxisAngle(rotVec, angle);
+          const q = new THREE.Quaternion().setFromAxisAngle(rotVec, (Math.PI / 2) * dir);
           for (const c of cubies) {
-            const coord = axis === 'x' ? Math.round(c.position.x / 0.12) : axis === 'y' ? Math.round(c.position.y / 0.12) : Math.round(c.position.z / 0.12);
+            const coord =
+              axis === 'x'
+                ? Math.round(c.position.x / 0.118)
+                : axis === 'y'
+                ? Math.round(c.position.y / 0.118)
+                : Math.round(c.position.z / 0.118);
             if (coord === layer) {
               c.position.applyQuaternion(q);
               c.position.set(
-                Math.round(c.position.x / 0.12) * 0.12,
-                Math.round(c.position.y / 0.12) * 0.12,
-                Math.round(c.position.z / 0.12) * 0.12
+                Math.round(c.position.x / 0.118) * 0.118,
+                Math.round(c.position.y / 0.118) * 0.118,
+                Math.round(c.position.z / 0.118) * 0.118
               );
               c.quaternion.premultiply(q);
             }
           }
         };
+
         const resetCubeSolved = () => {
           let idx = 0;
           for (let cx = -1; cx <= 1; cx++) {
             for (let cy = -1; cy <= 1; cy++) {
               for (let cz = -1; cz <= 1; cz++) {
                 const c = cubies[idx++];
-                c.position.set(cx * 0.12, cy * 0.12, cz * 0.12);
+                c.position.set(cx * 0.118, cy * 0.118, cz * 0.118);
                 c.quaternion.identity();
               }
             }
           }
-          cubeRoot.rotation.set(0, 0, 0);
+          cubeRoot.rotation.set(0.28, -0.35, 0);
         };
+        cubeRoot.rotation.set(0.28, -0.35, 0);
         registerInteractive(cubeRoot, 'cube');
         scene.add(cubeRoot);
 
-        // Raycaster + Pointer Drag on Cube or Cursor Glow
+        // Soft Contact Shadow Discs under hero studio desk & plinths
+        const shadowMat = trackMat(new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, opacity: 0.75 }));
+        const deskShadow = new THREE.Mesh(trackGeo(new THREE.PlaneGeometry(8.2, 4.4)), shadowMat);
+        deskShadow.rotation.x = -Math.PI / 2;
+        deskShadow.position.set(0, 0.01, -0.35);
+        scene.add(deskShadow);
+
+        // Raycaster + Pointer Drag
         const raycaster = new THREE.Raycaster();
         const pointer = new THREE.Vector2();
         const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -589,16 +957,14 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
           updatePointer(ev);
           raycaster.setFromCamera(pointer, camera);
           const hitFloor = new THREE.Vector3();
-          if (raycaster.ray.intersectPlane(floorPlane, hitFloor)) {
-            cursorWorld.copy(hitFloor);
-          }
+          if (raycaster.ray.intersectPlane(floorPlane, hitFloor)) cursorWorld.copy(hitFloor);
 
           if (dragCube.active) {
             const dx = ev.clientX - dragCube.lastX;
             const dy = ev.clientY - dragCube.lastY;
             if (Math.hypot(dx, dy) > 2) dragCube.moved = true;
-            cubeRoot.rotation.y += dx * 0.015;
-            cubeRoot.rotation.x += dy * 0.015;
+            cubeRoot.rotation.y += dx * 0.016;
+            cubeRoot.rotation.x += dy * 0.016;
             dragCube.lastX = ev.clientX;
             dragCube.lastY = ev.clientY;
             return;
@@ -636,9 +1002,7 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
           raycaster.setFromCamera(pointer, camera);
           const hits = raycaster.intersectObjects(interactiveTargets, true);
           const hitId = hits.find((h) => h.object.userData?.stationId)?.object.userData.stationId as UniverseStationId | undefined;
-          if (hitId) {
-            onSelectRef.current(hitId);
-          }
+          if (hitId) onSelectRef.current(hitId);
         };
 
         renderer.domElement.addEventListener('pointermove', onPointerMove);
@@ -652,6 +1016,7 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
           camera.aspect = w / h;
           camera.updateProjectionMatrix();
           renderer.setSize(w, h);
+          postfx.setSize(w, h);
         });
         resizeObs.observe(mount);
 
@@ -672,16 +1037,13 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
           lastNow = now;
           const t = now / 1000;
 
-          // Consume queued Rubik cube actions
           while (cubeQueueRef.current.length > 0) {
             const cmd = cubeQueueRef.current.shift()!;
             if (cmd.type === 'reset') resetCubeSolved();
             else if (cmd.type === 'scramble') {
               const axes: Array<'x' | 'y' | 'z'> = ['x', 'y', 'z'];
               const layers: Array<-1 | 0 | 1> = [-1, 0, 1];
-              for (let s = 0; s < 8; s++) {
-                rotateCubeSlice(axes[s % 3], layers[(s * 2) % 3], s % 2 === 0 ? 1 : -1);
-              }
+              for (let s = 0; s < 8; s++) rotateCubeSlice(axes[s % 3], layers[(s * 2) % 3], s % 2 === 0 ? 1 : -1);
             } else if (cmd.type === 'turn') {
               rotateCubeSlice(cmd.axis ?? 'y', cmd.layer ?? 1, cmd.dir ?? 1);
             }
@@ -689,6 +1051,7 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
 
           floorUniforms.uTime.value = t;
           airflowUniforms.uTime.value = t;
+          coreShaderMat.uniforms.uTime.value = t;
           for (const [mid, uni] of monitorHoloUniforms.entries()) {
             uni.uTime.value = t;
             const targetHov = stateRef.current.hoveredStation === mid || stateRef.current.activeStation === mid ? 1 : 0;
@@ -696,16 +1059,19 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
           }
 
           if (!reduced) {
-            tRotor.rotation.z -= dt * 1.45;
-            rShoulder.rotation.z = Math.sin(t * 0.7) * 0.14 - 0.12;
-            rElbow.rotation.z = Math.cos(t * 0.85) * 0.2 + 0.35;
+            tRotor.rotation.z -= dt * 1.65;
+            rShoulder.rotation.z = Math.sin(t * 0.65) * 0.14 - 0.12;
+            rElbow.rotation.z = Math.cos(t * 0.85) * 0.22 + 0.35;
+            gRing1.rotation.y += dt * 0.45;
+            gRing1.rotation.x = Math.sin(t * 0.4) * 0.25;
+            gRing2.rotation.z -= dt * 0.35;
+            gyroGroup.position.y = 2.72 + Math.sin(t * 1.4) * 0.03;
             if (!dragCube.active && stateRef.current.activeStation !== 'cube') {
-              cubeRoot.rotation.y += dt * 0.35;
+              cubeRoot.rotation.y += dt * 0.32;
             }
             dustPoints.rotation.y = t * 0.015;
           }
 
-          // Camera glide when station changes
           if (stateRef.current.activeStation !== lastStation) {
             lastStation = stateRef.current.activeStation;
             const m = stationById(lastStation);
@@ -719,9 +1085,7 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
 
           if (!reduced) {
             const f = settleFactor(4.8, dt);
-            if (stateRef.current.activeStation !== 'overview') {
-              camera.position.lerp(desiredCam, f);
-            }
+            if (stateRef.current.activeStation !== 'overview') camera.position.lerp(desiredCam, f);
             orbit.target.lerp(desiredTarget, f);
           }
           orbit.update();
@@ -752,7 +1116,7 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
             fpsAccum = 0;
           }
 
-          renderer.render(scene, camera);
+          postfx.render(t);
         };
         raf = requestAnimationFrame(tick);
 
@@ -763,6 +1127,9 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
           renderer.domElement.removeEventListener('pointerdown', onPointerDown);
           renderer.domElement.removeEventListener('pointerup', onPointerUp);
           orbit.dispose();
+          postfx.dispose();
+          lighting.dispose();
+          pbrMaps.dispose();
           managedGeos.forEach((g) => g.dispose());
           managedMats.forEach((m) => m.dispose());
           managedTexs.forEach((tx) => tx.dispose());

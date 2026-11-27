@@ -13,6 +13,7 @@ import {
   Sun,
 } from 'lucide-react';
 import { CAD_ASSEMBLY_PRESETS, type CadModelPresetId } from '../../lib/universeConfig';
+import { createProceduralDetailMaps } from '../momentum/cinema/proceduralMaterials';
 
 interface EngineeringModelViewerProps {
   preset: CadModelPresetId;
@@ -110,8 +111,9 @@ export const EngineeringModelViewer: React.FC<EngineeringModelViewerProps> = ({
     (async () => {
       try {
         const THREE = await import('three');
-        const [{ OrbitControls }] = await Promise.all([
+        const [{ OrbitControls }, { RoomEnvironment }] = await Promise.all([
           import('three/examples/jsm/controls/OrbitControls.js'),
+          import('three/examples/jsm/environments/RoomEnvironment.js'),
         ]);
 
         if (!mounted || !mount) return;
@@ -134,6 +136,12 @@ export const EngineeringModelViewer: React.FC<EngineeringModelViewerProps> = ({
 
         const scene = new THREE.Scene();
         scene.background = new THREE.Color('#06080E');
+
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+        scene.environment = envTex;
+        scene.environmentIntensity = 0.55;
+        const pbrMaps = createProceduralDetailMaps(THREE);
 
         const camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 80);
         camera.position.set(3.2, 2.25, 3.6);
@@ -158,7 +166,7 @@ export const EngineeringModelViewer: React.FC<EngineeringModelViewerProps> = ({
         rimLight.position.set(-5, 3, -4);
         scene.add(ambLight, keyLight, rimLight);
 
-        const grid = new THREE.GridHelper(8, 24, '#A88650', '#1E293B');
+        const grid = new THREE.GridHelper(8, 24, '#C6A46B', '#1E293B');
         scene.add(grid);
 
         const rootGroup = new THREE.Group();
@@ -167,11 +175,14 @@ export const EngineeringModelViewer: React.FC<EngineeringModelViewerProps> = ({
         const partNodes = new Map<string, { group: import('three').Object3D; basePos: import('three').Vector3; explodeVec: import('three').Vector3 }>();
         const managedMaterials: import('three').MeshStandardMaterial[] = [];
 
-        const makeMat = (hex: string, metal = 0.45, rough = 0.35, emissive = '#000000') => {
+        const makeMat = (hex: string, metal = 0.55, rough = 0.3, emissive = '#000000') => {
           const mat = new THREE.MeshStandardMaterial({
             color: hex,
             metalness: metal,
             roughness: rough,
+            roughnessMap: pbrMaps.metalRoughness,
+            bumpMap: pbrMaps.metalBump,
+            bumpScale: 0.008,
             emissive,
             emissiveIntensity: 0.35,
           });
@@ -246,14 +257,25 @@ export const EngineeringModelViewer: React.FC<EngineeringModelViewerProps> = ({
             partNodes.set(id, { group, basePos: group.position.clone(), explodeVec });
           };
 
-          // Nacelle & mast
+          // Nacelle & mast (lathed aerodynamic shroud)
           const nacelle = new THREE.Group();
-          const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.11, 1.35, 24), makeMat('#334155', 0.75, 0.28));
+          const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.115, 1.35, 28), makeMat('#334155', 0.8, 0.25));
           mast.position.y = 0.675;
-          const body = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.22, 0.85, 24), makeMat('#1E293B', 0.7, 0.32));
-          body.rotation.x = Math.PI / 2;
-          body.position.set(0, 1.32, -0.15);
-          nacelle.add(mast, body);
+          const baseCollar = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.08, 28), makeMat('#C6A46B', 0.85, 0.22));
+          baseCollar.position.y = 0.04;
+          const shroud = new THREE.Mesh(
+            new THREE.LatheGeometry([
+              new THREE.Vector2(0.02, -0.42),
+              new THREE.Vector2(0.18, -0.38),
+              new THREE.Vector2(0.25, -0.05),
+              new THREE.Vector2(0.24, 0.28),
+              new THREE.Vector2(0.16, 0.42),
+            ], 28),
+            makeMat('#1E293B', 0.78, 0.28)
+          );
+          shroud.rotation.x = Math.PI / 2;
+          shroud.position.set(0, 1.32, -0.15);
+          nacelle.add(mast, baseCollar, shroud);
           nacelle.traverse((o) => (o.userData.partId = 'nacelle'));
           registerPart('nacelle', nacelle, new THREE.Vector3(0, -0.35, -0.45));
 
@@ -281,9 +303,17 @@ export const EngineeringModelViewer: React.FC<EngineeringModelViewerProps> = ({
           gearbox.traverse((o) => (o.userData.partId = 'gearbox'));
           registerPart('gearbox', gearbox, new THREE.Vector3(0, 0, 0.32));
 
-          // Hub nosecone
+          // Hub nosecone (lathed parabolic spinner)
           const hub = new THREE.Group();
-          const cone = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.36, 28), makeMat('#E2E8F0', 0.72, 0.22));
+          const cone = new THREE.Mesh(
+            new THREE.LatheGeometry([
+              new THREE.Vector2(0.0, 0.24),
+              new THREE.Vector2(0.1, 0.13),
+              new THREE.Vector2(0.175, -0.02),
+              new THREE.Vector2(0.18, -0.1),
+            ], 28),
+            makeMat('#E2E8F0', 0.82, 0.2)
+          );
           cone.rotation.x = Math.PI / 2;
           cone.position.set(0, 1.32, 0.68);
           hub.add(cone);
@@ -485,6 +515,9 @@ export const EngineeringModelViewer: React.FC<EngineeringModelViewerProps> = ({
           resizeObs.disconnect();
           renderer.domElement.removeEventListener('click', handleClick);
           orbit.dispose();
+          envTex.dispose();
+          pmrem.dispose();
+          pbrMaps.dispose();
           disposeObjectTree(THREE, scene);
           renderer.dispose();
         };

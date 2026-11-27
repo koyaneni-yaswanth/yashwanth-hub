@@ -97,26 +97,32 @@ async function main() {
       if (m.type() === 'error') errors.push(`console.error: ${m.text()}`);
     });
 
+    const artifactDir = 'C:/Users/recvn/.gemini/antigravity/brain/a2436169-70bb-4a55-b1b6-42f47d466078';
+
     await page.goto(`${baseUrl}/universe`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-testid="universe-entry-screen"]', { timeout: 12000 });
+    await page.screenshot({ path: `${artifactDir}/universe_start.png` });
     await page.click('[data-testid="universe-entry-screen"] button:has-text("START")');
     await page.waitForSelector('[data-testid="universe-webgl-canvas"] canvas', { timeout: 12000 });
+    await page.waitForTimeout(1100);
+    await page.screenshot({ path: `${artifactDir}/universe_studio_3d.png` });
 
-    // Interact with monitors & workbench stations via persistent banner
-    await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("ABOUT ME")');
+    // Interact with monitors & workbench stations via sleek bottom Dock
+    await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("About Me")');
     await page.waitForSelector('[data-testid="studio-panel-about"]', { timeout: 8000 });
 
-    await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("PROJECTS")');
+    await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("Projects")');
     await page.waitForSelector('[data-testid="studio-panel-projects"]', { timeout: 8000 });
 
-    await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("JARVIS CORE")');
+    await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("JARVIS Core")');
     await page.waitForSelector('[data-testid="studio-panel-jarvis"]', { timeout: 8000 });
 
-    await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("SYSTEM / LABS")');
+    await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("Labs & Cube")');
+    await page.click('button:has-text("System / Labs")');
     await page.waitForSelector('[data-testid="studio-panel-research"]', { timeout: 8000 });
 
     // Whiteboard drawing & persistence
-    await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("WHITEBOARD")');
+    await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("Whiteboard")');
     await page.waitForSelector('[data-testid="studio-whiteboard"] canvas', { timeout: 8000 });
     await page.click('button[aria-label="Blue marker"]');
     const wbBox = await page.locator('[data-testid="studio-whiteboard"] canvas').boundingBox();
@@ -129,14 +135,15 @@ async function main() {
     await page.waitForSelector('text=Saved locally', { timeout: 6000 });
 
     // Experiment Console
-    await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("EXPERIMENTS")');
+    await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("Experiments")');
     await page.waitForSelector('[data-testid="studio-experiment-console"] canvas', { timeout: 8000 });
     await page.click('button:has-text("2-Link IK")');
     await page.waitForSelector('button:has-text("Branch:")', { timeout: 6000 });
     await page.click('button:has-text("77 GHz Chirp")');
 
     // Rubik Cube
-    await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("RUBIK CUBE")');
+    await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("Labs & Cube")');
+    await page.click('button:has-text("Rubik Cube")');
     await page.waitForSelector('[data-testid="studio-panel-cube"]', { timeout: 8000 });
     await page.click('button:has-text("Rotate Top (U)")');
     await page.click('button:has-text("Reset Solved")');
@@ -162,6 +169,7 @@ async function main() {
     await mobPage.waitForSelector('[data-testid="universe-entry-screen"]', { timeout: 12000 });
     await mobPage.click('button:has-text("Enter 2D Accessible Studio")');
     await mobPage.waitForSelector('text=2D Accessible Studio Mode', { timeout: 8000 });
+    await mobPage.screenshot({ path: `${artifactDir}/universe_mobile_2d.png` });
     const overflow = await mobPage.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     assert.equal(overflow, false, 'Mobile 390px horizontal overflow detected in /universe');
     await mobCtx.close();

@@ -40,12 +40,12 @@ export const STUDIO_FLOOR_FRAGMENT_SHADER = /* glsl */ `
     float cursorGlow = exp(-cursorDist * cursorDist * 0.55);
 
     vec3 col = uFloorBase;
-    col += uAccentSteel * fineGrid * 0.045 * distFade;
-    col += uAccentGold * gridLine * 0.14 * distFade;
-    col += uAccentGold * ring * 0.11 * distFade;
-    col += mix(uAccentGold, uAccentSteel, 0.35) * cursorGlow * 0.28;
+    col += uAccentSteel * fineGrid * 0.08 * distFade;
+    col += uAccentGold * gridLine * 0.24 * distFade;
+    col += uAccentGold * ring * 0.16 * distFade;
+    col += mix(uAccentGold, uAccentSteel, 0.35) * cursorGlow * 0.36;
 
-    float alpha = clamp((0.78 - vDist * 0.05) + cursorGlow * 0.2, 0.0, 0.96);
+    float alpha = clamp((0.88 - vDist * 0.045) + cursorGlow * 0.2, 0.0, 0.96);
     gl_FragColor = vec4(col, alpha);
   }
 `;

@@ -60,6 +60,8 @@ export interface PostFXQuality {
   grain: boolean;
   chromaticAberration?: boolean;
   renderScale?: number;
+  bloomThreshold?: number;
+  bloomStrength?: number;
 }
 
 export class PostFX {
@@ -85,7 +87,12 @@ export class PostFX {
     this.composer = new mods.EffectComposer(renderer);
     this.composer.setPixelRatio(Math.max(0.5, this.basePixelRatio * this.renderScale));
     this.composer.addPass(new mods.RenderPass(scene, camera));
-    this.bloom = new mods.UnrealBloomPass(new THREE.Vector2(size.width, size.height), B.strength, B.radius, B.threshold);
+    this.bloom = new mods.UnrealBloomPass(
+      new THREE.Vector2(size.width, size.height),
+      opts.bloomStrength ?? B.strength,
+      B.radius,
+      opts.bloomThreshold ?? B.threshold
+    );
     this.bloom.enabled = opts.bloom;
     this.composer.addPass(this.bloom);
     this.composer.addPass(new mods.OutputPass());
