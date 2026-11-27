@@ -22,6 +22,9 @@ import {
   AlertTriangle,
   Database,
   SlidersHorizontal,
+  KeyRound,
+  Square,
+  Lock,
 } from 'lucide-react';
 import { db } from '../db';
 import type {
@@ -36,6 +39,9 @@ import type {
 import { generateId } from '../lib/utils';
 import { SUPPORTED_MODELS, normaliseModelId } from '../services/ai/aiModels';
 import { AIGateway } from '../services/ai/aiGateway';
+import { LocalAgentClient } from '../services/ai/localAgentClient';
+import type { TaskRouteCategory } from '../lib/modelRouter5';
+import { ProviderGatewayModal } from '../components/buddy/ProviderGatewayModal';
 import { buildExecutiveDailyBriefing, type ExecutiveBriefingReport } from '../services/ai/executiveBriefing';
 import type { ProviderHealthReport } from '../../api/_lib/aiProviderAdapters';
 import { beginAiThinking, endAiThinking } from '../lib/aiActivity';
@@ -126,6 +132,14 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isOptionsOpen, setIsOptionsOpen] = useState(false);
   const [isCompareMode, setIsCompareMode] = useState(false);
+  const [isGatewayModalOpen, setIsGatewayModalOpen] = useState(false);
+  const [routeCategory, setRouteCategory] = useState<'auto' | TaskRouteCategory>(() => {
+    return (localStorage.getItem('yash_ai_route_category') as 'auto' | TaskRouteCategory) || 'auto';
+  });
+  const [privateOfflineOnly, setPrivateOfflineOnly] = useState<boolean>(() => {
+    return localStorage.getItem('yash_ai_private_offline') === 'true';
+  });
+  const [localRuntimeOnline, setLocalRuntimeOnline] = useState(false);
 
   const [discoveredTools, setDiscoveredTools] = useState<AIToolSpec[]>([]);
   const [configuredProviders, setConfiguredProviders] = useState<Record<string, boolean>>({});
@@ -138,14 +152,22 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
   const [comparisonResults, setComparisonResults] = useState<AIComparisonResult[]>([]);
   const [isComparing, setIsComparing] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const streamAbortRef = useRef<AbortController | null>(null);
 
-  // Discover tools & consume optional cross-page navigation prefill (e.g. from Projects Workspace)
-  useEffect(() => {
+  const refreshGatewayAndLocalStatus = () => {
     AIGateway.discoverTools().then((res) => {
       setDiscoveredTools(res.tools);
       setConfiguredProviders(res.configuredProviders);
       setToolSource(res.source);
     });
+    LocalAgentClient.probeHealth()
+      .then((res) => setLocalRuntimeOnline(Boolean(res.online)))
+      .catch(() => {});
+  };
+
+  // Discover tools & consume optional cross-page navigation prefill (e.g. from Projects Workspace)
+  useEffect(() => {
+    refreshGatewayAndLocalStatus();
 
     const prefillScope = localStorage.getItem('yash_ai_project_scope');
     const prefillPrompt = localStorage.getItem('yash_ai_prefill_prompt');
@@ -314,6 +336,8 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
     setIsProcessing(true);
     beginAiThinking();
     let responded = false;
+    const abortCtrl = new AbortController();
+    streamAbortRef.current = abortCtrl;
 
     try {
       const activeAgentMeta = MODULAR_AGENTS.find((a) => a.id === selectedAgent);
@@ -334,6 +358,9 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
           provider: selectedProvider,
           modelId: selectedModelId,
           mode: selectedMode,
+          routeCategory: routeCategory === 'auto' ? undefined : routeCategory,
+          privateOfflineOnly,
+          signal: abortCtrl.signal,
           projectId: selectedProjectId || undefined,
           history: withUser.slice(-8).map((m) => ({ role: m.role, content: m.content })),
           systemPrompt: `Persona: ${activeAgentMeta?.name || 'Chief of Staff'} (${activeAgentMeta?.role || 'Executive Operating System'}).${semanticContextNote}`,
@@ -383,17 +410,40 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
       );
       responded = true;
     } catch (err: any) {
-      const errorMsg: AIChatMessage = {
-        id: streamMsgId,
-        role: 'assistant',
-        content: `Chief of Staff Error: ${err?.message || 'Execution failed.'}`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      setMessages([...withUser, errorMsg]);
+      if (abortCtrl.signal.aborted || err?.name === 'AbortError') {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === streamMsgId
+              ? {
+                  ...m,
+                  content:
+                    m.content && m.content !== 'Thinking…'
+                      ? `${m.content}\n\n_(Generation stopped by user)_`
+                      : 'Generation stopped.',
+                }
+              : m
+          )
+        );
+      } else {
+        const errorMsg: AIChatMessage = {
+          id: streamMsgId,
+          role: 'assistant',
+          content: `Chief of Staff Error: ${err?.message || 'Execution failed.'}`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        };
+        setMessages([...withUser, errorMsg]);
+      }
     } finally {
+      streamAbortRef.current = null;
       endAiThinking(responded);
       setIsProcessing(false);
     }
+  };
+
+  const handleStopStreaming = () => {
+    streamAbortRef.current?.abort();
+    AIGateway.cancel();
+    setIsProcessing(false);
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -686,6 +736,15 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
                 <Columns3 className="w-3.5 h-3.5" />
                 <span>Compare Models</span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => setIsGatewayModalOpen(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)] hover:border-[var(--hub-accent)]/60 cursor-pointer"
+              >
+                <KeyRound className="w-3.5 h-3.5 text-[var(--hub-accent)]" />
+                <span>Providers &amp; Keys</span>
+              </button>
             </div>
 
             <div className="flex items-center gap-2 text-[11px]">
@@ -838,6 +897,50 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
                   </option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+            <div>
+              <label className="block font-semibold text-[var(--hub-muted)] mb-1">JARVIS 5.0 Route Category</label>
+              <select
+                aria-label="Route Category"
+                value={routeCategory}
+                onChange={(e) => {
+                  const next = e.target.value as 'auto' | TaskRouteCategory;
+                  setRouteCategory(next);
+                  localStorage.setItem('yash_ai_route_category', next);
+                }}
+                className="w-full px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)] text-[var(--hub-ink)]"
+              >
+                <option value="auto">Auto Classify (Task Intent)</option>
+                <option value="FAST">FAST — Low Latency &amp; Concise</option>
+                <option value="REASONING">REASONING — Architecture &amp; Strategy</option>
+                <option value="CODING">CODING — Debug, Refactor &amp; Code</option>
+                <option value="MULTIMODAL">MULTIMODAL — Vision &amp; Docs</option>
+                <option value="LOCAL">LOCAL — Private On-Device Only</option>
+              </select>
+            </div>
+
+            <div className="flex flex-col justify-end gap-2">
+              <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-[var(--hub-line)] bg-[var(--hub-bg)]">
+                <label className="flex items-center gap-2 cursor-pointer text-[var(--hub-ink)]">
+                  <input
+                    type="checkbox"
+                    checked={privateOfflineOnly}
+                    onChange={(e) => {
+                      const next = e.target.checked;
+                      setPrivateOfflineOnly(next);
+                      localStorage.setItem('yash_ai_private_offline', String(next));
+                    }}
+                  />
+                  <Lock className="w-3.5 h-3.5 text-[var(--hub-accent)]" />
+                  <span className="font-medium">Private / Local Only</span>
+                </label>
+                <Badge variant={localRuntimeOnline ? 'emerald' : 'gray'}>
+                  {localRuntimeOnline ? 'Local Agent On' : 'Local Unpaired'}
+                </Badge>
+              </div>
             </div>
           </div>
 
@@ -1140,6 +1243,17 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
                 disabled={isProcessing}
                 className="flex-1 px-4 py-2.5 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-surface)] text-sm text-[var(--hub-ink)] focus:outline-none focus:ring-2 focus:ring-[var(--hub-accent)]"
               />
+              {isProcessing && (
+                <button
+                  type="button"
+                  onClick={handleStopStreaming}
+                  aria-label="Stop generation"
+                  className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-red-500/40 bg-red-500/15 text-red-400 text-xs font-semibold hover:bg-red-500/25 transition-colors cursor-pointer"
+                >
+                  <Square className="w-3.5 h-3.5 fill-current" />
+                  <span>Stop</span>
+                </button>
+              )}
               <button
                 type="submit"
                 disabled={isProcessing || !inputMessage.trim()}
@@ -1152,6 +1266,13 @@ export const AIAssistantPage: React.FC<AIAssistantPageProps> = ({
           </div>
         </div>
       )}
+
+      <ProviderGatewayModal
+        isOpen={isGatewayModalOpen}
+        onClose={() => setIsGatewayModalOpen(false)}
+        initialTab="providers"
+        onStatusRefresh={refreshGatewayAndLocalStatus}
+      />
     </div>
   );
 };

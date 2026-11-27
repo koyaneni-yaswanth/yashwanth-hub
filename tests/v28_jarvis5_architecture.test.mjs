@@ -199,3 +199,24 @@ test('JARVIS 5.0 Security & Deployment Checks: no client key exposure & migratio
   assert.match(envTpl, /JARVIS_LOCAL_PORT=8787/);
   assert.ok(!/sk-proj-|AIzaSy[A-Za-z0-9]{15}/.test(envTpl));
 });
+
+test('JARVIS 5.0 Hub Integration & Legacy Server Hardening Checks', () => {
+  const cloudServer = fs.readFileSync(path.join(root, 'cloud', 'server.ts'), 'utf8');
+  assert.ok(!cloudServer.includes('cors({ origin: true })'));
+  assert.match(cloudServer, /timingSafeEqual/);
+  assert.match(cloudServer, /CRON_SECRET/);
+
+  const askAi = fs.readFileSync(path.join(root, 'src', 'pages', 'AIAssistantPage.tsx'), 'utf8');
+  assert.match(askAi, /ProviderGatewayModal/);
+  assert.match(askAi, /routeCategory/);
+  assert.match(askAi, /privateOfflineOnly/);
+  assert.match(askAi, /AIGateway\.cancel/);
+
+  const sysHealth = fs.readFileSync(path.join(root, 'src', 'pages', 'SystemHealthSyncCenterPage.tsx'), 'utf8');
+  assert.match(sysHealth, /getReliabilitySnapshot/);
+  assert.match(sysHealth, /LocalAgentClient/);
+  assert.match(sysHealth, /ProviderGatewayModal/);
+
+  const buddyPage = fs.readFileSync(path.join(root, 'src', 'pages', 'BuddyPage.tsx'), 'utf8');
+  assert.match(buddyPage, /LocalAgentClient\.subscribeEvents/);
+});

@@ -204,12 +204,30 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
       refreshLocalState().catch(() => {});
     });
 
+    // Live WebSocket telemetry from local-agent daemon (only when explicitly paired via token)
+    let unsubLocalWs: (() => void) | null = null;
+    try {
+      if (LocalAgentClient.getConfig().token) {
+        unsubLocalWs = LocalAgentClient.subscribeEvents((ev) => {
+          if (ev?.type === 'status' || ev?.type === 'ollama_ready' || ev?.type === 'model_loaded' || ev?.type === 'task_completed') {
+            refreshSystemStatusPill().catch(() => {});
+          }
+          if (ev?.type === 'task_completed' || ev?.type === 'task_failed' || ev?.type === 'warning') {
+            refreshLocalState().catch(() => {});
+          }
+        });
+      }
+    } catch {
+      // ignore storage errors in restricted environments
+    }
+
     return () => {
       alive = false;
       window.removeEventListener('online', onOnlineChange);
       window.removeEventListener('offline', onOnlineChange);
       window.removeEventListener(EXTRA_CLOUD_UPDATE_EVENT, onExtra);
       unsubBroadcast();
+      unsubLocalWs?.();
       voiceRef.current?.dispose();
     };
   }, [refreshLocalState, refreshSystemStatusPill]);

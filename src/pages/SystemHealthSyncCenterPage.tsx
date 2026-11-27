@@ -20,7 +20,9 @@ import { db } from '../db';
 import { GoogleAuthService } from '../services/google/googleAuthService';
 import { CoreSyncEngine, type SyncEngineStatus, type SyncConflictItem } from '../services/sync/syncEngine';
 import { NeoConnectionMonitor } from '../integrations/neosapien/connection';
-import { AIGateway } from '../services/ai/aiGateway';
+import { AIGateway, type ReliabilitySnapshot } from '../services/ai/aiGateway';
+import { LocalAgentClient, type LocalAgentStatusSnapshot } from '../services/ai/localAgentClient';
+import { ProviderGatewayModal } from '../components/buddy/ProviderGatewayModal';
 import { useSync } from '../context/SyncContext';
 import { SyncQueueService } from '../services/sync/syncQueueService';
 import { SemanticMemoryService } from '../services/semanticMemoryService';
@@ -56,6 +58,12 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
   const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
   const [executionLogs, setExecutionLogs] = useState<AgentExecutionLogRecord[]>([]);
   const [vectorCount, setVectorCount] = useState(0);
+  const [reliability, setReliability] = useState<ReliabilitySnapshot>(() => AIGateway.getReliabilitySnapshot());
+  const [localRuntimeOnline, setLocalRuntimeOnline] = useState(false);
+  const [localRuntimeStatus, setLocalRuntimeStatus] = useState<LocalAgentStatusSnapshot | null>(null);
+  const [isCheckingLocal, setIsCheckingLocal] = useState(false);
+  const [isGatewayModalOpen, setIsGatewayModalOpen] = useState(false);
+  const [gatewayModalTab, setGatewayModalTab] = useState<'providers' | 'local' | 'reliability'>('reliability');
   const { signedIn, queueCount, failedCount, syncNow, isOnline } = useSync();
   const queueItems = useLiveQuery(() => db.sync_queue.toArray(), []) || [];
   const fleetDevices = useLiveQuery(() => db.device_sessions.toArray(), []) || [];
@@ -150,6 +158,23 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
     }
   };
 
+  const refreshLocalAndReliability = async (forceProbe = false) => {
+    setIsCheckingLocal(true);
+    try {
+      setReliability(AIGateway.getReliabilitySnapshot());
+      const probe = await LocalAgentClient.probeHealth(forceProbe);
+      setLocalRuntimeOnline(Boolean(probe.online));
+      if (probe.online) {
+        const status = await LocalAgentClient.getStatus().catch(() => null);
+        setLocalRuntimeStatus(status);
+      } else {
+        setLocalRuntimeStatus(null);
+      }
+    } finally {
+      setIsCheckingLocal(false);
+    }
+  };
+
   useEffect(() => {
     const unsub = CoreSyncEngine.subscribe((status) => {
       setSyncStatus(status);
@@ -158,6 +183,7 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
     NeoConnectionMonitor.getStatus().then(setNeoStatus).catch(() => {});
     AIGateway.healthCheck().then((h) => setAiProviders(h.providers)).catch(() => {});
     loadDevMonitor();
+    void refreshLocalAndReliability(false);
     return unsub;
   }, []);
 
@@ -593,6 +619,122 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
         )}
       </div>
 
+      {/* JARVIS 5.0 Local Runtime & Reliability Telemetry */}
+      <div className="bg-[var(--hub-card-bg)] border border-[var(--hub-border)] rounded-2xl p-6 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-bold flex items-center gap-2 text-[var(--hub-ink)]">
+              <Sparkles className="w-5 h-5 text-[var(--hub-accent)]" />
+              <span>JARVIS 5.0 AI Gateway, Local Daemon &amp; Circuit Breakers</span>
+            </h2>
+            <p className="text-xs text-[var(--hub-muted)] mt-0.5">
+              Unified provider vault status, loopback FastAPI + Ollama telemetry, circuit-breaker protection &amp; trace correlation IDs.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                void refreshLocalAndReliability(true);
+              }}
+              disabled={isCheckingLocal}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[var(--hub-border)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isCheckingLocal ? 'animate-spin' : ''}`} />
+              <span>{isCheckingLocal ? 'Probing Local...' : 'Check Local Daemon'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setGatewayModalTab('providers');
+                setIsGatewayModalOpen(true);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] cursor-pointer"
+            >
+              Configure Providers &amp; Local
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
+          <div className="rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-border)] p-4 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-[var(--hub-ink)]">
+                Local Python Daemon ({LocalAgentClient.getConfig().baseUrl})
+              </span>
+              <Badge variant={localRuntimeOnline ? 'emerald' : 'gray'}>
+                {localRuntimeOnline ? (localRuntimeStatus?.paused ? 'Paused' : 'Online') : 'Unpaired / Offline'}
+              </Badge>
+            </div>
+            {localRuntimeOnline && localRuntimeStatus ? (
+              <div className="space-y-1 text-[var(--hub-muted)]">
+                <div>
+                  Hardware: CPU {Math.round(localRuntimeStatus.hardware.cpu_percent)}% · RAM{' '}
+                  {localRuntimeStatus.hardware.ram_available_gb.toFixed(1)}/{localRuntimeStatus.hardware.ram_total_gb.toFixed(1)} GB
+                  {localRuntimeStatus.hardware.gpu
+                    ? ` · GPU ${localRuntimeStatus.hardware.gpu.name} (${localRuntimeStatus.hardware.gpu.vram_free_mib}/${localRuntimeStatus.hardware.gpu.vram_total_mib} MiB free)`
+                    : ' · CPU Offload Mode'}
+                </div>
+                <div>
+                  Ollama: {localRuntimeStatus.ollama.reachable ? `${localRuntimeStatus.ollama.status} (${localRuntimeStatus.ollama.models.length} models, ${localRuntimeStatus.ollama.loaded_models.length} loaded)` : (localRuntimeStatus.ollama.error || 'Not reachable')}
+                </div>
+                <div>
+                  Task Queue: {localRuntimeStatus.queue.queued} queued · {localRuntimeStatus.queue.running} running ·{' '}
+                  {localRuntimeStatus.queue.completed} done · {localRuntimeStatus.queue.dead_letter} dead-letter
+                </div>
+              </div>
+            ) : (
+              <p className="text-[var(--hub-muted)]">
+                Pair your local token inside &ldquo;Configure Providers &amp; Local&rdquo; after running{' '}
+                <code className="font-mono">local-agent/scripts/start_windows.ps1</code> or <code className="font-mono">start_wsl_ubuntu.sh</code>. Unpaired browsers skip background polling cleanly.
+              </p>
+            )}
+          </div>
+
+          <div className="rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-border)] p-4 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-[var(--hub-ink)]">Circuit Breakers &amp; Request Traces</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setGatewayModalTab('reliability');
+                  setIsGatewayModalOpen(true);
+                }}
+                className="text-[11px] font-semibold text-[var(--hub-accent)] hover:underline cursor-pointer"
+              >
+                Open Reliability Drawer
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {reliability.circuits.map((c) => (
+                <Badge
+                  key={c.provider}
+                  variant={c.state === 'closed' ? 'emerald' : c.state === 'half_open' ? 'amber' : 'red'}
+                >
+                  {c.provider}: {c.state} ({c.failures})
+                </Badge>
+              ))}
+            </div>
+            {reliability.recentTraces.length > 0 ? (
+              <div className="space-y-1 max-h-28 overflow-y-auto pt-1">
+                {reliability.recentTraces.slice(0, 5).map((t) => (
+                  <div key={t.requestId} className="flex items-center justify-between gap-2 text-[11px]">
+                    <span className="font-mono truncate text-[var(--hub-ink)]">
+                      {t.requestId} · {t.category} · {t.provider}
+                    </span>
+                    <span className="text-[var(--hub-muted)] shrink-0">
+                      {t.status} ({t.latencyMs}ms)
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[var(--hub-muted)]">No gateway requests executed in this browser session yet.</p>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Autonomous Self-Healing & Execution Policy Tiers (Level 1 / 2 / 3) */}
       <div className="bg-[var(--hub-card-bg)] border border-[var(--hub-border)] rounded-2xl p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -764,6 +906,17 @@ export const SystemHealthSyncCenterPage: React.FC<SystemHealthSyncCenterPageProp
           </div>
         )}
       </div>
+
+      <ProviderGatewayModal
+        key={gatewayModalTab}
+        isOpen={isGatewayModalOpen}
+        onClose={() => setIsGatewayModalOpen(false)}
+        initialTab={gatewayModalTab}
+        onStatusRefresh={() => {
+          AIGateway.healthCheck().then((h) => setAiProviders(h.providers)).catch(() => {});
+          void refreshLocalAndReliability(false);
+        }}
+      />
     </div>
   );
 };

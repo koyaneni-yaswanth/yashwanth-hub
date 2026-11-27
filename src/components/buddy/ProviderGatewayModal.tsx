@@ -57,10 +57,14 @@ export const ProviderGatewayModal: React.FC<Props> = ({
     setTab(initialTab);
   }, [initialTab]);
 
-  const loadAll = useCallback(async () => {
+  const loadAll = useCallback(async (forceOllamaProbe = false) => {
     setReliability(AIGateway.getReliabilitySnapshot());
+    const hasLocalOptIn =
+      forceOllamaProbe ||
+      Boolean(LocalAgentClient.getConfig().token) ||
+      (typeof localStorage !== 'undefined' && localStorage.getItem('yash_enable_local_ollama') === '1');
     const [health, cfgRes] = await Promise.all([
-      AIGateway.healthCheck({ includeLocalOllama: true }).catch(() => null),
+      AIGateway.healthCheck({ includeLocalOllama: hasLocalOptIn }).catch(() => null),
       AIGateway.getProviderConfigs().catch(() => null),
     ]);
     if (health?.providers) setProvidersHealth(health.providers);
@@ -195,7 +199,7 @@ export const ProviderGatewayModal: React.FC<Props> = ({
           </div>
           <button
             type="button"
-            onClick={loadAll}
+            onClick={() => void loadAll(true)}
             className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 hover:bg-white/10"
           >
             <RefreshCw className="h-3 w-3" /> Refresh
