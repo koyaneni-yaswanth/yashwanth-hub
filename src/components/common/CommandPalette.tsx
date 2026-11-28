@@ -26,6 +26,8 @@ import {
   BarChart3,
   Gavel,
   AlertTriangle,
+  Compass,
+  PenTool,
   Target,
   Repeat,
 } from 'lucide-react';
@@ -102,7 +104,18 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   if (!isOpen) return null;
 
+  const openUniverseStation = (stationId: string) => {
+    try {
+      sessionStorage.setItem('yash_universe_target_station', stationId);
+    } catch {
+      /* ignore */
+    }
+    window.dispatchEvent(new CustomEvent('yash:universe-station', { detail: stationId }));
+    onNavigate('universe');
+  };
+
   const navItems = [
+    { label: 'Enter 3D Digital Universe Studio (/universe)', tab: 'universe' as NavigationTab, icon: Compass, category: '3D Studio' },
     { label: 'Go to JARVIS Buddy (3D Companion & Voice)', tab: 'buddy' as NavigationTab, icon: Bot, category: 'Navigation' },
     { label: 'Go to Home Dashboard', tab: 'dashboard' as NavigationTab, icon: Command, category: 'Navigation' },
     { label: 'Go to My Day (plan my day)', tab: 'my-day' as NavigationTab, icon: Sun, category: 'Navigation' },
@@ -114,7 +127,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     { label: 'Go to Automations & Scheduler', tab: 'automations' as NavigationTab, icon: Zap, category: 'Navigation' },
     { label: 'Go to Startup Command (Pawan Shakti)', tab: 'startup-command' as NavigationTab, icon: Wind, category: 'Navigation' },
     { label: 'Go to Robotics Lab (PiPER, Swarm, Radar)', tab: 'robotics-lab' as NavigationTab, icon: Bot, category: 'Navigation' },
-    { label: 'Go to Learning & Career Hub', tab: 'learning-career' as NavigationTab, icon: Brain, category: 'Navigation' },
+    { label: 'Go to Learning, Career & Opportunities Radar', tab: 'learning-career' as NavigationTab, icon: Brain, category: 'Navigation' },
     { label: 'Go to Calendar & Schedule', tab: 'calendar' as NavigationTab, icon: Calendar, category: 'Navigation' },
     { label: 'Go to Tasks Board', tab: 'tasks' as NavigationTab, icon: CheckSquare, category: 'Navigation' },
     { label: 'Go to Knowledge & Memory Hub', tab: 'knowledge-memory' as NavigationTab, icon: Brain, category: 'Navigation' },
@@ -134,6 +147,36 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   ];
 
   const actionItems = [
+    {
+      label: 'Open 3D Engineering Whiteboard',
+      action: () => openUniverseStation('whiteboard'),
+      icon: PenTool,
+      category: '3D Studio',
+    },
+    {
+      label: 'Open 3D Physics & Radar Experiments',
+      action: () => openUniverseStation('experiment'),
+      icon: Compass,
+      category: '3D Studio',
+    },
+    {
+      label: 'Open 3D Rubik Calibration Cube',
+      action: () => openUniverseStation('cube'),
+      icon: Compass,
+      category: '3D Studio',
+    },
+    {
+      label: 'Focus 3D PAWAN SHAKTI Turbine Bench',
+      action: () => openUniverseStation('energy'),
+      icon: Wind,
+      category: '3D Studio',
+    },
+    {
+      label: 'Focus 3D PiPER 6-DOF Robotic Arm',
+      action: () => openUniverseStation('robotics'),
+      icon: Bot,
+      category: '3D Studio',
+    },
     {
       label: focus.enabled ? `Exit Focus Mode (${focus.workspace.shortLabel})` : 'Choose Focus Mode Workspace',
       action: () => (focus.enabled ? focus.disableFocusMode() : focus.openPicker()),

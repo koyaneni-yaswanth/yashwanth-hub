@@ -187,9 +187,15 @@ async function main() {
     await page.click('button:has-text("3D Turbine CAD")');
     await page.waitForSelector('[data-testid="cad-viewer-pawan-turbine"] button:has-text(".STL")', { timeout: 12000 });
 
-    // Home HUD 1-click "3D Studio" button
+    // Home HUD 1-click "3D Studio" button + Ctrl+K Deep-Link into 3D Whiteboard Station
     await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('section[aria-labelledby="jarvis-cc-title"] button:has-text("3D Studio")', { timeout: 12000 });
+    await page.keyboard.press('Control+k');
+    await page.waitForSelector('[aria-label="Search the hub"]', { timeout: 6000 });
+    await page.fill('[aria-label="Search the hub"]', 'Open 3D Engineering Whiteboard');
+    await page.waitForSelector('text=Open 3D Engineering Whiteboard', { timeout: 4000 });
+    await page.click('text=Open 3D Engineering Whiteboard');
+    await page.waitForSelector('[data-testid="studio-whiteboard"] canvas', { timeout: 10000 });
 
     // Learning & Career -> Opportunities & Grants Radar -> Task Conversion
     await page.goto(`${baseUrl}/?tab=learning-career`, { waitUntil: 'domcontentloaded' });

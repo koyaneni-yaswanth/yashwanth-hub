@@ -80,28 +80,37 @@ export const StudioWhiteboardPanel: React.FC<StudioWhiteboardPanelProps> = ({
     if (!canvas || !ctx) return;
 
     paintBackground(ctx);
-    let cancelled = false;
+    const controller = new AbortController();
+
+    const notifyTexture = () => {
+      if (!onTextureUpdate) return;
+      try {
+        onTextureUpdate(canvas.toDataURL('image/png'));
+      } catch {
+        /* ignore */
+      }
+    };
 
     void db.settings
       .get(BOARD_STORAGE_KEY)
       .then((row) => {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         const dataUrl = typeof row?.value?.dataUrl === 'string' ? row.value.dataUrl : '';
         if (dataUrl) {
           const img = new Image();
           img.onload = () => {
-            if (cancelled) return;
+            if (controller.signal.aborted) return;
             ctx.drawImage(img, 0, 0, BOARD_W, BOARD_H);
             historyRef.current = [ctx.getImageData(0, 0, BOARD_W, BOARD_H)];
             redoRef.current = [];
             syncHistoryFlags();
-            emitCanvasSnapshot();
+            notifyTexture();
           };
           img.src = dataUrl;
         } else {
           historyRef.current = [ctx.getImageData(0, 0, BOARD_W, BOARD_H)];
           syncHistoryFlags();
-          emitCanvasSnapshot();
+          notifyTexture();
         }
       })
       .catch(() => {
@@ -110,9 +119,9 @@ export const StudioWhiteboardPanel: React.FC<StudioWhiteboardPanelProps> = ({
       });
 
     return () => {
-      cancelled = true;
+      controller.abort();
     };
-  }, []);
+  }, [onTextureUpdate]);
 
   const toCanvasPoint = (e: React.PointerEvent<HTMLCanvasElement>): { x: number; y: number } => {
     const canvas = canvasRef.current!;

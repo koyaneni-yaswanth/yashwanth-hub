@@ -62,8 +62,25 @@ const DOCK_EXTRA: Array<{ id: UniverseStationId; label: string; icon: React.Elem
   { id: 'cube', label: 'Rubik Cube', icon: Compass },
 ];
 
+const EMPTY_LIST: never[] = [];
+
+function resolveInitialStation(): UniverseStationId | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const queryStation = new URLSearchParams(window.location.search).get('station') as UniverseStationId | null;
+    if (queryStation && stationById(queryStation).id === queryStation) return queryStation;
+    const queued = sessionStorage.getItem('yash_universe_target_station') as UniverseStationId | null;
+    if (queued && stationById(queued).id === queued) return queued;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
 export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
+  const [initialStation] = useState<UniverseStationId | null>(() => resolveInitialStation());
   const [entered, setEntered] = useState<boolean>(() => {
+    if (initialStation) return true;
     try {
       return sessionStorage.getItem(ENTRY_DISMISSED_KEY) === '1';
     } catch {
@@ -71,7 +88,7 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
     }
   });
   const [bootProgress, setBootProgress] = useState(40);
-  const [activeStation, setActiveStation] = useState<UniverseStationId>('overview');
+  const [activeStation, setActiveStation] = useState<UniverseStationId>(initialStation || 'overview');
   const [hoveredStation, setHoveredStation] = useState<UniverseStationId | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [showPins, setShowPins] = useState(true);
@@ -95,10 +112,32 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
   });
 
   const audioRef = useRef<StudioAudioEngine | null>(null);
-  const emptyListRef = useRef<never[]>([]);
-  const tasks = useLiveQuery(() => db.tasks.toArray(), []) ?? emptyListRef.current;
-  const projects = useLiveQuery(() => db.projects.toArray(), []) ?? emptyListRef.current;
+  const tasks = useLiveQuery(() => db.tasks.toArray(), []) ?? EMPTY_LIST;
+  const projects = useLiveQuery(() => db.projects.toArray(), []) ?? EMPTY_LIST;
   const roboticsCount = useLiveQuery(() => db.robotics_records.count(), []) ?? 0;
+
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem('yash_universe_target_station');
+    } catch {
+      /* ignore */
+    }
+    const onStationJump = (ev: Event) => {
+      const targetId = (ev as CustomEvent<UniverseStationId>)?.detail;
+      if (targetId && stationById(targetId).id === targetId) {
+        try {
+          sessionStorage.removeItem('yash_universe_target_station');
+        } catch {
+          /* ignore */
+        }
+        setEntered(true);
+        setTourPlaying(false);
+        setActiveStation(targetId);
+      }
+    };
+    window.addEventListener('yash:universe-station', onStationJump);
+    return () => window.removeEventListener('yash:universe-station', onStationJump);
+  }, []);
 
   useEffect(() => {
     const t1 = window.setTimeout(() => setBootProgress(100), 180);
