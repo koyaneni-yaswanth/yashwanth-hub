@@ -116,6 +116,8 @@ test('GLSL Shaders, Physical Monitors, Whiteboard, Experiment Station & Reusable
 
   const overlaySrc = read('src/components/universe/StudioMonitorOverlay.tsx');
   assert.ok(overlaySrc.includes('Auto-Solve'));
+  assert.ok(overlaySrc.includes('EngineeringModelViewer'));
+  assert.ok(overlaySrc.includes('Copy Bio'));
 
   const jccSrc = read('src/components/jarvis/JarvisCommandCenter.tsx');
   assert.ok(jccSrc.includes("onNavigate('universe')"));

@@ -9,6 +9,7 @@ import {
   Eye,
   FolderKanban,
   Gamepad2,
+  HelpCircle,
   MoreHorizontal,
   Pause,
   PenTool,
@@ -18,6 +19,7 @@ import {
   Volume2,
   VolumeX,
   Wind,
+  X,
 } from 'lucide-react';
 import { db } from '../db';
 import { StudioAudioEngine } from '../lib/studioAudio';
@@ -83,6 +85,7 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
   const [turbineWindMs, setTurbineWindMs] = useState(6.5);
   const [piperPose, setPiperPose] = useState<{ shoulderDeg: number; elbowDeg: number } | null>(null);
   const [tourPlaying, setTourPlaying] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [providersReady, setProvidersReady] = useState(0);
   const [localOnline, setLocalOnline] = useState(false);
   const [perfMetrics, setPerfMetrics] = useState<{ tier: string; fps: number; webglActive: boolean }>({
@@ -166,9 +169,19 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
       }
       if (!entered) return;
 
-      if (ev.key === 'Escape' && activeStation !== 'overview') {
-        setTourPlaying(false);
-        setActiveStation('overview');
+      if (ev.key === '?') {
+        setHelpOpen((h) => !h);
+        return;
+      }
+      if (ev.key === 'Escape') {
+        if (helpOpen) {
+          setHelpOpen(false);
+          return;
+        }
+        if (activeStation !== 'overview') {
+          setTourPlaying(false);
+          setActiveStation('overview');
+        }
         return;
       }
       if (ev.key === 'l' || ev.key === 'L') {
@@ -191,7 +204,7 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [entered, activeStation]);
+  }, [entered, activeStation, helpOpen]);
 
   const cycleMood = () => {
     const order: StudioLightingMood[] = ['cinema', 'workshop', 'lab'];
@@ -330,10 +343,52 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
                 <Eye className="w-3.5 h-3.5 text-[#3BE8FF]" />
                 <span>{use3D ? `${perfMetrics.fps} FPS` : '2D'}</span>
               </button>
+              <span className="h-3 w-px bg-white/15 hidden sm:inline-block" />
+              <button
+                type="button"
+                onClick={() => setHelpOpen((h) => !h)}
+                aria-expanded={helpOpen}
+                aria-label="Studio controls & shortcuts"
+                data-testid="universe-help-btn"
+                className={`hidden sm:inline-flex items-center justify-center w-6 h-6 rounded-full transition-colors cursor-pointer ${
+                  helpOpen ? 'bg-[#C6A46B] text-[#050608]' : 'text-slate-300 hover:text-white'
+                }`}
+                title="Studio Controls & Shortcuts (?)"
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+              </button>
             </>
           )}
         </div>
       </header>
+
+      {helpOpen && (
+        <div
+          className="fixed top-28 right-6 z-40 w-72 rounded-2xl border border-white/15 bg-[#0A0E17]/95 backdrop-blur-xl p-4 text-xs text-slate-200 shadow-2xl space-y-2.5"
+          data-testid="universe-help-popover"
+        >
+          <div className="flex items-center justify-between border-b border-white/10 pb-2">
+            <span className="font-mono text-[10px] uppercase tracking-widest text-[#C6A46B] font-bold">
+              Studio Controls & Shortcuts
+            </span>
+            <button
+              type="button"
+              onClick={() => setHelpOpen(false)}
+              aria-label="Close help"
+              className="text-slate-400 hover:text-white cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <ul className="space-y-1.5 font-mono text-[11px] text-slate-300">
+            <li><span className="text-white">Drag Canvas:</span> 3D Orbit Camera</li>
+            <li><span className="text-white">Click Object / Pin:</span> Focus Station</li>
+            <li><span className="text-white">Drag Cube (focused):</span> Tumble 3D Cube</li>
+            <li><span className="text-[#C6A46B]">L / ? / Esc:</span> Labels · Help · Overview</li>
+            <li><span className="text-[#3BE8FF]">← / → / Tour:</span> Guided Station Tour</li>
+          </ul>
+        </div>
+      )}
 
       {/* Main Spatial Canvas OR Accessible 2D Fallback Mode */}
       <div className="relative w-full h-full">

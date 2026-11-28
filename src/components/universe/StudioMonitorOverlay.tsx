@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   ArrowLeft,
@@ -8,6 +8,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Copy,
   Cpu,
   ExternalLink,
   FolderKanban,
@@ -40,6 +41,10 @@ import { StudioWhiteboardPanel } from './StudioWhiteboardPanel';
 import { StudioExperimentConsole } from './StudioExperimentConsole';
 import type { AIChatMessage, NavigationTab } from '../../types';
 import type { ProviderHealthReport } from '../../../api/_lib/aiProviderAdapters';
+
+const EngineeringModelViewer = lazy(() =>
+  import('../three/EngineeringModelViewer').then((m) => ({ default: m.EngineeringModelViewer }))
+);
 
 export interface CubeActionCommand {
   seq: number;
@@ -84,11 +89,13 @@ export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
   const [streaming, setStreaming] = useState('');
   const [busy, setBusy] = useState(false);
 
-  // Live system health for Monitor 04
+  // Live system health for Monitor 04 + inline helpers
   const [providers, setProviders] = useState<ProviderHealthReport[]>([]);
   const [localOnline, setLocalOnline] = useState(false);
   const [localModel, setLocalModel] = useState<string | null>(null);
   const [checkingHealth, setCheckingHealth] = useState(false);
+  const [copiedBio, setCopiedBio] = useState(false);
+  const [inlineCadStation, setInlineCadStation] = useState<'robotics' | 'energy' | null>(null);
 
   const refreshSystemDiagnostics = async () => {
     setCheckingHealth(true);
@@ -241,15 +248,30 @@ export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
       <div className="p-4 overflow-y-auto space-y-4 text-xs leading-relaxed">
         {activeStation === 'about' && (
           <div className="space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#C6A46B]/15 border border-[#C6A46B]/40 flex items-center justify-center shrink-0">
-                <User className="w-5 h-5 text-[#C6A46B]" />
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#C6A46B]/15 border border-[#C6A46B]/40 flex items-center justify-center shrink-0">
+                  <User className="w-5 h-5 text-[#C6A46B]" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold font-heading text-white">{YASHWANTH_IDENTITY_PROFILE.name}</h3>
+                  <p className="text-slate-300 mt-0.5">{YASHWANTH_IDENTITY_PROFILE.title}</p>
+                  <p className="font-mono text-[11px] text-[#8BA8C8] mt-1">{YASHWANTH_IDENTITY_PROFILE.education}</p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-base font-bold font-heading text-white">{YASHWANTH_IDENTITY_PROFILE.name}</h3>
-                <p className="text-slate-300 mt-0.5">{YASHWANTH_IDENTITY_PROFILE.title}</p>
-                <p className="font-mono text-[11px] text-[#8BA8C8] mt-1">{YASHWANTH_IDENTITY_PROFILE.education}</p>
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const md = `# ${YASHWANTH_IDENTITY_PROFILE.name}\n**${YASHWANTH_IDENTITY_PROFILE.title}**\n${YASHWANTH_IDENTITY_PROFILE.education}\n\n## Core Focus\n${YASHWANTH_IDENTITY_PROFILE.coreFocus.map((c) => `- ${c}`).join('\n')}\n\n## Stack\n${YASHWANTH_IDENTITY_PROFILE.stack.join(' · ')}\n`;
+                  void navigator.clipboard?.writeText(md);
+                  setCopiedBio(true);
+                  window.setTimeout(() => setCopiedBio(false), 2200);
+                }}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/15 hover:border-[#C6A46B] text-[11px] font-semibold text-slate-200 cursor-pointer shrink-0"
+              >
+                {copiedBio ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Copy className="w-3.5 h-3.5 text-[#C6A46B]" />}
+                <span>{copiedBio ? 'Copied' : 'Copy Bio'}</span>
+              </button>
             </div>
 
             <div className="space-y-1.5">
@@ -276,6 +298,23 @@ export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
                   </span>
                 ))}
               </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2 pt-1 border-t border-white/10">
+              <button
+                type="button"
+                onClick={() => onSelectStation('projects')}
+                className="px-3 py-1.5 rounded-lg bg-[#C6A46B]/15 border border-[#C6A46B]/40 text-[#E8D5B0] font-semibold cursor-pointer"
+              >
+                Flagship Projects →
+              </button>
+              <button
+                type="button"
+                onClick={() => onNavigate('learning-career')}
+                className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/15 hover:border-[#3BE8FF] text-slate-200 font-semibold cursor-pointer"
+              >
+                Grants & Opportunities →
+              </button>
             </div>
           </div>
         )}
@@ -606,14 +645,36 @@ export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
                 />
               </label>
             </div>
-            <button
-              type="button"
-              onClick={() => onNavigate('robotics-lab')}
-              className="w-full py-2.5 rounded-xl bg-[#38BDF8] text-[#05070D] font-bold flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <Box className="w-4 h-4" />
-              Launch Robotics 3D CAD & Experiment Lab
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setInlineCadStation((prev) => (prev === 'robotics' ? null : 'robotics'))}
+                aria-expanded={inlineCadStation === 'robotics'}
+                className="px-3 py-2.5 rounded-xl bg-white/8 border border-white/15 hover:border-[#38BDF8] text-slate-100 font-semibold flex items-center gap-1.5 cursor-pointer shrink-0"
+              >
+                <Layers className="w-4 h-4 text-[#38BDF8]" />
+                <span>{inlineCadStation === 'robotics' ? 'Hide 3D CAD' : 'Inline 3D CAD'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onNavigate('robotics-lab')}
+                className="flex-1 py-2.5 rounded-xl bg-[#38BDF8] text-[#05070D] font-bold flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Box className="w-4 h-4" />
+                <span>Launch Robotics Lab</span>
+              </button>
+            </div>
+            {inlineCadStation === 'robotics' && (
+              <Suspense
+                fallback={
+                  <div className="p-4 rounded-xl bg-black/40 border border-white/10 text-center font-mono text-[11px] text-slate-400">
+                    Loading PiPER CAD Inspector...
+                  </div>
+                }
+              >
+                <EngineeringModelViewer compact preset="piper-arm" />
+              </Suspense>
+            )}
           </div>
         )}
 
@@ -666,14 +727,36 @@ export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
                 </span>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => onNavigate('startup-command')}
-              className="w-full py-2.5 rounded-xl bg-emerald-400 text-[#05070D] font-bold flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              Launch PAWAN SHAKTI 3D Turbine & V3F Lab
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setInlineCadStation((prev) => (prev === 'energy' ? null : 'energy'))}
+                aria-expanded={inlineCadStation === 'energy'}
+                className="px-3 py-2.5 rounded-xl bg-white/8 border border-white/15 hover:border-emerald-400 text-slate-100 font-semibold flex items-center gap-1.5 cursor-pointer shrink-0"
+              >
+                <Layers className="w-4 h-4 text-emerald-300" />
+                <span>{inlineCadStation === 'energy' ? 'Hide 3D CAD' : 'Inline 3D CAD'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onNavigate('startup-command')}
+                className="flex-1 py-2.5 rounded-xl bg-emerald-400 text-[#05070D] font-bold flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span>Launch PAWAN SHAKTI Lab</span>
+              </button>
+            </div>
+            {inlineCadStation === 'energy' && (
+              <Suspense
+                fallback={
+                  <div className="p-4 rounded-xl bg-black/40 border border-white/10 text-center font-mono text-[11px] text-slate-400">
+                    Loading Turbine CAD Inspector...
+                  </div>
+                }
+              >
+                <EngineeringModelViewer compact preset="pawan-turbine" />
+              </Suspense>
+            )}
           </div>
         )}
 

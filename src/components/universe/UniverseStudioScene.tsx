@@ -844,29 +844,33 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
           -0.46
         );
 
-        // Dynamic Floor Beacon Halo (glides beneath active/hovered spatial station)
+        // Dynamic Desk/Floor Beacon Halo (glides on the actual desk surface or floor beneath each station)
         const beaconSpots: Record<UniverseStationId, readonly [number, number, number, number]> = {
-          overview: [0.15, 0.035, 0.25, 0.01],
-          about: [-1.56, 0.04, -1.26, 0.9],
-          projects: [0.0, 0.04, -1.48, 0.95],
-          jarvis: [1.56, 0.04, -1.26, 0.95],
-          research: [2.84, 0.04, -0.74, 0.9],
-          robotics: [-2.55, 0.04, -0.15, 0.9],
-          energy: [3.68, 0.04, 0.68, 1.1],
-          whiteboard: [-4.15, 0.04, -0.45, 1.15],
-          experiment: [-2.15, 0.04, 1.55, 0.92],
-          cube: [0.15, 0.04, 0.72, 0.75],
-          workspace: [0.0, 0.04, 0.35, 1.0],
+          overview: [0.15, 1.12, 0.25, 0.01],
+          about: [-1.56, 1.12, -1.4, 0.44],
+          projects: [0.0, 1.12, -1.62, 0.46],
+          jarvis: [1.56, 1.12, -1.4, 0.46],
+          research: [2.84, 1.12, -0.88, 0.44],
+          robotics: [-2.55, 1.12, -0.15, 0.64],
+          energy: [3.68, 0.04, 0.68, 0.96],
+          whiteboard: [-4.15, 0.04, -0.45, 1.1],
+          experiment: [-2.15, 0.04, 1.55, 0.68],
+          cube: [0.15, 1.12, 0.72, 0.56],
+          workspace: [0.0, 1.12, 0.28, 0.85],
         };
         const beaconGroup = new THREE.Group();
+        const beaconOuterMat = trackMat(
+          new THREE.MeshBasicMaterial({ color: '#3BE8FF', transparent: true, opacity: 0.78 })
+        );
+        const beaconTargetColor = new THREE.Color('#3BE8FF');
         const beaconOuter = new THREE.Mesh(
-          trackGeo(new THREE.TorusGeometry(0.62, 0.015, 10, 48)),
-          trackMat(new THREE.MeshBasicMaterial({ color: '#3BE8FF', transparent: true, opacity: 0.72 }))
+          trackGeo(new THREE.TorusGeometry(0.62, 0.016, 10, 48)),
+          beaconOuterMat
         );
         beaconOuter.rotation.x = Math.PI / 2;
         const beaconInner = new THREE.Mesh(
-          trackGeo(new THREE.TorusGeometry(0.46, 0.01, 10, 42)),
-          trackMat(new THREE.MeshBasicMaterial({ color: '#C6A46B', transparent: true, opacity: 0.78 }))
+          trackGeo(new THREE.TorusGeometry(0.46, 0.011, 10, 42)),
+          trackMat(new THREE.MeshBasicMaterial({ color: '#C6A46B', transparent: true, opacity: 0.82 }))
         );
         beaconInner.rotation.x = Math.PI / 2;
         beaconGroup.add(beaconOuter, beaconInner);
@@ -1507,8 +1511,10 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
             lastEntered = true;
             camTransitionLeft = 1.15;
           }
-          const focusSpot =
-            beaconSpots[stateRef.current.hoveredStation || stateRef.current.activeStation] ?? beaconSpots.overview;
+          const focusId = stateRef.current.hoveredStation || stateRef.current.activeStation;
+          const focusSpot = beaconSpots[focusId] ?? beaconSpots.overview;
+          const focusAccent = stationById(focusId).accentHex;
+          beaconOuterMat.color.lerp(beaconTargetColor.set(focusAccent), Math.min(1, dt * 8));
           const bLerp = Math.min(1, dt * 6.5);
           beaconGroup.position.x += (focusSpot[0] - beaconGroup.position.x) * bLerp;
           beaconGroup.position.y += (focusSpot[1] - beaconGroup.position.y) * bLerp;

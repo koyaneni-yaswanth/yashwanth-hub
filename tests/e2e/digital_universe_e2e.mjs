@@ -113,8 +113,13 @@ async function main() {
     await page.click('[data-testid="universe-mood-btn"]');
     await page.click('[data-testid="universe-mood-btn"]');
 
+    await page.click('[data-testid="universe-help-btn"]');
+    await page.waitForSelector('[data-testid="universe-help-popover"]', { timeout: 4000 });
+    await page.click('[data-testid="universe-help-btn"]');
+
     await page.click('[data-testid="universe-tour-btn"]');
     await page.waitForSelector('[data-testid="studio-panel-about"]', { timeout: 8000 });
+    await page.waitForSelector('[data-testid="studio-panel-about"] button:has-text("Copy Bio")', { timeout: 4000 });
     await page.click('[data-testid="universe-tour-btn"]'); // pause auto-tour cleanly
 
     await page.click('[data-testid="studio-panel-about"] button[aria-label="Next station"]');
@@ -131,7 +136,11 @@ async function main() {
     await page.waitForSelector('text=Live 3D PiPER Joint Control', { timeout: 8000 });
     await page.click('[data-testid="studio-panel-robotics"] button[aria-label="Next station"]');
     await page.waitForSelector('text=Live 3D Rotor Wind Speed', { timeout: 8000 });
+    await page.click('text=Live 3D Rotor Wind Speed');
     await page.click('button:has-text("Nominal 8.5")');
+    await page.click('[data-testid="studio-panel-energy"] button:has-text("Inline 3D CAD")');
+    await page.waitForSelector('[data-testid="cad-viewer-pawan-turbine"] canvas', { timeout: 12000 });
+    await page.click('[data-testid="studio-panel-energy"] button:has-text("Hide 3D CAD")');
 
     await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("Labs & Cube")');
     await page.click('button:has-text("System / Labs")');
