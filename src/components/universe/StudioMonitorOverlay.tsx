@@ -762,7 +762,13 @@ export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
         )}
 
         {activeStation === 'experiment' && (
-          <StudioExperimentConsole onClose={() => onSelectStation('overview')} />
+          <StudioExperimentConsole
+            onClose={() => onSelectStation('overview')}
+            turbineWindMs={turbineWindMs}
+            onChangeTurbineWindMs={onChangeTurbineWindMs}
+            piperPose={piperPose}
+            onChangePiperPose={onChangePiperPose}
+          />
         )}
 
         {activeStation === 'cube' && (

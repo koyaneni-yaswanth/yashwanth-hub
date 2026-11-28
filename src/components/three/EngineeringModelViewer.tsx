@@ -9,6 +9,7 @@ import {
   Layers,
   Minimize2,
   RotateCcw,
+  Scissors,
   Shrink,
   Sparkles,
   Sun,
@@ -23,6 +24,19 @@ interface EngineeringModelViewerProps {
 }
 
 type LightingMode = 'studio' | 'blueprint' | 'contrast';
+type CadCameraPresetId = 'iso' | 'front' | 'top' | 'side';
+
+const CAD_CAMERA_PRESETS: ReadonlyArray<{
+  id: CadCameraPresetId;
+  label: string;
+  pos: [number, number, number];
+  target: [number, number, number];
+}> = [
+  { id: 'iso', label: 'Iso', pos: [3.2, 2.25, 3.6], target: [0, 0.65, 0] },
+  { id: 'front', label: 'Front', pos: [0, 0.85, 4.35], target: [0, 0.72, 0] },
+  { id: 'top', label: 'Top', pos: [0, 4.75, 0.02], target: [0, 0.65, 0] },
+  { id: 'side', label: 'Side', pos: [4.35, 0.85, 0], target: [0, 0.72, 0] },
+];
 
 function disposeObjectTree(THREE: typeof import('three'), root: import('three').Object3D) {
   root.traverse((obj) => {
@@ -60,9 +74,15 @@ export const EngineeringModelViewer: React.FC<EngineeringModelViewerProps> = ({
   const [jointJ1Deg, setJointJ1Deg] = useState(18);
   const [jointJ2Deg, setJointJ2Deg] = useState(-28);
   const [jointJ3Deg, setJointJ3Deg] = useState(42);
+  const [cutawayEnabled, setCutawayEnabled] = useState(false);
+  const [cutawayY, setCutawayY] = useState(1.25);
+  const [cameraPreset, setCameraPreset] = useState<CadCameraPresetId>('iso');
+  const [envelopeDims, setEnvelopeDims] = useState<{ x: number; y: number; z: number } | null>(null);
   const [uploadedBlobUrl, setUploadedBlobUrl] = useState<{ url: string; ext: string } | null>(null);
   const resetCamRef = useRef<() => void>(() => {});
+  const applyCamPresetRef = useRef<(id: CadCameraPresetId) => void>(() => {});
   const exportStlRef = useRef<(() => Promise<void>) | null>(null);
+  const lastEnvelopeKeyRef = useRef('');
 
   const controlsRef = useRef({
     wireframe,
@@ -74,6 +94,8 @@ export const EngineeringModelViewer: React.FC<EngineeringModelViewerProps> = ({
     jointJ1Deg,
     jointJ2Deg,
     jointJ3Deg,
+    cutawayEnabled,
+    cutawayY,
   });
 
   useEffect(() => {
@@ -87,14 +109,31 @@ export const EngineeringModelViewer: React.FC<EngineeringModelViewerProps> = ({
       jointJ1Deg,
       jointJ2Deg,
       jointJ3Deg,
+      cutawayEnabled,
+      cutawayY,
     };
-  }, [wireframe, autoRotate, exploded, lighting, selectedPartId, hiddenParts, jointJ1Deg, jointJ2Deg, jointJ3Deg]);
+  }, [
+    wireframe,
+    autoRotate,
+    exploded,
+    lighting,
+    selectedPartId,
+    hiddenParts,
+    jointJ1Deg,
+    jointJ2Deg,
+    jointJ3Deg,
+    cutawayEnabled,
+    cutawayY,
+  ]);
 
   // Reset part selection on preset swap
   useEffect(() => {
     setSelectedPartId(CAD_ASSEMBLY_PRESETS[preset].parts[0]?.id ?? null);
     setHiddenParts({});
     setExploded(0);
+    setCutawayEnabled(false);
+    setCutawayY(1.25);
+    setCameraPreset('iso');
     setCustomFileName(null);
     setUploadedBlobUrl((prev) => {
       if (prev?.url) URL.revokeObjectURL(prev.url);
@@ -133,6 +172,7 @@ export const EngineeringModelViewer: React.FC<EngineeringModelViewerProps> = ({
         renderer.setSize(width, height);
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.toneMappingExposure = 1.05;
+        renderer.localClippingEnabled = true;
         mount.innerHTML = '';
         mount.appendChild(renderer.domElement);
 
@@ -155,10 +195,16 @@ export const EngineeringModelViewer: React.FC<EngineeringModelViewerProps> = ({
         orbit.minDistance = 1.3;
         orbit.maxDistance = 12;
 
-        resetCamRef.current = () => {
-          camera.position.set(3.2, 2.25, 3.6);
-          orbit.target.set(0, 0.65, 0);
+        applyCamPresetRef.current = (presetId: CadCameraPresetId) => {
+          const specCam = CAD_CAMERA_PRESETS.find((c) => c.id === presetId) ?? CAD_CAMERA_PRESETS[0];
+          camera.position.set(...specCam.pos);
+          orbit.target.set(...specCam.target);
           orbit.update();
+        };
+
+        resetCamRef.current = () => {
+          setCameraPreset('iso');
+          applyCamPresetRef.current('iso');
         };
 
         const ambLight = new THREE.HemisphereLight('#C7D5E5', '#0A0D14', 0.85);
@@ -479,6 +525,30 @@ export const EngineeringModelViewer: React.FC<EngineeringModelViewerProps> = ({
 
         if (mounted) setWebglStatus('ready');
 
+        const clipPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), controlsRef.current.cutawayY);
+        const sliceRing = new THREE.Group();
+        const sliceRingGeo = new THREE.TorusGeometry(1.06, 0.014, 12, 56);
+        const sliceRingMat = new THREE.MeshBasicMaterial({ color: '#3BE8FF', transparent: true, opacity: 0.85 });
+        const sliceRingMesh = new THREE.Mesh(sliceRingGeo, sliceRingMat);
+        sliceRingMesh.rotation.x = Math.PI / 2;
+        const slicePlaneDisc = new THREE.Mesh(
+          new THREE.RingGeometry(0.18, 1.05, 48),
+          new THREE.MeshBasicMaterial({
+            color: '#3BE8FF',
+            transparent: true,
+            opacity: 0.08,
+            side: THREE.DoubleSide,
+          })
+        );
+        slicePlaneDisc.rotation.x = Math.PI / 2;
+        sliceRing.add(sliceRingMesh, slicePlaneDisc);
+        sliceRing.visible = false;
+        scene.add(sliceRing);
+
+        const envBox = new THREE.Box3();
+        const envSize = new THREE.Vector3();
+        let boxSampleCounter = 0;
+
         let raf = 0;
         let lastTs = performance.now();
         const tick = (now: number) => {
@@ -507,8 +577,14 @@ export const EngineeringModelViewer: React.FC<EngineeringModelViewerProps> = ({
             rimLight.intensity = 1.4;
           }
 
+          clipPlane.constant = c.cutawayY;
+          sliceRing.visible = c.cutawayEnabled;
+          sliceRing.position.y = c.cutawayY;
+
           for (const mat of managedMaterials) {
             mat.wireframe = c.wireframe || c.lighting === 'blueprint';
+            mat.clippingPlanes = c.cutawayEnabled ? [clipPlane] : null;
+            mat.side = c.cutawayEnabled ? THREE.DoubleSide : THREE.FrontSide;
           }
 
           for (const [pid, node] of partNodes.entries()) {
@@ -523,6 +599,22 @@ export const EngineeringModelViewer: React.FC<EngineeringModelViewerProps> = ({
             robotJ1.rotation.y = (c.jointJ1Deg * Math.PI) / 180;
             robotJ2.rotation.z = (c.jointJ2Deg * Math.PI) / 180;
             robotJ3.rotation.z = (c.jointJ3Deg * Math.PI) / 180;
+          }
+
+          boxSampleCounter += 1;
+          if (boxSampleCounter === 1 || boxSampleCounter % 16 === 0) {
+            envBox.setFromObject(rootGroup);
+            if (!envBox.isEmpty()) {
+              envBox.getSize(envSize);
+              const x = Number(envSize.x.toFixed(2));
+              const y = Number(envSize.y.toFixed(2));
+              const z = Number(envSize.z.toFixed(2));
+              const key = `${x},${y},${z}`;
+              if (key !== lastEnvelopeKeyRef.current && mounted) {
+                lastEnvelopeKeyRef.current = key;
+                setEnvelopeDims({ x, y, z });
+              }
+            }
           }
 
           renderer.render(scene, camera);
@@ -622,6 +714,21 @@ export const EngineeringModelViewer: React.FC<EngineeringModelViewerProps> = ({
           </button>
           <button
             type="button"
+            onClick={() => setCutawayEnabled((v) => !v)}
+            aria-pressed={cutawayEnabled}
+            data-testid="cad-cutaway-btn"
+            className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer ${
+              cutawayEnabled
+                ? 'bg-sky-500/20 border-sky-400 text-sky-300'
+                : 'border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
+            }`}
+            title="Toggle Y-axis cross-section cutaway slicer"
+          >
+            <Scissors className="w-3.5 h-3.5" />
+            Cutaway
+          </button>
+          <button
+            type="button"
             onClick={() => setLighting((l) => (l === 'studio' ? 'blueprint' : l === 'blueprint' ? 'contrast' : 'studio'))}
             className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)] cursor-pointer capitalize"
             title="Cycle 3D lighting preset"
@@ -683,6 +790,47 @@ export const EngineeringModelViewer: React.FC<EngineeringModelViewerProps> = ({
             ref={mountRef}
             className={`w-full ${fullscreen ? 'h-[62vh]' : compact ? 'h-[260px]' : 'h-[360px]'} touch-none`}
           />
+          {webglStatus === 'ready' && (
+            <>
+              <div
+                className="absolute top-2.5 left-2.5 z-10 flex items-center gap-1 p-1 rounded-lg bg-black/70 border border-white/15 backdrop-blur-sm"
+                role="group"
+                aria-label="CAD Camera Presets"
+              >
+                {CAD_CAMERA_PRESETS.map((cam) => (
+                  <button
+                    key={cam.id}
+                    type="button"
+                    onClick={() => {
+                      setCameraPreset(cam.id);
+                      if (cam.id !== 'iso') setAutoRotate(false);
+                      applyCamPresetRef.current(cam.id);
+                    }}
+                    className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold cursor-pointer transition-colors ${
+                      cameraPreset === cam.id
+                        ? 'bg-[#C6A46B] text-[#050608]'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    {cam.label}
+                  </button>
+                ))}
+              </div>
+              {envelopeDims && (
+                <div
+                  data-testid="cad-envelope-readout"
+                  className="pointer-events-none absolute bottom-2.5 left-2.5 z-10 px-2.5 py-1 rounded-lg bg-black/75 border border-white/15 backdrop-blur-sm font-mono text-[10px] text-slate-200 flex items-center gap-2"
+                >
+                  <span>
+                    Envelope: {envelopeDims.x.toFixed(2)} × {envelopeDims.y.toFixed(2)} × {envelopeDims.z.toFixed(2)} u
+                  </span>
+                  {cutawayEnabled && (
+                    <span className="text-[#3BE8FF] border-l border-white/15 pl-2">Cut Y={cutawayY.toFixed(2)}</span>
+                  )}
+                </div>
+              )}
+            </>
+          )}
           {webglStatus === 'loading' && (
             <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-400 bg-[#06080E]/80">
               Initializing interactive Three.js CAD stage...
@@ -716,6 +864,24 @@ export const EngineeringModelViewer: React.FC<EngineeringModelViewerProps> = ({
 
         {/* Sub-assembly Inspector + Explode / Joint Controls */}
         <div className="p-4 border-t lg:border-t-0 lg:border-l border-[var(--hub-line)] space-y-4 bg-[var(--hub-bg)]/30">
+          {cutawayEnabled && (
+            <label className="block space-y-1 text-xs p-2.5 rounded-xl bg-sky-500/10 border border-sky-400/30">
+              <span className="font-semibold text-sky-300 flex justify-between">
+                <span>Section Cutaway Y</span>
+                <span className="font-mono">{cutawayY.toFixed(2)} u</span>
+              </span>
+              <input
+                type="range"
+                min={0.05}
+                max={2.2}
+                step={0.05}
+                value={cutawayY}
+                onChange={(e) => setCutawayY(Number(e.target.value))}
+                aria-label="CAD cutaway Y height"
+                className="w-full accent-sky-400"
+              />
+            </label>
+          )}
           {!customFileName && (
             <>
               <label className="block space-y-1 text-xs">

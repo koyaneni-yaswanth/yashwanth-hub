@@ -122,7 +122,15 @@ test('GLSL Shaders, Physical Monitors, Whiteboard, Experiment Station & Reusable
   assert.ok(viewerSrc.includes('STLExporter.js'));
   assert.ok(viewerSrc.includes('Exploded Assembly'));
   assert.ok(viewerSrc.includes('Wireframe'));
+  assert.ok(viewerSrc.includes('CAD_CAMERA_PRESETS'));
+  assert.ok(viewerSrc.includes('localClippingEnabled'));
+  assert.ok(viewerSrc.includes('cad-envelope-readout'));
   assert.ok(viewerSrc.includes('renderer.dispose()'));
+
+  const simSrc = read('src/components/universe/StudioExperimentConsole.tsx');
+  assert.ok(simSrc.includes('sim-drive-turbine-btn'));
+  assert.ok(simSrc.includes('sim-drive-piper-btn'));
+  assert.ok(simSrc.includes('sim-export-csv-btn'));
 
   const overlaySrc = read('src/components/universe/StudioMonitorOverlay.tsx');
   assert.ok(overlaySrc.includes('Auto-Solve'));

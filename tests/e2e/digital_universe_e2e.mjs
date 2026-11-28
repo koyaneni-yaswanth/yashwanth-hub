@@ -160,11 +160,16 @@ async function main() {
     await page.click('[data-testid="studio-whiteboard"] button:has-text("Save")');
     await page.waitForSelector('text=Saved locally', { timeout: 6000 });
 
-    // Experiment Console
+    // Experiment Console + Live 3D Simulation-to-Studio Bridge + CSV Export
     await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("Experiments")');
     await page.waitForSelector('[data-testid="studio-experiment-console"] canvas', { timeout: 8000 });
+    await page.click('[data-testid="sim-drive-turbine-btn"]');
+    await page.waitForSelector('[data-testid="sim-sync-status"]', { timeout: 4000 });
+    await page.click('[data-testid="sim-export-csv-btn"]');
     await page.click('button:has-text("2-Link IK")');
     await page.waitForSelector('button:has-text("Branch:")', { timeout: 6000 });
+    await page.click('[data-testid="sim-drive-piper-btn"]');
+    await page.waitForSelector('[data-testid="sim-sync-status"]', { timeout: 4000 });
     await page.click('button:has-text("77 GHz Chirp")');
 
     // Rubik Cube (6-face + Scramble + Auto-Solve + Reset)
@@ -177,15 +182,20 @@ async function main() {
     await page.waitForTimeout(350);
     await page.click('button:has-text("Reset Solved")');
 
-    // Robotics Lab & Pawan Shakti 3D CAD Viewers + STL Export
+    // Robotics Lab & Pawan Shakti 3D CAD Viewers (Cutaway Slicer, Camera Presets, Envelope, Wireframe & STL)
     await page.goto(`${baseUrl}/?tab=robotics-lab`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-testid="cad-viewer-piper-arm"] canvas', { timeout: 12000 });
+    await page.waitForSelector('[data-testid="cad-envelope-readout"]', { timeout: 8000 });
+    await page.click('[data-testid="cad-viewer-piper-arm"] button:has-text("Front")');
+    await page.click('[data-testid="cad-cutaway-btn"]');
+    await page.waitForSelector('text=Section Cutaway Y', { timeout: 4000 });
     await page.click('[data-testid="cad-viewer-piper-arm"] button:has-text("Wireframe")');
 
     await page.goto(`${baseUrl}/?tab=startup-command`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('button:has-text("3D Turbine CAD")', { timeout: 12000 });
     await page.click('button:has-text("3D Turbine CAD")');
     await page.waitForSelector('[data-testid="cad-viewer-pawan-turbine"] button:has-text(".STL")', { timeout: 12000 });
+    await page.waitForSelector('[data-testid="cad-viewer-pawan-turbine"] [data-testid="cad-envelope-readout"]', { timeout: 8000 });
 
     // Home HUD 1-click "3D Studio" button + Ctrl+K Deep-Link into 3D Whiteboard Station
     await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded' });
