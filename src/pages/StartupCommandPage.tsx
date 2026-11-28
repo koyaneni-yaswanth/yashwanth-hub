@@ -4,18 +4,12 @@ import {
   ShieldCheck,
   Calendar,
   AlertTriangle,
-  FileCheck,
   ChevronDown,
   ChevronUp,
-  Award,
   Layers,
   IndianRupee,
   Activity,
   CheckCircle2,
-  Clock,
-  Sparkles,
-  ExternalLink,
-  Plus,
   Upload,
   Usb,
   Cpu,
@@ -219,6 +213,7 @@ export const StartupCommandPage: React.FC<{ onNavigate?: (tab: NavigationTab) =>
   const [serialActive, setSerialActive] = useState(false);
   const [serialError, setSerialError] = useState<string | null>(null);
   const serialDisconnectRef = React.useRef<(() => Promise<void>) | null>(null);
+  const [mountNow] = useState(() => Date.now());
 
   useEffect(() => {
     const loadSavedState = async () => {
@@ -395,8 +390,7 @@ export const StartupCommandPage: React.FC<{ onNavigate?: (tab: NavigationTab) =>
 
   // 90-day TRL 5 Gate (started 6 Nov 2026 -> target 4 Feb 2027)
   const trl5GateDate = new Date('2027-02-04T23:59:59+05:30').getTime();
-  const now = Date.now();
-  const diffDays = Math.max(0, Math.ceil((trl5GateDate - now) / (1000 * 60 * 60 * 24)));
+  const diffDays = Math.max(0, Math.ceil((trl5GateDate - mountNow) / (1000 * 60 * 60 * 24)));
 
   return (
     <div className="space-y-6 pb-12">

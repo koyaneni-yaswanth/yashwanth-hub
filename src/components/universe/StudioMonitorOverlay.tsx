@@ -100,34 +100,52 @@ export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
   const [copiedLink, setCopiedLink] = useState(false);
   const [inlineCadStation, setInlineCadStation] = useState<'robotics' | 'energy' | null>(null);
 
+  const fetchDiagnosticsSnapshot = async (signal?: AbortSignal) => {
+    const [apiRes, localRes] = await Promise.all([
+      fetch('/api/ai/chat?action=health', { signal })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+      LocalAgentClient.probeHealth().catch(() => ({ online: false, ollamaReachable: false, ollamaStatus: undefined })),
+    ]);
+    return { apiRes, localRes };
+  };
+
+  const applyDiagnosticsSnapshot = (
+    apiRes: { providers?: ProviderHealthReport[] } | null,
+    localRes: { online: boolean; ollamaReachable?: boolean; ollamaStatus?: string }
+  ) => {
+    if (Array.isArray(apiRes?.providers)) setProviders(apiRes.providers);
+    setLocalOnline(Boolean(localRes.online));
+    setLocalModel(localRes.ollamaReachable ? localRes.ollamaStatus || 'Ollama Ready' : null);
+  };
+
   const refreshSystemDiagnostics = async () => {
     setCheckingHealth(true);
     try {
-      const [apiRes, localRes] = await Promise.all([
-        fetch('/api/ai/chat?action=health')
-          .then((r) => (r.ok ? r.json() : null))
-          .catch(() => null),
-        LocalAgentClient.probeHealth().catch(() => ({ online: false, ollamaReachable: false, ollamaStatus: undefined })),
-      ]);
-      if (Array.isArray(apiRes?.providers)) setProviders(apiRes.providers);
-      setLocalOnline(Boolean(localRes.online));
-      setLocalModel(localRes.ollamaReachable ? localRes.ollamaStatus || 'Ollama Ready' : null);
+      const { apiRes, localRes } = await fetchDiagnosticsSnapshot();
+      applyDiagnosticsSnapshot(apiRes, localRes);
     } finally {
       setCheckingHealth(false);
     }
   };
 
   useEffect(() => {
+    const ctrl = new AbortController();
     if (activeStation === 'jarvis' || activeStation === 'research') {
-      void refreshSystemDiagnostics();
+      void fetchDiagnosticsSnapshot(ctrl.signal).then(({ apiRes, localRes }) => {
+        if (!ctrl.signal.aborted) applyDiagnosticsSnapshot(apiRes, localRes);
+      });
     }
     if (activeStation === 'jarvis' && chatHistory.length === 0) {
       void CompanionService.loadConversationHistory()
         .then((hist) => {
-          if (Array.isArray(hist) && hist.length > 0) setChatHistory(hist.slice(-8));
+          if (!ctrl.signal.aborted && Array.isArray(hist) && hist.length > 0) {
+            setChatHistory(hist.slice(-8));
+          }
         })
         .catch(() => {});
     }
+    return () => ctrl.abort();
   }, [activeStation, chatHistory.length]);
 
   const sendJarvisText = async (rawText: string) => {
