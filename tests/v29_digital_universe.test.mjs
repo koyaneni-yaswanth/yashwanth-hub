@@ -145,6 +145,8 @@ test('GLSL Shaders, Physical Monitors, Whiteboard, Experiment Station & Reusable
   assert.ok(!universePageSrc.includes('not optimized for mobile'), 'Never lock mobile users out');
   assert.ok(universePageSrc.includes('2D Accessible Studio'));
   assert.ok(universePageSrc.includes('universe-snapshot-btn'));
+  assert.ok(universePageSrc.includes('STUDIO_NUMERIC_SHORTCUTS'));
+  assert.ok(read('src/pages/MomentumPage.tsx').includes('momentum-open-universe-btn'));
 
   const roboticsSrc = read('src/pages/RoboticsLabPage.tsx');
   const startupSrc = read('src/pages/StartupCommandPage.tsx');

@@ -23,6 +23,7 @@ import { lifeInsights, projectSystem, snapshotAt, weekLabel } from '../lib/lifeI
 import { bestFocusWindow, describeRunningFocus, FOCUS_RUN_KEY, formatClock, formatHour, type RunningFocusInfo } from '../lib/focus';
 import { TourCard, type TourStep } from '../components/momentum/Tour';
 import { markTourSeen, tourSeen } from '../lib/tour';
+import { openUniverseStation } from '../lib/universeConfig';
 import { TaskService } from '../services/sync/taskService';
 import { CompassPanel, InsightCards, MemoryList, MemoryPanel, ProjectList, ProjectPanel, TimeMachineBar, type CompassHabit } from '../components/momentum/CommandDeck';
 import type { SceneGoal, SceneHabit, SceneMemory, SceneProject } from '../components/momentum/LifeConstellation';
@@ -345,10 +346,21 @@ export const MomentumPage: React.FC<MomentumPageProps> = ({ onNavigate }) => {
             </h1>
             <p className="text-sm text-[var(--hub-muted)]">Plan → act → reflect → learn. Your goals, habits, deep work and reflections as one living system.</p>
           </div>
-          <button type="button" onClick={startTour} className="os-chip px-3.5 py-2 text-sm font-medium cursor-pointer inline-flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-[var(--hub-accent)]" aria-hidden="true" />
-            Take the tour
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              data-testid="momentum-open-universe-btn"
+              onClick={() => openUniverseStation('overview', onNavigate)}
+              className="os-chip px-3.5 py-2 text-sm font-medium cursor-pointer inline-flex items-center gap-2 text-[#E8D5B0] border-[#C6A46B]/35 hover:border-[#C6A46B]"
+            >
+              <Compass className="w-4 h-4 text-[#C6A46B]" aria-hidden="true" />
+              3D Studio
+            </button>
+            <button type="button" onClick={startTour} className="os-chip px-3.5 py-2 text-sm font-medium cursor-pointer inline-flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-[var(--hub-accent)]" aria-hidden="true" />
+              Take the tour
+            </button>
+          </div>
         </header>
 
         {showTourOffer && tourIndex === null && (

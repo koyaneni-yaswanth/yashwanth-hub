@@ -66,6 +66,19 @@ const DOCK_EXTRA: Array<{ id: UniverseStationId; label: string; icon: React.Elem
 
 const EMPTY_LIST: never[] = [];
 
+const STUDIO_NUMERIC_SHORTCUTS: Record<string, UniverseStationId> = {
+  '1': 'about',
+  '2': 'projects',
+  '3': 'jarvis',
+  '4': 'research',
+  '5': 'robotics',
+  '6': 'energy',
+  '7': 'whiteboard',
+  '8': 'experiment',
+  '9': 'cube',
+  '0': 'overview',
+};
+
 function resolveInitialStation(): UniverseStationId | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -114,6 +127,10 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
   });
 
   const audioRef = useRef<StudioAudioEngine | null>(null);
+  const activeStationRef = useRef<UniverseStationId>(activeStation);
+  useEffect(() => {
+    activeStationRef.current = activeStation;
+  }, [activeStation]);
   const captureSnapshotRef = useRef<(() => string | null) | null>(null);
   const registerCapture = useCallback((fn: (() => string | null) | null) => {
     captureSnapshotRef.current = fn;
@@ -178,12 +195,32 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
     }
   };
 
-  const selectStation = (id: UniverseStationId) => {
+  const selectStation = useCallback((id: UniverseStationId) => {
     setTourPlaying(false);
     setActiveStation(id);
     setMoreOpen(false);
     audioRef.current?.playTone(id === 'overview' ? 392 : 528, 0.08);
-  };
+  }, []);
+
+  const cycleMood = useCallback(() => {
+    const order: StudioLightingMood[] = ['cinema', 'workshop', 'lab'];
+    setLightingMood((prev) => order[(order.indexOf(prev) + 1) % order.length]);
+  }, []);
+
+  const handleCaptureSnapshot = useCallback(() => {
+    const dataUrl = captureSnapshotRef.current?.();
+    if (!dataUrl) {
+      toast('Enable 3D Studio mode to capture a snapshot', 'error');
+      return;
+    }
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = `yashwanth-3d-${activeStationRef.current}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    toast('Saved 3D Studio snapshot (.png)', 'success');
+  }, []);
 
   useEffect(() => {
     if (!tourPlaying || !entered || !use3D || webglUnavailable) return;
@@ -203,6 +240,7 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
 
   useEffect(() => {
     const onKeyDown = (ev: KeyboardEvent) => {
+      if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
       const target = ev.target as HTMLElement | null;
       const inInput =
         target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
@@ -214,6 +252,23 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
       }
       if (!entered) return;
 
+      const numericTarget = STUDIO_NUMERIC_SHORTCUTS[ev.key];
+      if (numericTarget) {
+        ev.preventDefault();
+        selectStation(numericTarget);
+        return;
+      }
+
+      if (ev.key === ' ') {
+        ev.preventDefault();
+        setTourPlaying((playing) => {
+          if (!playing && activeStationRef.current === 'overview') {
+            setActiveStation(GUIDED_TOUR_ORDER[0]);
+          }
+          return !playing;
+        });
+        return;
+      }
       if (ev.key === '?') {
         setHelpOpen((h) => !h);
         return;
@@ -233,6 +288,14 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
         setShowPins((p) => !p);
         return;
       }
+      if (ev.key === 'm' || ev.key === 'M') {
+        cycleMood();
+        return;
+      }
+      if (ev.key === 'c' || ev.key === 'C') {
+        handleCaptureSnapshot();
+        return;
+      }
       if (ev.key === 'ArrowRight' || ev.key === 'ArrowLeft') {
         setTourPlaying(false);
         const idx = GUIDED_TOUR_ORDER.indexOf(activeStation);
@@ -249,33 +312,12 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [entered, activeStation, helpOpen]);
-
-  const cycleMood = () => {
-    const order: StudioLightingMood[] = ['cinema', 'workshop', 'lab'];
-    const next = order[(order.indexOf(lightingMood) + 1) % order.length];
-    setLightingMood(next);
-  };
+  }, [entered, activeStation, helpOpen, selectStation, cycleMood, handleCaptureSnapshot]);
 
   const toggleAudio = async () => {
     if (!audioRef.current) audioRef.current = new StudioAudioEngine();
     const ok = await audioRef.current.setEnabled(!audioEnabled);
     setAudioEnabled(ok);
-  };
-
-  const handleCaptureSnapshot = () => {
-    const dataUrl = captureSnapshotRef.current?.();
-    if (!dataUrl) {
-      toast('Enable 3D Studio mode to capture a snapshot', 'error');
-      return;
-    }
-    const a = document.createElement('a');
-    a.href = dataUrl;
-    a.download = `yashwanth-3d-${activeStation}.png`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    toast('Saved 3D Studio snapshot (.png)', 'success');
   };
 
   const statsSummary = useMemo(
@@ -454,9 +496,10 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
           <ul className="space-y-1.5 font-mono text-[11px] text-slate-300">
             <li><span className="text-white">Drag Canvas:</span> 3D Orbit Camera</li>
             <li><span className="text-white">Click Object / Pin:</span> Focus Station</li>
-            <li><span className="text-white">Drag Cube (focused):</span> Tumble 3D Cube</li>
-            <li><span className="text-[#C6A46B]">L / ? / Esc:</span> Labels · Help · Overview</li>
-            <li><span className="text-[#3BE8FF]">← / → / Tour:</span> Guided Station Tour</li>
+            <li><span className="text-white">1–9 / 0:</span> Jump Station / Overview</li>
+            <li><span className="text-[#3BE8FF]">Space / ← →:</span> Tour Play · Step</li>
+            <li><span className="text-[#C6A46B]">L / M / C:</span> Labels · Lighting · Snap</li>
+            <li><span className="text-slate-400">? / Esc:</span> Help · Overview</li>
           </ul>
         </div>
       )}

@@ -107,10 +107,15 @@ async function main() {
     await page.waitForTimeout(1350);
     await page.screenshot({ path: `${artifactDir}/universe_studio_3d.png` });
 
-    // Interact with lighting atmosphere + guided tour + monitors & workbench stations
+    // Interact with lighting atmosphere + keyboard shortcuts (M, 6, 0) + guided tour + monitors
     await page.click('[data-testid="universe-mood-btn"]');
     await page.waitForSelector('[data-testid="universe-mood-btn"]:has-text("Workshop")', { timeout: 4000 });
-    await page.click('[data-testid="universe-mood-btn"]');
+    await page.keyboard.press('m');
+    await page.waitForSelector('[data-testid="universe-mood-btn"]:has-text("Cyber Lab")', { timeout: 4000 });
+    await page.keyboard.press('6');
+    await page.waitForSelector('[data-testid="studio-panel-energy"]', { timeout: 6000 });
+    await page.keyboard.press('0');
+    await page.waitForSelector('[data-testid="studio-panel-energy"]', { state: 'detached', timeout: 6000 });
     await page.click('[data-testid="universe-mood-btn"]');
 
     await page.click('[data-testid="universe-help-btn"]');
@@ -231,6 +236,12 @@ async function main() {
     await page.waitForSelector('[data-testid="project-card-3d-btn"]', { timeout: 6000 });
     await page.click('[data-testid="project-card-3d-btn"]');
     await page.waitForSelector('[data-testid^="studio-panel-"]', { timeout: 10000 });
+
+    // Momentum -> 1-click 3D Studio jump
+    await page.goto(`${baseUrl}/?tab=momentum`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-testid="momentum-open-universe-btn"]', { timeout: 10000 });
+    await page.click('[data-testid="momentum-open-universe-btn"]');
+    await page.waitForSelector('[data-testid="universe-webgl-canvas"] canvas', { timeout: 10000 });
 
     await ctx.close();
 
