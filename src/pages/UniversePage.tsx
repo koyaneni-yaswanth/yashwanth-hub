@@ -78,6 +78,8 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
   const [audioVolume, setAudioVolume] = useState(0.22);
   const [whiteboardDataUrl, setWhiteboardDataUrl] = useState<string | null>(null);
   const [cubeCommand, setCubeCommand] = useState<CubeActionCommand | null>(null);
+  const [turbineWindMs, setTurbineWindMs] = useState(6.5);
+  const [piperPose, setPiperPose] = useState<{ shoulderDeg: number; elbowDeg: number } | null>(null);
   const [providersReady, setProvidersReady] = useState(0);
   const [localOnline, setLocalOnline] = useState(false);
   const [perfMetrics, setPerfMetrics] = useState<{ tier: string; fps: number; webglActive: boolean }>({
@@ -309,6 +311,8 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
               showPins={showPins}
               lightingMood={lightingMood}
               entered={entered}
+              turbineWindMs={turbineWindMs}
+              piperPose={piperPose}
               statsSummary={statsSummary}
               onMetricsUpdate={setPerfMetrics}
               onWebglUnavailable={() => {
@@ -318,25 +322,66 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
             />
           </Suspense>
         ) : (
-          <div className="h-full overflow-y-auto pt-20 pb-24 px-4 sm:px-8 max-w-5xl mx-auto space-y-6">
-            <div className="rounded-2xl border border-[#C6A46B]/30 bg-[#0B101B] p-6 space-y-2">
+          <div className="h-full overflow-y-auto pt-20 pb-36 md:pb-24 px-4 sm:px-8 max-w-5xl mx-auto space-y-5">
+            <div className="rounded-2xl border border-[#C6A46B]/30 bg-gradient-to-br from-[#0E1523] to-[#080C15] p-5 sm:p-6 space-y-4">
               <div className="flex items-center justify-between gap-2">
-                <span className="font-mono text-xs uppercase tracking-widest text-[#C6A46B]">
+                <span className="font-mono text-[11px] uppercase tracking-widest text-[#C6A46B]">
                   {webglUnavailable ? '2D Engineering Mode (WebGL Unavailable)' : '2D Accessible Studio Mode'}
                 </span>
                 <Compass className="w-5 h-5 text-[#C6A46B]" />
               </div>
-              <h1 className="text-xl sm:text-2xl font-bold font-heading">{YASHWANTH_IDENTITY_PROFILE.name}</h1>
-              <p className="text-sm text-slate-300">{YASHWANTH_IDENTITY_PROFILE.title}</p>
+              <div>
+                <h1 className="text-xl sm:text-2xl font-bold font-heading">{YASHWANTH_IDENTITY_PROFILE.name}</h1>
+                <p className="text-sm text-slate-300 mt-1">{YASHWANTH_IDENTITY_PROFILE.title}</p>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 font-mono text-xs">
+                <div className="p-2.5 rounded-xl bg-white/[0.04] border border-white/10">
+                  <span className="block text-base font-bold text-[#3BE8FF]">{statsSummary.openTasks}</span>
+                  <span className="text-[10px] text-slate-400">Open Tasks</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-white/[0.04] border border-white/10">
+                  <span className="block text-base font-bold text-[#C6A46B]">{statsSummary.providersReady}</span>
+                  <span className="text-[10px] text-slate-400">Cloud AI Ready</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-white/[0.04] border border-white/10">
+                  <span className="block text-base font-bold text-emerald-300">
+                    {statsSummary.localOnline ? 'ONLINE' : 'LOCAL OFF'}
+                  </span>
+                  <span className="text-[10px] text-slate-400">FastAPI Agent</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-white/[0.04] border border-white/10">
+                  <span className="block text-base font-bold text-[#8BA8C8]">{statsSummary.roboticsCount}</span>
+                  <span className="text-[10px] text-slate-400">Lab Records</span>
+                </div>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+            <div className="flex flex-wrap gap-2">
+              {[
+                { id: 'projects' as const, label: 'Flagship Projects' },
+                { id: 'whiteboard' as const, label: 'Sketch Whiteboard' },
+                { id: 'experiment' as const, label: 'Physics Sim Deck' },
+                { id: 'jarvis' as const, label: 'Ask JARVIS' },
+                { id: 'about' as const, label: 'About Yashwanth' },
+              ].map((tool) => (
+                <button
+                  key={tool.id}
+                  type="button"
+                  onClick={() => selectStation(tool.id)}
+                  className="px-3.5 py-2 rounded-xl bg-[#C6A46B]/14 border border-[#C6A46B]/35 hover:border-[#C6A46B] text-xs font-semibold text-[#E8D5B0] cursor-pointer"
+                >
+                  {tool.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {UNIVERSE_EIGHT_ENVIRONMENTS.map((env) => (
                 <button
                   key={env.id}
                   type="button"
                   onClick={() => selectStation(env.stationId)}
-                  className="text-left p-4 rounded-xl bg-white/5 border border-white/10 hover:border-[#C6A46B] transition-colors space-y-1.5 cursor-pointer"
+                  className="text-left p-4 rounded-xl bg-white/[0.04] border border-white/10 hover:border-[#C6A46B] transition-colors space-y-1.5 cursor-pointer"
                 >
                   <span className="font-mono text-[10px] uppercase tracking-wider text-[#8BA8C8]">Environment</span>
                   <h2 className="text-sm font-bold text-white">{env.name}</h2>
@@ -356,7 +401,7 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
         )}
 
         {/* Simple, Attractive Bottom Spatial Dock */}
-        <div className="pointer-events-none fixed bottom-20 md:bottom-5 left-0 md:left-16 right-0 z-30 flex flex-col items-center gap-2 px-3">
+        <div className="pointer-events-none fixed bottom-20 md:bottom-5 left-0 md:left-16 right-0 z-30 flex flex-col items-center gap-2 px-2 sm:px-3">
           {moreOpen && (
             <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-1.5 p-2 rounded-2xl bg-[#0A0E17]/92 backdrop-blur-xl border border-white/15 shadow-2xl">
               {DOCK_EXTRA.map((item) => {
@@ -383,7 +428,7 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
 
           <nav
             aria-label="Digital Universe Stations"
-            className="pointer-events-auto flex items-center gap-1 p-1.5 rounded-2xl bg-[#080B12]/85 backdrop-blur-xl border border-white/12 shadow-[0_12px_40px_rgba(0,0,0,0.65)] overflow-x-auto max-w-full"
+            className="pointer-events-auto flex items-center gap-1 p-1 sm:p-1.5 rounded-2xl bg-[#080B12]/85 backdrop-blur-xl border border-white/12 shadow-[0_12px_40px_rgba(0,0,0,0.65)] overflow-x-auto max-w-full"
           >
             {DOCK_PRIMARY.map((item) => {
               const Icon = item.icon;
@@ -393,7 +438,7 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
                   key={item.id}
                   type="button"
                   onClick={() => selectStation(item.id)}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                  className={`inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                     active
                       ? 'bg-[#C6A46B] text-[#050608] shadow-sm'
                       : 'text-slate-300 hover:text-white hover:bg-white/8'
@@ -411,7 +456,7 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
               type="button"
               onClick={() => setMoreOpen((m) => !m)}
               aria-expanded={moreOpen}
-              className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                 moreOpen || DOCK_EXTRA.some((d) => d.id === activeStation)
                   ? 'bg-[#8BA8C8]/25 text-[#E1E9F2] border border-[#8BA8C8]/40'
                   : 'text-slate-300 hover:text-white hover:bg-white/8'
@@ -430,6 +475,10 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
           onNavigate={onNavigate}
           onWhiteboardTextureChange={setWhiteboardDataUrl}
           onCubeCommand={(cmd) => setCubeCommand({ ...cmd, seq: Date.now() })}
+          turbineWindMs={turbineWindMs}
+          onChangeTurbineWindMs={setTurbineWindMs}
+          piperPose={piperPose}
+          onChangePiperPose={setPiperPose}
         />
 
         {/* Minimal, Cinematic Frosted Live START Veil (3D Studio visible behind rings!) */}

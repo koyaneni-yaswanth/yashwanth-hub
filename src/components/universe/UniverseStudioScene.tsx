@@ -33,6 +33,8 @@ interface UniverseStudioSceneProps {
   showPins?: boolean;
   lightingMood?: StudioLightingMood;
   entered?: boolean;
+  turbineWindMs?: number;
+  piperPose?: { shoulderDeg: number; elbowDeg: number } | null;
   statsSummary: {
     openTasks: number;
     projectCount: number;
@@ -183,6 +185,8 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
   showPins = true,
   lightingMood = 'cinema',
   entered = false,
+  turbineWindMs = 6.5,
+  piperPose = null,
   statsSummary,
   onMetricsUpdate,
   onWebglUnavailable,
@@ -196,6 +200,8 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
     showPins,
     lightingMood,
     entered,
+    turbineWindMs,
+    piperPose,
     statsSummary,
   });
 
@@ -212,6 +218,8 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
       showPins,
       lightingMood,
       entered,
+      turbineWindMs,
+      piperPose,
       statsSummary,
     };
     onHoverRef.current = onHoverStation;
@@ -225,6 +233,8 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
     showPins,
     lightingMood,
     entered,
+    turbineWindMs,
+    piperPose,
     statsSummary,
     onHoverStation,
     onSelectStation,
@@ -1336,6 +1346,7 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
         let frames = 0;
         let fpsAccum = 0;
         let texRefreshAccum = 0;
+        let airflowPhase = 0;
         let lastNow = performance.now();
         let raf = 0;
 
@@ -1420,7 +1431,6 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
           }
 
           floorUniforms.uTime.value = t;
-          airflowUniforms.uTime.value = t;
           coreShaderMat.uniforms.uTime.value = t;
           for (const [mid, uni] of monitorHoloUniforms.entries()) {
             uni.uTime.value = t;
@@ -1432,12 +1442,25 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
             const energyFocused = stateRef.current.activeStation === 'energy' || stateRef.current.hoveredStation === 'energy';
             const roboticsFocused =
               stateRef.current.activeStation === 'robotics' || stateRef.current.hoveredStation === 'robotics';
-            rotorSpeedCurrent += ((energyFocused ? 3.55 : 1.7) - rotorSpeedCurrent) * Math.min(1, dt * 4);
+            const windMs = Math.max(0, stateRef.current.turbineWindMs ?? 6.5);
+            const targetRotorSpeed = energyFocused ? windMs * 0.58 : Math.max(1.1, windMs * 0.25);
+            rotorSpeedCurrent += (targetRotorSpeed - rotorSpeedCurrent) * Math.min(1, dt * 4);
             tRotor.rotation.z -= dt * rotorSpeedCurrent;
+            airflowPhase += dt * (0.65 + rotorSpeedCurrent * 0.35);
+            airflowUniforms.uTime.value = airflowPhase;
 
-            const armReach = roboticsFocused ? 0.24 : 0.14;
-            rShoulder.rotation.z = Math.sin(t * (roboticsFocused ? 0.95 : 0.65)) * armReach - 0.12;
-            rElbow.rotation.z = Math.cos(t * (roboticsFocused ? 1.15 : 0.85)) * (armReach + 0.08) + 0.35;
+            const manualPose = stateRef.current.piperPose;
+            if (manualPose && stateRef.current.activeStation === 'robotics') {
+              const targetSh = (manualPose.shoulderDeg * Math.PI) / 180;
+              const targetEl = (manualPose.elbowDeg * Math.PI) / 180;
+              const k = Math.min(1, dt * 7);
+              rShoulder.rotation.z += (targetSh - rShoulder.rotation.z) * k;
+              rElbow.rotation.z += (targetEl - rElbow.rotation.z) * k;
+            } else {
+              const armReach = roboticsFocused ? 0.24 : 0.14;
+              rShoulder.rotation.z = Math.sin(t * (roboticsFocused ? 0.95 : 0.65)) * armReach - 0.12;
+              rElbow.rotation.z = Math.cos(t * (roboticsFocused ? 1.15 : 0.85)) * (armReach + 0.08) + 0.35;
+            }
 
             gRing1.rotation.y += dt * 0.48;
             gRing1.rotation.x = Math.sin(t * 0.4) * 0.25;
@@ -1447,6 +1470,8 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
               cubeRoot.rotation.y += dt * 0.32;
             }
             dustPoints.rotation.y = t * 0.014;
+          } else {
+            airflowUniforms.uTime.value = t;
           }
 
           if (stateRef.current.entered && !lastEntered) {

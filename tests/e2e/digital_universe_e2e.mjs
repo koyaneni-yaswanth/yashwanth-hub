@@ -117,9 +117,17 @@ async function main() {
     await page.waitForSelector('[data-testid="studio-panel-about"]', { timeout: 8000 });
     await page.click('[data-testid="studio-panel-about"] button[aria-label="Next station"]');
     await page.waitForSelector('[data-testid="studio-panel-projects"]', { timeout: 8000 });
+    await page.waitForSelector('[data-testid="studio-projects-list"] button:has-text("Focus 3D Station")', { timeout: 8000 });
 
     await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("JARVIS Core")');
     await page.waitForSelector('[data-testid="studio-panel-jarvis"]', { timeout: 8000 });
+
+    await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("Labs & Cube")');
+    await page.click('button:has-text("Robotics Lab")');
+    await page.waitForSelector('text=Live 3D PiPER Joint Control', { timeout: 8000 });
+    await page.click('[data-testid="studio-panel-robotics"] button[aria-label="Next station"]');
+    await page.waitForSelector('text=Live 3D Rotor Wind Speed', { timeout: 8000 });
+    await page.click('button:has-text("Nominal 8.5")');
 
     await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("Labs & Cube")');
     await page.click('button:has-text("System / Labs")');
@@ -181,6 +189,7 @@ async function main() {
     await mobPage.waitForSelector('[data-testid="universe-entry-screen"]', { timeout: 12000 });
     await mobPage.click('button:has-text("Enter 2D Accessible Studio")');
     await mobPage.waitForSelector('text=2D Accessible Studio Mode', { timeout: 8000 });
+    await mobPage.waitForSelector('button:has-text("Flagship Projects")', { timeout: 6000 });
     await mobPage.screenshot({ path: `${artifactDir}/universe_mobile_2d.png` });
     const overflow = await mobPage.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     assert.equal(overflow, false, 'Mobile 390px horizontal overflow detected in /universe');

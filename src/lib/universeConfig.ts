@@ -339,6 +339,76 @@ export const GUIDED_TOUR_ORDER: UniverseStationId[] = [
   'cube',
 ];
 
+export interface FlagshipProjectShowcase {
+  id: string;
+  title: string;
+  domain: string;
+  stage: string;
+  accentHex: string;
+  summary: string;
+  stack: string[];
+  stationId: UniverseStationId;
+  tab: NavigationTab;
+}
+
+export const FLAGSHIP_PORTFOLIO_SHOWCASES: FlagshipProjectShowcase[] = [
+  {
+    id: 'pawan-shakti',
+    title: 'PAWAN SHAKTI · Compact Helical Wind Turbine',
+    domain: 'CleanTech & Turbomachinery',
+    stage: 'Published Patent · TRL 4 Bench Rig',
+    accentHex: '#34D399',
+    summary:
+      'Archimedes-progressive helical rotor paired with zero-cogging axial flux / gearbox transmission and STM32/ESP32 P-v telemetry logger for low cut-in urban wind harvesting.',
+    stack: ['SolidWorks', 'BEM / CFD', 'ESP32 / Hall RPM', 'TRL 4->5 Rig'],
+    stationId: 'energy',
+    tab: 'startup-command',
+  },
+  {
+    id: 'piper-robotics',
+    title: 'AgileX PiPER 6-DOF Manipulator & ROS 2 Stack',
+    domain: 'Robotics & Manipulation',
+    stage: 'Bench Bring-Up · SocketCAN 1 Mbps',
+    accentHex: '#38BDF8',
+    summary:
+      'Joint-space & MoveIt kinematic bring-up for the AgileX PiPER arm over USB-to-CAN (`can0`) with URDF workspace envelope checks and logged experiment traces.',
+    stack: ['ROS 2 Humble', 'SocketCAN', 'MoveIt 2', 'Python / C++'],
+    stationId: 'robotics',
+    tab: 'robotics-lab',
+  },
+  {
+    id: 'px4-mmwave-swarm',
+    title: '3-Drone PX4 Autonomy Swarm + AWR2944 mmWave',
+    domain: 'Aerial Autonomy & Radar Perception',
+    stage: 'IvLabs Research · Simulation & HW Prep',
+    accentHex: '#F59E0B',
+    summary:
+      'Multi-UAV relative mesh coordination under TI 77 GHz AWR2944 FMCW sparse radar point clouds and degraded-visibility navigation.',
+    stack: ['PX4 / MAVROS', 'TI AWR2944 77 GHz', 'Jetson Orin', 'Point Cloud'],
+    stationId: 'experiment',
+    tab: 'robotics-lab',
+  },
+  {
+    id: 'jarvis-os',
+    title: 'JARVIS 5.0 · Hybrid Local-First AI OS',
+    domain: 'AI Infrastructure & Spatial UI',
+    stage: 'Production Live · Vercel + Local FastAPI',
+    accentHex: '#3BE8FF',
+    summary:
+      'IndexedDB/Dexie workspace synced with encrypted cloud providers and a sandboxed local FastAPI + Ollama agent with Three.js spatial studio navigation.',
+    stack: ['React 19', 'Three.js / GLSL', 'FastAPI / Ollama', 'Supabase RLS'],
+    stationId: 'jarvis',
+    tab: 'buddy',
+  },
+];
+
+export const JARVIS_STUDIO_STARTERS: string[] = [
+  'Brief me on PAWAN SHAKTI TRL 4->5 priorities and next test step.',
+  'Summarize the AgileX PiPER 6-DOF SocketCAN & ROS 2 bring-up checklist.',
+  'Review my current Tasks & Projects and pick the highest-leverage next action.',
+  'Explain how local FastAPI + Ollama fallback routes cleanly vs cloud providers.',
+];
+
 export function stationById(id: UniverseStationId): UniverseStationMeta {
   return UNIVERSE_STATIONS.find((s) => s.id === id) || UNIVERSE_STATIONS[0];
 }

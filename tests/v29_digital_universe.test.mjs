@@ -13,6 +13,8 @@ const {
   CAD_ASSEMBLY_PRESETS,
   STUDIO_LIGHTING_MOODS,
   GUIDED_TOUR_ORDER,
+  FLAGSHIP_PORTFOLIO_SHOWCASES,
+  JARVIS_STUDIO_STARTERS,
   YASHWANTH_IDENTITY_PROFILE,
   stationById,
 } = await import('../src/lib/universeConfig.ts');
@@ -31,6 +33,8 @@ test('Digital Universe defines 8 environments, 11 spatial hotspots, CAD presets 
   assert.equal(stationById('energy').linkedTab, 'startup-command');
   assert.ok(STUDIO_LIGHTING_MOODS.cinema && STUDIO_LIGHTING_MOODS.workshop && STUDIO_LIGHTING_MOODS.lab);
   assert.ok(GUIDED_TOUR_ORDER.length >= 8 && GUIDED_TOUR_ORDER.includes('energy'));
+  assert.ok(FLAGSHIP_PORTFOLIO_SHOWCASES.length >= 4);
+  assert.ok(JARVIS_STUDIO_STARTERS.length >= 4);
 
   assert.equal(EXPERIMENT_APPS.length, 3);
   for (const app of EXPERIMENT_APPS) {

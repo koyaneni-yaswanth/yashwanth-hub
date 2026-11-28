@@ -22,7 +22,9 @@ import {
 } from 'lucide-react';
 import { db } from '../../db';
 import {
+  FLAGSHIP_PORTFOLIO_SHOWCASES,
   GUIDED_TOUR_ORDER,
+  JARVIS_STUDIO_STARTERS,
   YASHWANTH_IDENTITY_PROFILE,
   stationById,
   type UniverseStationId,
@@ -49,6 +51,10 @@ interface StudioMonitorOverlayProps {
   onNavigate: (tab: NavigationTab) => void;
   onWhiteboardTextureChange: (dataUrl: string) => void;
   onCubeCommand: (cmd: Omit<CubeActionCommand, 'seq'>) => void;
+  turbineWindMs?: number;
+  onChangeTurbineWindMs?: (v: number) => void;
+  piperPose?: { shoulderDeg: number; elbowDeg: number } | null;
+  onChangePiperPose?: (pose: { shoulderDeg: number; elbowDeg: number } | null) => void;
 }
 
 export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
@@ -57,6 +63,10 @@ export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
   onNavigate,
   onWhiteboardTextureChange,
   onCubeCommand,
+  turbineWindMs = 6.5,
+  onChangeTurbineWindMs,
+  piperPose = null,
+  onChangePiperPose,
 }) => {
   const station = stationById(activeStation);
   const projects = useLiveQuery(() => db.projects.toArray(), []) || [];
@@ -106,9 +116,8 @@ export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
     }
   }, [activeStation, chatHistory.length]);
 
-  const handleSendJarvis = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const clean = prompt.trim();
+  const sendJarvisText = async (rawText: string) => {
+    const clean = rawText.trim();
     if (!clean || busy) return;
     setPrompt('');
     const userMsg: AIChatMessage = {
@@ -144,6 +153,11 @@ export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleSendJarvis = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await sendJarvisText(prompt);
   };
 
   if (activeStation === 'overview') return null;
@@ -263,33 +277,92 @@ export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
         )}
 
         {activeStation === 'projects' && (
-          <div className="space-y-3">
-            <p className="text-slate-300">
-              Live Dexie portfolio ({projects.length} project{projects.length === 1 ? '' : 's'} tracked across engineering & software):
-            </p>
-            {projects.length === 0 ? (
-              <div className="p-4 rounded-xl bg-white/5 border border-white/10 text-slate-400">
-                No projects saved in IndexedDB yet. Open the Projects workspace to create your first tracked initiative.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {projects.slice(0, 6).map((p) => (
-                  <div key={p.id} className="p-3 rounded-xl bg-white/5 border border-white/10 space-y-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-bold text-slate-100 flex items-center gap-1.5">
-                        <FolderKanban className="w-3.5 h-3.5 text-[#8BA8C8]" />
-                        {p.title}
-                      </span>
-                      <span className="font-mono text-[11px] text-[#C6A46B]">{p.progress}%</span>
+          <div className="space-y-3.5" data-testid="studio-projects-list">
+            <div className="space-y-1.5">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-[#C6A46B] font-bold">
+                Flagship Engineering Pillars
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {FLAGSHIP_PORTFOLIO_SHOWCASES.map((item) => (
+                  <div
+                    key={item.id}
+                    className="p-3 rounded-xl bg-white/[0.04] border border-white/10 hover:border-white/25 transition-colors flex flex-col justify-between gap-2"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-[10px] uppercase tracking-wider" style={{ color: item.accentHex }}>
+                          {item.domain}
+                        </span>
+                        <span className="font-mono text-[9px] text-slate-400">{item.stage}</span>
+                      </div>
+                      <h3 className="font-bold text-slate-100 leading-snug">{item.title}</h3>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">{item.summary}</p>
+                      <div className="flex flex-wrap gap-1 pt-0.5">
+                        {item.stack.map((tech) => (
+                          <span key={tech} className="px-1.5 py-0.5 rounded bg-white/5 font-mono text-[9px] text-slate-300">
+                            {tech}
+                          </span>
+                        ))}
+                      </div>
                     </div>
-                    <p className="text-slate-400 line-clamp-2">{p.description}</p>
-                    <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
-                      <div className="h-full bg-[#C6A46B]" style={{ width: `${Math.min(100, Math.max(0, p.progress))}%` }} />
+                    <div className="flex items-center gap-1.5 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => onSelectStation(item.stationId)}
+                        className="flex-1 py-1.5 px-2 rounded-lg bg-white/8 hover:bg-white/15 text-[11px] font-semibold text-slate-100 cursor-pointer"
+                      >
+                        Focus 3D Station
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onNavigate(item.tab)}
+                        className="py-1.5 px-2.5 rounded-lg border border-white/15 hover:border-[#C6A46B] text-[11px] font-semibold text-[#C6A46B] cursor-pointer"
+                      >
+                        Open
+                      </button>
                     </div>
                   </div>
                 ))}
               </div>
-            )}
+            </div>
+
+            <div className="space-y-2 pt-1 border-t border-white/10">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-[10px] uppercase tracking-wider text-[#8BA8C8] font-bold">
+                  Local Dexie Tracked Initiatives ({projects.length})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onNavigate('projects')}
+                  className="text-[11px] text-[#C6A46B] hover:underline cursor-pointer"
+                >
+                  Manage in Projects →
+                </button>
+              </div>
+              {projects.length === 0 ? (
+                <p className="text-[11px] text-slate-400">
+                  No personal local projects added in this browser yet — use Manage in Projects to track custom milestones.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {projects.slice(0, 4).map((p) => (
+                    <div key={p.id} className="p-2.5 rounded-xl bg-white/5 border border-white/10 space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-slate-100 flex items-center gap-1.5">
+                          <FolderKanban className="w-3.5 h-3.5 text-[#8BA8C8]" />
+                          {p.title}
+                        </span>
+                        <span className="font-mono text-[11px] text-[#C6A46B]">{p.progress}%</span>
+                      </div>
+                      <p className="text-slate-400 line-clamp-1">{p.description}</p>
+                      <div className="w-full h-1 rounded-full bg-white/10 overflow-hidden">
+                        <div className="h-full bg-[#C6A46B]" style={{ width: `${Math.min(100, Math.max(0, p.progress))}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -305,7 +378,7 @@ export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
               </span>
             </div>
 
-            <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
+            <div className="max-h-44 overflow-y-auto space-y-2 pr-1">
               {chatHistory.length === 0 ? (
                 <p className="text-slate-400 p-3 rounded-xl bg-white/5 border border-white/10">
                   Ask JARVIS directly from Monitor 03 about your projects, notes, tasks, or engineering specs.
@@ -329,6 +402,20 @@ export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
                   <SafeMarkdown content={streaming} className="text-xs" />
                 </div>
               )}
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              {JARVIS_STUDIO_STARTERS.map((starter) => (
+                <button
+                  key={starter}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void sendJarvisText(starter)}
+                  className="px-2.5 py-1 rounded-full bg-white/5 border border-white/12 hover:border-[#3BE8FF]/60 text-[10px] text-slate-300 hover:text-white cursor-pointer disabled:opacity-45"
+                >
+                  {starter.slice(0, 44)}{starter.length > 44 ? '…' : ''}
+                </button>
+              ))}
             </div>
 
             <form onSubmit={handleSendJarvis} className="flex gap-2">
@@ -424,8 +511,58 @@ export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
               <Radio className="w-4 h-4 text-sky-300 shrink-0 mt-0.5" />
               <p className="text-slate-200">
                 Inspecting <strong>AgileX PiPER 6-DOF Arm</strong>, <strong>3-Drone PX4 Swarm</strong> &{' '}
-                <strong>TI AWR2944 mmWave Radar</strong> bench. Open Robotics Lab for interactive 3D URDF/GLB/STL assembly inspection & logged experiments.
+                <strong>TI AWR2944 mmWave Radar</strong> bench. Drag joints below to articulate the 3D studio arm live, or launch full URDF/GLB CAD inspection.
               </p>
+            </div>
+            <div className="p-3 rounded-xl bg-white/5 border border-white/10 space-y-2.5">
+              <div className="flex items-center justify-between font-mono text-[11px]">
+                <span className="text-[#38BDF8] font-bold">Live 3D PiPER Joint Control</span>
+                <button
+                  type="button"
+                  onClick={() => onChangePiperPose?.(null)}
+                  className="text-slate-400 hover:text-white underline cursor-pointer"
+                >
+                  Auto Sweep
+                </button>
+              </div>
+              <label className="block space-y-1 font-mono text-[11px] text-slate-300">
+                <div className="flex justify-between">
+                  <span>J2 Shoulder Pitch</span>
+                  <span>{piperPose?.shoulderDeg ?? -7}°</span>
+                </div>
+                <input
+                  type="range"
+                  min={-55}
+                  max={55}
+                  value={piperPose?.shoulderDeg ?? -7}
+                  onChange={(e) =>
+                    onChangePiperPose?.({
+                      shoulderDeg: Number(e.target.value),
+                      elbowDeg: piperPose?.elbowDeg ?? 22,
+                    })
+                  }
+                  className="w-full accent-[#38BDF8]"
+                />
+              </label>
+              <label className="block space-y-1 font-mono text-[11px] text-slate-300">
+                <div className="flex justify-between">
+                  <span>J3 Elbow Articulation</span>
+                  <span>{piperPose?.elbowDeg ?? 22}°</span>
+                </div>
+                <input
+                  type="range"
+                  min={-15}
+                  max={85}
+                  value={piperPose?.elbowDeg ?? 22}
+                  onChange={(e) =>
+                    onChangePiperPose?.({
+                      shoulderDeg: piperPose?.shoulderDeg ?? -7,
+                      elbowDeg: Number(e.target.value),
+                    })
+                  }
+                  className="w-full accent-[#38BDF8]"
+                />
+              </label>
             </div>
             <button
               type="button"
@@ -443,8 +580,49 @@ export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
             <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-400/25 flex items-start gap-2.5">
               <Wind className="w-4 h-4 text-emerald-300 shrink-0 mt-0.5" />
               <p className="text-slate-200">
-                <strong>PAWAN SHAKTI</strong> — Compact Archimedes-inspired helical rotor & planetary/magnetic gear bench rig. View exploded 3D CAD sub-assemblies and real 1 Hz P-v telemetry CSV verification.
+                <strong>PAWAN SHAKTI</strong> — Compact Archimedes-inspired helical rotor & planetary/magnetic gear bench rig. Sweep wind speed below to drive the 3D studio rotor and inspect the calculated aerodynamic envelope.
               </p>
+            </div>
+            <div className="p-3 rounded-xl bg-white/5 border border-white/10 space-y-2.5">
+              <div className="flex items-center justify-between font-mono text-[11px]">
+                <span className="text-emerald-300 font-bold">Live 3D Rotor Wind Speed</span>
+                <span>{turbineWindMs.toFixed(1)} m/s</span>
+              </div>
+              <input
+                type="range"
+                min={3.0}
+                max={15.0}
+                step={0.5}
+                value={turbineWindMs}
+                onChange={(e) => onChangeTurbineWindMs?.(Number(e.target.value))}
+                aria-label="PAWAN SHAKTI wind speed m/s"
+                className="w-full accent-emerald-400"
+              />
+              <div className="flex flex-wrap items-center justify-between gap-1.5 font-mono text-[10px]">
+                <div className="flex gap-1.5">
+                  {[
+                    { label: 'Cut-In 3.8', v: 3.8 },
+                    { label: 'Nominal 8.5', v: 8.5 },
+                    { label: 'Peak 14.0', v: 14.0 },
+                  ].map((p) => (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() => onChangeTurbineWindMs?.(p.v)}
+                      className={`px-2 py-1 rounded-lg border cursor-pointer ${
+                        Math.abs(turbineWindMs - p.v) < 0.3
+                          ? 'bg-emerald-400/20 border-emerald-400 text-emerald-200'
+                          : 'bg-white/5 border-white/10 text-slate-300 hover:border-white/25'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                <span className="text-slate-400">
+                  Calc Rel Flow: ~{Math.round(turbineWindMs * 52)} RPM eq
+                </span>
+              </div>
             </div>
             <button
               type="button"
