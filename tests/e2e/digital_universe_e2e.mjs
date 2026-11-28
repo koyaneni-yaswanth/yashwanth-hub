@@ -198,6 +198,12 @@ async function main() {
     await page.click('[data-testid="opportunities-radar-panel"] button:has-text("Create Action Task")');
     await page.waitForSelector('text=Task created for', { timeout: 6000 });
 
+    // Projects page -> Sync Flagship Pillars button
+    await page.goto(`${baseUrl}/?tab=projects`, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('[data-testid="projects-flagship-banner"]', { timeout: 8000 });
+    await page.click('[data-testid="projects-flagship-banner"] button:has-text("Import Flagship Pillars")');
+    await page.waitForSelector('text=AgileX PiPER 6-DOF Manipulator', { timeout: 6000 });
+
     await ctx.close();
 
     // 2. Mobile 390x844 Verification (No mobile lockout + 2D Accessible fallback works)
@@ -206,6 +212,7 @@ async function main() {
     const mobPage = await mobCtx.newPage();
     mobPage.on('pageerror', (e) => errors.push(`mobile pageerror: ${e.message}`));
     await mobPage.goto(`${baseUrl}/universe`, { waitUntil: 'domcontentloaded' });
+    await mobPage.waitForSelector('[data-testid="header-mobile-3d-btn"]', { timeout: 8000 });
     await mobPage.waitForSelector('[data-testid="universe-entry-screen"]', { timeout: 12000 });
     await mobPage.click('button:has-text("Enter 2D Accessible Studio")');
     await mobPage.waitForSelector('text=2D Accessible Studio Mode', { timeout: 8000 });
@@ -213,6 +220,10 @@ async function main() {
     await mobPage.screenshot({ path: `${artifactDir}/universe_mobile_2d.png` });
     const overflow = await mobPage.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     assert.equal(overflow, false, 'Mobile 390px horizontal overflow detected in /universe');
+    await mobPage.goto(`${baseUrl}/?tab=projects`, { waitUntil: 'domcontentloaded' });
+    await mobPage.waitForSelector('[data-testid="projects-flagship-banner"]', { timeout: 8000 });
+    await mobPage.click('[data-testid="projects-flagship-banner"] button:has-text("Import Flagship Pillars")');
+    await mobPage.waitForSelector('text=PAWAN SHAKTI · Compact Helical Wind Turbine', { timeout: 6000 });
     await mobCtx.close();
 
     assert.equal(errors.length, 0, `Unexpected errors: ${errors.join('; ')}`);

@@ -13,6 +13,7 @@ import {
   UserCheck,
   LogIn,
   AlertTriangle,
+  Compass,
   Crosshair,
 } from 'lucide-react';
 import { db } from '../../db';
@@ -160,9 +161,9 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         </div>
 
-        {/* Center: 1-Click Core Bar (xl+) + Search Bar */}
+        {/* Center: 1-Click Core Bar (lg+) + Search Bar */}
         <div className="hidden md:flex items-center gap-2 min-w-0">
-          <nav aria-label="Quick switch" className="hidden xl:flex items-center gap-1 mr-1">
+          <nav aria-label="Quick switch" className="hidden lg:flex items-center gap-1 mr-1">
             {HEADER_QUICK_TABS.map((item) => {
               const active = currentTab === item.tab;
               return (
@@ -190,7 +191,7 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={onOpenCommandPalette}
             aria-label="Search (Ctrl+K)"
-            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)]/80 text-xs text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:border-[var(--hub-accent)] transition-all cursor-pointer md:w-44 lg:w-52 xl:w-56 min-w-0 justify-between"
+            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)]/80 text-xs text-[var(--hub-muted)] hover:text-[var(--hub-ink)] hover:border-[var(--hub-accent)] transition-all cursor-pointer md:w-36 lg:w-36 xl:w-52 min-w-0 justify-between"
           >
             <span className="flex items-center gap-2 min-w-0">
               <Search className="w-3.5 h-3.5 shrink-0" />
@@ -204,6 +205,23 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Right: Essential Controls Only */}
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          {/* Mobile & Tablet 1-Tap 3D Studio Pill */}
+          <button
+            type="button"
+            onClick={() => onNavigate('universe')}
+            data-testid="header-mobile-3d-btn"
+            aria-label="Open 3D Studio"
+            title="Open Interactive 3D Engineering Studio"
+            className={`lg:hidden inline-flex items-center gap-1 px-2 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer ${
+              currentTab === 'universe'
+                ? 'border-[#C6A46B]/60 bg-[#C6A46B]/18 text-[#C6A46B]'
+                : 'border-[var(--hub-line)] bg-[var(--hub-bg)]/80 text-[var(--hub-ink)]'
+            }`}
+          >
+            <Compass className="w-3.5 h-3.5 text-[#C6A46B]" />
+            <span>3D</span>
+          </button>
+
           {/* Mobile Search Icon */}
           <button
             onClick={onOpenCommandPalette}

@@ -17,6 +17,7 @@ const {
   JARVIS_STUDIO_STARTERS,
   YASHWANTH_IDENTITY_PROFILE,
   stationById,
+  toFlagshipProjectRecord,
 } = await import('../src/lib/universeConfig.ts');
 const { readTabFromLocation, buildTabUrl, documentTitleFor, TAB_TITLES } = await import('../src/lib/navigation.ts');
 const { HUB_DESTINATIONS, destinationForTab } = await import('../src/lib/hubArchitecture.ts');
@@ -35,6 +36,15 @@ test('Digital Universe defines 8 environments, 11 spatial hotspots, CAD presets 
   assert.ok(GUIDED_TOUR_ORDER.length >= 8 && GUIDED_TOUR_ORDER.includes('energy'));
   assert.ok(FLAGSHIP_PORTFOLIO_SHOWCASES.length >= 4);
   assert.ok(JARVIS_STUDIO_STARTERS.length >= 4);
+  const sampleProj = toFlagshipProjectRecord(
+    FLAGSHIP_PORTFOLIO_SHOWCASES[0],
+    'id_1',
+    '2026-11-28',
+    '2026-11-28T00:00:00Z',
+    () => 'm_1'
+  );
+  assert.equal(sampleProj.area, 'PAWAN SHAKTI');
+  assert.equal(sampleProj.milestones.length, 1);
 
   assert.equal(EXPERIMENT_APPS.length, 3);
   for (const app of EXPERIMENT_APPS) {
@@ -129,7 +139,11 @@ test('GLSL Shaders, Physical Monitors, Whiteboard, Experiment Station & Reusable
   const roboticsSrc = read('src/pages/RoboticsLabPage.tsx');
   const startupSrc = read('src/pages/StartupCommandPage.tsx');
   const learningSrc = read('src/pages/LearningCareerPage.tsx');
+  const projectsSrc = read('src/pages/ProjectsPage.tsx');
+  const headerSrc = read('src/components/layout/Header.tsx');
   assert.ok(roboticsSrc.includes('<EngineeringModelViewer'));
   assert.ok(startupSrc.includes('<EngineeringModelViewer preset="pawan-turbine"'));
   assert.ok(learningSrc.includes('Opportunities & Grants') && learningSrc.includes('TaskService.create'));
+  assert.ok(projectsSrc.includes('projects-flagship-banner') && projectsSrc.includes('toFlagshipProjectRecord'));
+  assert.ok(headerSrc.includes('header-mobile-3d-btn'));
 });

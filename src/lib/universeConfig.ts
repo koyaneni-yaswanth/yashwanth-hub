@@ -1,4 +1,4 @@
-import type { NavigationTab } from '../types';
+import type { NavigationTab, Project } from '../types';
 
 export type UniverseStationId =
   | 'overview'
@@ -408,6 +408,30 @@ export const JARVIS_STUDIO_STARTERS: string[] = [
   'Review my current Tasks & Projects and pick the highest-leverage next action.',
   'Explain how local FastAPI + Ollama fallback routes cleanly vs cloud providers.',
 ];
+
+export function toFlagshipProjectRecord(
+  item: FlagshipProjectShowcase,
+  id: string,
+  todayISO: string,
+  nowISO: string,
+  makeId: () => string
+): Project {
+  return {
+    id,
+    title: item.title,
+    description: item.summary,
+    area: item.domain.includes('CleanTech') ? 'PAWAN SHAKTI' : 'Robotics & AI',
+    status: 'active',
+    priority: 'high',
+    start_date: todayISO,
+    target_date: todayISO,
+    progress: 35,
+    milestones: [{ id: makeId(), title: item.stage, done: false }],
+    tags: [...item.stack],
+    created_at: nowISO,
+    updated_at: nowISO,
+  };
+}
 
 export function stationById(id: UniverseStationId): UniverseStationMeta {
   return UNIVERSE_STATIONS.find((s) => s.id === id) || UNIVERSE_STATIONS[0];

@@ -39,6 +39,7 @@ import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { SyncQueueService } from '../services/sync/syncQueueService';
 import { TaskService } from '../services/sync/taskService';
 import { AIGateway } from '../services/ai/aiGateway';
+import { FLAGSHIP_PORTFOLIO_SHOWCASES, toFlagshipProjectRecord } from '../lib/universeConfig';
 
 interface ProjectsPageProps {
   currentArea: string;
@@ -1100,6 +1101,43 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
           ))}
         </select>
       </div>
+
+      {/* Flagship Engineering Pillars quick-import when any pillar isn't tracked yet */}
+      {(() => {
+        const missingFlagships = FLAGSHIP_PORTFOLIO_SHOWCASES.filter(
+          (item) => !allProjects.some((p) => p.title === item.title)
+        );
+        if (missingFlagships.length === 0) return null;
+        return (
+          <div
+            className="rounded-2xl border border-[#C6A46B]/35 bg-[#C6A46B]/10 p-4 flex flex-wrap items-center justify-between gap-3"
+            data-testid="projects-flagship-banner"
+          >
+            <div className="space-y-0.5">
+              <h3 className="text-sm font-bold text-[var(--hub-ink)]">Sync Flagship Engineering Pillars</h3>
+              <p className="text-xs text-[var(--hub-muted)]">
+                Import remaining studio pillars ({missingFlagships.map((m) => m.domain).join(', ')}) into your local Projects workspace.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                const now = new Date().toISOString();
+                for (const item of missingFlagships) {
+                  const id = generateId();
+                  const rec = toFlagshipProjectRecord(item, id, today, now, generateId);
+                  await db.projects.add(rec);
+                  await SyncQueueService.enqueueChange('projects', id, 'INSERT', rec);
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-bold cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Import Flagship Pillars ({missingFlagships.length})</span>
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Kanban Board View */}
       {viewMode === 'kanban' && (

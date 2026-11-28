@@ -32,6 +32,7 @@ import {
   JARVIS_STUDIO_STARTERS,
   YASHWANTH_IDENTITY_PROFILE,
   stationById,
+  toFlagshipProjectRecord,
   type UniverseStationId,
 } from '../../lib/universeConfig';
 import { CompanionService } from '../../services/companion/companionService';
@@ -365,21 +366,7 @@ export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
                           if (isTracked) return;
                           const now = new Date().toISOString();
                           const id = generateId();
-                          const newProj = {
-                            id,
-                            title: item.title,
-                            description: item.summary,
-                            area: item.domain.includes('Wind') ? 'PAWAN SHAKTI' : 'Robotics & AI',
-                            status: 'active' as const,
-                            priority: 'high' as const,
-                            start_date: getTodayISO(),
-                            target_date: getTodayISO(),
-                            progress: 35,
-                            milestones: [{ id: generateId(), title: item.stage, done: false }],
-                            tags: item.stack,
-                            created_at: now,
-                            updated_at: now,
-                          };
+                          const newProj = toFlagshipProjectRecord(item, id, getTodayISO(), now, generateId);
                           await db.projects.add(newProj);
                           await SyncQueueService.enqueueChange('projects', id, 'INSERT', newProj);
                         }}

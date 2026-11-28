@@ -460,6 +460,9 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
                 { id: 'projects' as const, label: 'Flagship Projects' },
                 { id: 'whiteboard' as const, label: 'Sketch Whiteboard' },
                 { id: 'experiment' as const, label: 'Physics Sim Deck' },
+                { id: 'cube' as const, label: 'Rubik Cube' },
+                { id: 'robotics' as const, label: 'Robotics CAD' },
+                { id: 'energy' as const, label: 'PAWAN SHAKTI' },
                 { id: 'jarvis' as const, label: 'Ask JARVIS' },
                 { id: 'about' as const, label: 'About Yashwanth' },
               ].map((tool) => (
@@ -499,8 +502,12 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
           </div>
         )}
 
-        {/* Simple, Attractive Bottom Spatial Dock */}
-        <div className="pointer-events-none fixed bottom-20 md:bottom-5 left-0 md:left-16 right-0 z-30 flex flex-col items-center gap-2 px-2 sm:px-3">
+        {/* Simple, Attractive Bottom Spatial Dock (Hidden on xs/sm in 2D mode so mobile stays single-bar clean) */}
+        <div
+          className={`pointer-events-none fixed bottom-20 md:bottom-5 left-0 md:left-16 right-0 z-30 flex-col items-center gap-2 px-2 sm:px-3 ${
+            !use3D || webglUnavailable ? 'hidden md:flex' : 'flex'
+          }`}
+        >
           {moreOpen && (
             <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-1.5 p-2 rounded-2xl bg-[#0A0E17]/92 backdrop-blur-xl border border-white/15 shadow-2xl">
               {DOCK_EXTRA.map((item) => {
