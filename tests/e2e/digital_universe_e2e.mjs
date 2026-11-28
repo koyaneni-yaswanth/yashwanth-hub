@@ -113,11 +113,15 @@ async function main() {
     await page.click('[data-testid="universe-mood-btn"]');
     await page.click('[data-testid="universe-mood-btn"]');
 
-    await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("About Me")');
+    await page.click('[data-testid="universe-tour-btn"]');
     await page.waitForSelector('[data-testid="studio-panel-about"]', { timeout: 8000 });
+    await page.click('[data-testid="universe-tour-btn"]'); // pause auto-tour cleanly
+
     await page.click('[data-testid="studio-panel-about"] button[aria-label="Next station"]');
     await page.waitForSelector('[data-testid="studio-panel-projects"]', { timeout: 8000 });
     await page.waitForSelector('[data-testid="studio-projects-list"] button:has-text("Focus 3D Station")', { timeout: 8000 });
+    await page.click('[data-testid="studio-projects-list"] button:has-text("Track")');
+    await page.waitForSelector('[data-testid="studio-projects-list"] button:has-text("Tracked")', { timeout: 6000 });
 
     await page.click('nav[aria-label="Digital Universe Stations"] button:has-text("JARVIS Core")');
     await page.waitForSelector('[data-testid="studio-panel-jarvis"]', { timeout: 8000 });
@@ -177,6 +181,13 @@ async function main() {
     // Home HUD 1-click "3D Studio" button
     await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('section[aria-labelledby="jarvis-cc-title"] button:has-text("3D Studio")', { timeout: 12000 });
+
+    // Learning & Career -> Opportunities & Grants Radar -> Task Conversion
+    await page.goto(`${baseUrl}/?tab=learning-career`, { waitUntil: 'domcontentloaded' });
+    await page.click('[data-testid="tab-opportunities"]');
+    await page.waitForSelector('[data-testid="opportunities-radar-panel"]', { timeout: 8000 });
+    await page.click('[data-testid="opportunities-radar-panel"] button:has-text("Create Action Task")');
+    await page.waitForSelector('text=Task created for', { timeout: 6000 });
 
     await ctx.close();
 

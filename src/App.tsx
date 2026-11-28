@@ -415,7 +415,7 @@ function HubMain() {
           />
         );
       case 'learning-career':
-        return <LearningCareerPage />;
+        return <LearningCareerPage onNavigate={(tab) => setCurrentTab(tab)} />;
       case 'goals':
         return <GoalsHabitsPage currentArea={currentArea} areas={areas} onOpenSyncAccount={() => setIsSyncModalOpen(true)} />;
       case 'focus':

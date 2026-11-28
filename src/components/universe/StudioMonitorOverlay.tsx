@@ -5,6 +5,7 @@ import {
   ArrowUpRight,
   Bot,
   Box,
+  Check,
   ChevronLeft,
   ChevronRight,
   Cpu,
@@ -12,6 +13,7 @@ import {
   FolderKanban,
   Layers,
   PenTool,
+  Plus,
   Radio,
   RefreshCw,
   Send,
@@ -21,6 +23,8 @@ import {
   Wind,
 } from 'lucide-react';
 import { db } from '../../db';
+import { generateId, getTodayISO } from '../../lib/utils';
+import { SyncQueueService } from '../../services/sync/syncQueueService';
 import {
   FLAGSHIP_PORTFOLIO_SHOWCASES,
   GUIDED_TOUR_ORDER,
@@ -283,7 +287,9 @@ export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
                 Flagship Engineering Pillars
               </span>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {FLAGSHIP_PORTFOLIO_SHOWCASES.map((item) => (
+                {FLAGSHIP_PORTFOLIO_SHOWCASES.map((item) => {
+                  const isTracked = projects.some((p) => p.title === item.title);
+                  return (
                   <div
                     key={item.id}
                     className="p-3 rounded-xl bg-white/[0.04] border border-white/10 hover:border-white/25 transition-colors flex flex-col justify-between gap-2"
@@ -315,6 +321,41 @@ export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
                       </button>
                       <button
                         type="button"
+                        disabled={isTracked}
+                        onClick={async () => {
+                          if (isTracked) return;
+                          const now = new Date().toISOString();
+                          const id = generateId();
+                          const newProj = {
+                            id,
+                            title: item.title,
+                            description: item.summary,
+                            area: item.domain.includes('Wind') ? 'PAWAN SHAKTI' : 'Robotics & AI',
+                            status: 'active' as const,
+                            priority: 'high' as const,
+                            start_date: getTodayISO(),
+                            target_date: getTodayISO(),
+                            progress: 35,
+                            milestones: [{ id: generateId(), title: item.stage, done: false }],
+                            tags: item.stack,
+                            created_at: now,
+                            updated_at: now,
+                          };
+                          await db.projects.add(newProj);
+                          await SyncQueueService.enqueueChange('projects', id, 'INSERT', newProj);
+                        }}
+                        className={`inline-flex items-center gap-1 py-1.5 px-2 rounded-lg border text-[11px] font-semibold cursor-pointer ${
+                          isTracked
+                            ? 'border-emerald-400/40 bg-emerald-400/15 text-emerald-300 cursor-default'
+                            : 'border-white/15 hover:border-[#3BE8FF] text-slate-200'
+                        }`}
+                        title={isTracked ? 'Tracked in local Projects' : 'Track in local Projects workspace'}
+                      >
+                        {isTracked ? <Check className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+                        <span>{isTracked ? 'Tracked' : 'Track'}</span>
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => onNavigate(item.tab)}
                         className="py-1.5 px-2.5 rounded-lg border border-white/15 hover:border-[#C6A46B] text-[11px] font-semibold text-[#C6A46B] cursor-pointer"
                       >
@@ -322,7 +363,8 @@ export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
                       </button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 

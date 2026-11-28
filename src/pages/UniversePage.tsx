@@ -10,7 +10,9 @@ import {
   FolderKanban,
   Gamepad2,
   MoreHorizontal,
+  Pause,
   PenTool,
+  Play,
   Sparkles,
   User,
   Volume2,
@@ -80,6 +82,7 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
   const [cubeCommand, setCubeCommand] = useState<CubeActionCommand | null>(null);
   const [turbineWindMs, setTurbineWindMs] = useState(6.5);
   const [piperPose, setPiperPose] = useState<{ shoulderDeg: number; elbowDeg: number } | null>(null);
+  const [tourPlaying, setTourPlaying] = useState(false);
   const [providersReady, setProvidersReady] = useState(0);
   const [localOnline, setLocalOnline] = useState(false);
   const [perfMetrics, setPerfMetrics] = useState<{ tier: string; fps: number; webglActive: boolean }>({
@@ -89,8 +92,9 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
   });
 
   const audioRef = useRef<StudioAudioEngine | null>(null);
-  const tasks = useLiveQuery(() => db.tasks.toArray(), []) || [];
-  const projects = useLiveQuery(() => db.projects.toArray(), []) || [];
+  const emptyListRef = useRef<never[]>([]);
+  const tasks = useLiveQuery(() => db.tasks.toArray(), []) ?? emptyListRef.current;
+  const projects = useLiveQuery(() => db.projects.toArray(), []) ?? emptyListRef.current;
   const roboticsCount = useLiveQuery(() => db.robotics_records.count(), []) ?? 0;
 
   useEffect(() => {
@@ -127,10 +131,27 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
   };
 
   const selectStation = (id: UniverseStationId) => {
+    setTourPlaying(false);
     setActiveStation(id);
     setMoreOpen(false);
     audioRef.current?.playTone(id === 'overview' ? 392 : 528, 0.08);
   };
+
+  useEffect(() => {
+    if (!tourPlaying || !entered || !use3D || webglUnavailable) return;
+    const id = window.setInterval(() => {
+      setActiveStation((prev) => {
+        const idx = GUIDED_TOUR_ORDER.indexOf(prev);
+        if (idx < 0) return GUIDED_TOUR_ORDER[0];
+        if (idx >= GUIDED_TOUR_ORDER.length - 1) {
+          setTourPlaying(false);
+          return 'overview';
+        }
+        return GUIDED_TOUR_ORDER[idx + 1];
+      });
+    }, 3800);
+    return () => window.clearInterval(id);
+  }, [tourPlaying, entered, use3D, webglUnavailable]);
 
   useEffect(() => {
     const onKeyDown = (ev: KeyboardEvent) => {
@@ -146,6 +167,7 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
       if (!entered) return;
 
       if (ev.key === 'Escape' && activeStation !== 'overview') {
+        setTourPlaying(false);
         setActiveStation('overview');
         return;
       }
@@ -154,6 +176,7 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
         return;
       }
       if (ev.key === 'ArrowRight' || ev.key === 'ArrowLeft') {
+        setTourPlaying(false);
         const idx = GUIDED_TOUR_ORDER.indexOf(activeStation);
         const nextIdx =
           ev.key === 'ArrowRight'
@@ -252,6 +275,27 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
             <>
               {use3D && (
                 <>
+                  <span className="h-3 w-px bg-white/15 hidden sm:inline-block" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!tourPlaying) {
+                        setTourPlaying(true);
+                        if (activeStation === 'overview') setActiveStation(GUIDED_TOUR_ORDER[0]);
+                      } else {
+                        setTourPlaying(false);
+                      }
+                    }}
+                    aria-pressed={tourPlaying}
+                    className={`hidden md:inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium cursor-pointer transition-colors ${
+                      tourPlaying ? 'text-[#050608] bg-[#3BE8FF]' : 'text-slate-200 hover:text-[#3BE8FF]'
+                    }`}
+                    title="Auto-guided tour across all studio stations"
+                    data-testid="universe-tour-btn"
+                  >
+                    {tourPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                    <span>Tour</span>
+                  </button>
                   <span className="h-3 w-px bg-white/15 hidden sm:inline-block" />
                   <button
                     type="button"

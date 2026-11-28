@@ -91,6 +91,7 @@ test('GLSL Shaders, Physical Monitors, Whiteboard, Experiment Station & Reusable
   assert.ok(sceneSrc.includes('solveQueue'));
   assert.ok(sceneSrc.includes('cubePivot'));
   assert.ok(sceneSrc.includes('cycWall'));
+  assert.ok(sceneSrc.includes('beaconGroup'));
   assert.ok(sceneSrc.includes('onPointerUp'));
   assert.ok(sceneSrc.includes('renderer.dispose()'));
 
@@ -125,6 +126,8 @@ test('GLSL Shaders, Physical Monitors, Whiteboard, Experiment Station & Reusable
 
   const roboticsSrc = read('src/pages/RoboticsLabPage.tsx');
   const startupSrc = read('src/pages/StartupCommandPage.tsx');
+  const learningSrc = read('src/pages/LearningCareerPage.tsx');
   assert.ok(roboticsSrc.includes('<EngineeringModelViewer'));
   assert.ok(startupSrc.includes('<EngineeringModelViewer preset="pawan-turbine"'));
+  assert.ok(learningSrc.includes('Opportunities & Grants') && learningSrc.includes('TaskService.create'));
 });

@@ -836,13 +836,42 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
           '#A78BFA',
           () => [
             `Lab Records: ${stateRef.current.statsSummary.roboticsCount}`,
-            'CI / Production Deployment',
-            'arXiv & Semantic Archive',
+            `Mood: ${(stateRef.current.lightingMood || 'cinema').toUpperCase()}`,
+            `Turbine Wind: ${(stateRef.current.turbineWindMs ?? 6.5).toFixed(1)} m/s`,
             'Click for diagnostics',
           ],
           [2.84, 1.84, -0.74],
           -0.46
         );
+
+        // Dynamic Floor Beacon Halo (glides beneath active/hovered spatial station)
+        const beaconSpots: Record<UniverseStationId, readonly [number, number, number, number]> = {
+          overview: [0.15, 0.035, 0.25, 0.01],
+          about: [-1.56, 0.04, -1.26, 0.9],
+          projects: [0.0, 0.04, -1.48, 0.95],
+          jarvis: [1.56, 0.04, -1.26, 0.95],
+          research: [2.84, 0.04, -0.74, 0.9],
+          robotics: [-2.55, 0.04, -0.15, 0.9],
+          energy: [3.68, 0.04, 0.68, 1.1],
+          whiteboard: [-4.15, 0.04, -0.45, 1.15],
+          experiment: [-2.15, 0.04, 1.55, 0.92],
+          cube: [0.15, 0.04, 0.72, 0.75],
+          workspace: [0.0, 0.04, 0.35, 1.0],
+        };
+        const beaconGroup = new THREE.Group();
+        const beaconOuter = new THREE.Mesh(
+          trackGeo(new THREE.TorusGeometry(0.62, 0.015, 10, 48)),
+          trackMat(new THREE.MeshBasicMaterial({ color: '#3BE8FF', transparent: true, opacity: 0.72 }))
+        );
+        beaconOuter.rotation.x = Math.PI / 2;
+        const beaconInner = new THREE.Mesh(
+          trackGeo(new THREE.TorusGeometry(0.46, 0.01, 10, 42)),
+          trackMat(new THREE.MeshBasicMaterial({ color: '#C6A46B', transparent: true, opacity: 0.78 }))
+        );
+        beaconInner.rotation.x = Math.PI / 2;
+        beaconGroup.add(beaconOuter, beaconInner);
+        beaconGroup.scale.setScalar(0.01);
+        scene.add(beaconGroup);
 
         // Station 05: Sculpted PiPER 6-DOF Robotic Arm on Plinth
         const roboticsGroup = new THREE.Group();
@@ -1478,6 +1507,18 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
             lastEntered = true;
             camTransitionLeft = 1.15;
           }
+          const focusSpot =
+            beaconSpots[stateRef.current.hoveredStation || stateRef.current.activeStation] ?? beaconSpots.overview;
+          const bLerp = Math.min(1, dt * 6.5);
+          beaconGroup.position.x += (focusSpot[0] - beaconGroup.position.x) * bLerp;
+          beaconGroup.position.y += (focusSpot[1] - beaconGroup.position.y) * bLerp;
+          beaconGroup.position.z += (focusSpot[2] - beaconGroup.position.z) * bLerp;
+          const curScale = beaconGroup.scale.x + (focusSpot[3] - beaconGroup.scale.x) * bLerp;
+          beaconGroup.scale.setScalar(curScale);
+          if (!reduced) {
+            beaconGroup.rotation.y += dt * 0.75;
+          }
+
           if (stateRef.current.activeStation !== lastStation) {
             lastStation = stateRef.current.activeStation;
             const m = stationById(lastStation);

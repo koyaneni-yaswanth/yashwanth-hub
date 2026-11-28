@@ -1,21 +1,23 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   GraduationCap,
   BookOpen,
   FileText,
   Award,
-  ExternalLink,
   Plus,
   CheckCircle2,
-  Clock,
-  Code2,
   Cpu,
-  Layers,
-  Sparkles,
-  ChevronRight,
   Copy,
   Check,
+  Compass,
+  Bot,
+  ListPlus,
+  Trash2,
 } from 'lucide-react';
+import { db } from '../db';
+import { generateId } from '../lib/utils';
+import { TaskService } from '../services/sync/taskService';
+import type { NavigationTab } from '../types';
 
 interface SkillItem {
   id: string;
@@ -42,9 +44,127 @@ interface LearningGoal {
   status: 'in_progress' | 'completed' | 'planned';
 }
 
-export const LearningCareerPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'skills' | 'papers' | 'cv' | 'goals'>('skills');
+interface OpportunityItem {
+  id: string;
+  title: string;
+  organization: string;
+  kind: 'Grant' | 'Fellowship' | 'Pilot';
+  status: 'Explore' | 'Drafting' | 'Submitted';
+  fitSummary: string;
+  nextStep: string;
+}
+
+const OPPORTUNITIES_STORAGE_KEY = 'yash_opportunities_v1';
+
+const DEFAULT_OPPORTUNITIES: OpportunityItem[] = [
+  {
+    id: 'opp-anrf-prayas',
+    title: 'ANRF / DST NIDHI-PRAYAS Deep-Tech Prototype Grant',
+    organization: 'DST / TBI Network India',
+    kind: 'Grant',
+    status: 'Drafting',
+    fitSummary: 'Aligns directly with PAWAN SHAKTI TRL 4->5 compact helical turbine hardware validation & tooling.',
+    nextStep: 'Compile instrumented 1 Hz P-v dyno test evidence & BOM cost table.',
+  },
+  {
+    id: 'opp-ros2-fellowship',
+    title: 'Robotics & Embodied Autonomy Research Collaboration',
+    organization: 'IvLabs / Open Robotics Ecosystem',
+    kind: 'Fellowship',
+    status: 'Explore',
+    fitSummary: 'Showcases AgileX PiPER 6-DOF SocketCAN teleoperation + 3-UAV PX4 + TI AWR2944 radar stack.',
+    nextStep: 'Record deterministic URDF workspace trace & publish reproducible ROS 2 launch bundle.',
+  },
+  {
+    id: 'opp-microgrid-pilot',
+    title: 'Distributed Hybrid Wind-Solar Campus Pilot',
+    organization: 'Industrial & Municipal Microgrids',
+    kind: 'Pilot',
+    status: 'Explore',
+    fitSummary: 'Target low cut-in distributed wind generation paired with existing 48V LiFePO4 storage nodes.',
+    nextStep: 'Finalize mounting clearance & mast load calculations in PAWAN SHAKTI CAD viewer.',
+  },
+];
+
+interface LearningCareerPageProps {
+  onNavigate?: (tab: NavigationTab) => void;
+}
+
+export const LearningCareerPage: React.FC<LearningCareerPageProps> = ({ onNavigate }) => {
+  const [activeTab, setActiveTab] = useState<'skills' | 'papers' | 'cv' | 'goals' | 'opportunities'>('skills');
   const [copiedCv, setCopiedCv] = useState<string | null>(null);
+  const [opportunities, setOpportunities] = useState<OpportunityItem[]>(DEFAULT_OPPORTUNITIES);
+  const [newOppTitle, setNewOppTitle] = useState('');
+  const [newOppOrg, setNewOppOrg] = useState('');
+  const [newOppKind, setNewOppKind] = useState<OpportunityItem['kind']>('Grant');
+  const [newOppFit, setNewOppFit] = useState('');
+  const [oppToast, setOppToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    void db.settings
+      .get(OPPORTUNITIES_STORAGE_KEY)
+      .then((row) => {
+        if (Array.isArray(row?.value?.items)) {
+          setOpportunities(row.value.items as OpportunityItem[]);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const persistOpportunities = async (next: OpportunityItem[]) => {
+    setOpportunities(next);
+    try {
+      await db.settings.put({
+        key: OPPORTUNITIES_STORAGE_KEY,
+        value: { items: next },
+        updated_at: new Date().toISOString(),
+      });
+    } catch {
+      /* ignore IndexedDB write fallback */
+    }
+  };
+
+  const handleAddOpportunity = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const title = newOppTitle.trim();
+    if (!title) return;
+    const item: OpportunityItem = {
+      id: generateId(),
+      title,
+      organization: newOppOrg.trim() || 'Target Partner / Jury',
+      kind: newOppKind,
+      status: 'Explore',
+      fitSummary: newOppFit.trim() || 'Custom tracked engineering, grant, or pilot opportunity.',
+      nextStep: 'Review eligibility requirements and assign next concrete milestone.',
+    };
+    await persistOpportunities([item, ...opportunities]);
+    setNewOppTitle('');
+    setNewOppOrg('');
+    setNewOppFit('');
+    setOppToast(`Added "${item.title}" to Opportunities Radar.`);
+    window.setTimeout(() => setOppToast(null), 3000);
+  };
+
+  const handleConvertOpportunityToTask = async (opp: OpportunityItem) => {
+    await TaskService.create({
+      text: `[${opp.kind}] ${opp.title} — ${opp.nextStep}`,
+      notes: `${opp.organization}\n${opp.fitSummary}`,
+      area: opp.kind === 'Grant' || opp.kind === 'Pilot' ? 'PAWAN SHAKTI' : 'Career',
+      priority: 'high',
+      starred: true,
+      done: false,
+    });
+    setOppToast(`Task created for "${opp.title}".`);
+    window.setTimeout(() => setOppToast(null), 3000);
+  };
+
+  const handleDraftOpportunityWithJarvis = (opp: OpportunityItem) => {
+    localStorage.setItem(
+      'yash_ai_prefill_prompt',
+      `Help me structure an executive proposal / action plan for:\nOpportunity: ${opp.title} (${opp.organization}, ${opp.kind})\nFit: ${opp.fitSummary}\nNext Step: ${opp.nextStep}`
+    );
+    onNavigate?.('buddy');
+  };
 
   // Skills Matrix
   const [skills] = useState<SkillItem[]>([
@@ -256,6 +376,18 @@ export const LearningCareerPage: React.FC = () => {
             <Award className="w-4 h-4" />
             <span>Quarterly Learning Goals</span>
           </button>
+          <button
+            onClick={() => setActiveTab('opportunities')}
+            data-testid="tab-opportunities"
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer shrink-0 ${
+              activeTab === 'opportunities'
+                ? 'bg-[var(--hub-accent)] text-[var(--hub-accent-ink)]'
+                : 'bg-[var(--hub-bg)] border border-[var(--hub-line)] text-[var(--hub-muted)] hover:text-[var(--hub-ink)]'
+            }`}
+          >
+            <Compass className="w-4 h-4" />
+            <span>Opportunities & Grants</span>
+          </button>
         </div>
       </div>
 
@@ -465,6 +597,153 @@ export const LearningCareerPage: React.FC = () => {
                     className="h-full bg-gradient-to-r from-teal-500 to-[var(--hub-accent)] rounded-full transition-all duration-500"
                     style={{ width: `${goal.progress}%` }}
                   />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Tab 5: Opportunities & Grants Radar */}
+      {activeTab === 'opportunities' && (
+        <div className="space-y-4" data-testid="opportunities-radar-panel">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-base font-bold text-[var(--hub-ink)] font-heading">
+                Opportunities, Grants & Collaboration Radar
+              </h3>
+              <p className="text-xs text-[var(--hub-muted)]">
+                Track grants, hardware pilots & fellowships locally and convert any next step into an actionable task or JARVIS proposal draft.
+              </p>
+            </div>
+            <span className="text-xs font-mono text-[var(--hub-muted)]">{opportunities.length} tracked</span>
+          </div>
+
+          {oppToast && (
+            <div className="px-3.5 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+              {oppToast}
+            </div>
+          )}
+
+          <form
+            onSubmit={(e) => void handleAddOpportunity(e)}
+            className="p-4 rounded-2xl bg-[var(--hub-card)] border border-[var(--hub-line)] grid grid-cols-1 sm:grid-cols-12 gap-2.5"
+          >
+            <input
+              type="text"
+              value={newOppTitle}
+              onChange={(e) => setNewOppTitle(e.target.value)}
+              placeholder="Opportunity, grant, or RFP title..."
+              className="sm:col-span-4 px-3 py-2 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs text-[var(--hub-ink)]"
+            />
+            <input
+              type="text"
+              value={newOppOrg}
+              onChange={(e) => setNewOppOrg(e.target.value)}
+              placeholder="Organization / program..."
+              className="sm:col-span-3 px-3 py-2 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs text-[var(--hub-ink)]"
+            />
+            <select
+              value={newOppKind}
+              onChange={(e) => setNewOppKind(e.target.value as OpportunityItem['kind'])}
+              aria-label="Opportunity category"
+              className="sm:col-span-2 px-3 py-2 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs text-[var(--hub-ink)]"
+            >
+              <option value="Grant">Grant</option>
+              <option value="Fellowship">Fellowship</option>
+              <option value="Pilot">Pilot</option>
+            </select>
+            <input
+              type="text"
+              value={newOppFit}
+              onChange={(e) => setNewOppFit(e.target.value)}
+              placeholder="Strategic fit / note..."
+              className="sm:col-span-2 px-3 py-2 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs text-[var(--hub-ink)]"
+            />
+            <button
+              type="submit"
+              disabled={!newOppTitle.trim()}
+              className="sm:col-span-1 inline-flex items-center justify-center gap-1 px-3 py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-bold cursor-pointer disabled:opacity-45"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add</span>
+            </button>
+          </form>
+
+          <div className="space-y-3">
+            {opportunities.map((opp) => (
+              <div
+                key={opp.id}
+                className="p-5 rounded-2xl bg-[var(--hub-card)] border border-[var(--hub-line)] shadow-sm space-y-3"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[var(--hub-bg)] border border-[var(--hub-line)] text-teal-700 dark:text-teal-300">
+                        {opp.kind}
+                      </span>
+                      <span className="text-xs text-[var(--hub-muted)]">{opp.organization}</span>
+                    </div>
+                    <h4 className="text-sm font-bold text-[var(--hub-ink)]">{opp.title}</h4>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={opp.status}
+                      aria-label={`Status for ${opp.title}`}
+                      onChange={(e) =>
+                        void persistOpportunities(
+                          opportunities.map((item) =>
+                            item.id === opp.id
+                              ? { ...item, status: e.target.value as OpportunityItem['status'] }
+                              : item
+                          )
+                        )
+                      }
+                      className="px-2.5 py-1 rounded-lg bg-[var(--hub-bg)] border border-[var(--hub-line)] text-[11px] font-semibold text-[var(--hub-ink)]"
+                    >
+                      <option value="Explore">Explore</option>
+                      <option value="Drafting">Drafting</option>
+                      <option value="Submitted">Submitted</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void persistOpportunities(opportunities.filter((item) => item.id !== opp.id))
+                      }
+                      aria-label={`Remove ${opp.title}`}
+                      className="p-1.5 rounded-lg text-[var(--hub-muted)] hover:text-rose-400 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <p className="text-xs text-[var(--hub-muted)] leading-relaxed">{opp.fitSummary}</p>
+                <div className="p-3 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] text-xs text-[var(--hub-ink)]">
+                  <span className="font-semibold">Next Action: </span>
+                  {opp.nextStep}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => void handleConvertOpportunityToTask(opp)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-bold cursor-pointer"
+                  >
+                    <ListPlus className="w-3.5 h-3.5" />
+                    <span>Create Action Task</span>
+                  </button>
+                  {onNavigate && (
+                    <button
+                      type="button"
+                      onClick={() => handleDraftOpportunityWithJarvis(opp)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] hover:border-[var(--hub-accent)] text-xs font-semibold text-[var(--hub-ink)] cursor-pointer"
+                    >
+                      <Bot className="w-3.5 h-3.5 text-teal-600 dark:text-teal-300" />
+                      <span>Draft with JARVIS</span>
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
