@@ -13,6 +13,7 @@ import {
   ExternalLink,
   FolderKanban,
   Layers,
+  Link2,
   PenTool,
   Plus,
   Radio,
@@ -96,6 +97,7 @@ export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
   const [localModel, setLocalModel] = useState<string | null>(null);
   const [checkingHealth, setCheckingHealth] = useState(false);
   const [copiedBio, setCopiedBio] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
   const [inlineCadStation, setInlineCadStation] = useState<'robotics' | 'energy' | null>(null);
 
   const refreshSystemDiagnostics = async () => {
@@ -233,16 +235,36 @@ export const StudioMonitorOverlay: React.FC<StudioMonitorOverlayProps> = ({
           </div>
         </div>
 
-        {station.linkedTab && (
+        <div className="flex items-center gap-1.5 shrink-0">
           <button
             type="button"
-            onClick={() => onNavigate(station.linkedTab!)}
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#C6A46B] text-[#050608] text-xs font-bold hover:bg-[#dcc08a] cursor-pointer shrink-0"
+            data-testid="station-copy-link-btn"
+            onClick={() => {
+              const link =
+                typeof window !== 'undefined'
+                  ? `${window.location.origin}/universe?station=${activeStation}`
+                  : `/universe?station=${activeStation}`;
+              void navigator.clipboard?.writeText(link);
+              setCopiedLink(true);
+              window.setTimeout(() => setCopiedLink(false), 1800);
+            }}
+            className="hidden sm:inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-white/5 border border-white/15 hover:border-[#3BE8FF]/60 text-[11px] font-semibold text-slate-200 cursor-pointer"
+            title="Copy direct ?station= permalink"
           >
-            <span>Open Full Module</span>
-            <ArrowUpRight className="w-3.5 h-3.5" />
+            {copiedLink ? <Check className="w-3 h-3 text-emerald-300" /> : <Link2 className="w-3 h-3 text-[#3BE8FF]" />}
+            <span>{copiedLink ? 'Copied' : 'Link'}</span>
           </button>
-        )}
+          {station.linkedTab && (
+            <button
+              type="button"
+              onClick={() => onNavigate(station.linkedTab!)}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#C6A46B] text-[#050608] text-xs font-bold hover:bg-[#dcc08a] cursor-pointer"
+            >
+              <span>Open Full Module</span>
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Body */}

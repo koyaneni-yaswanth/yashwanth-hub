@@ -1,9 +1,10 @@
-import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   ArrowLeft,
   Bot,
   Box,
+  Camera,
   Compass,
   Cpu,
   Eye,
@@ -23,6 +24,7 @@ import {
 } from 'lucide-react';
 import { db } from '../db';
 import { StudioAudioEngine } from '../lib/studioAudio';
+import { toast } from '../lib/toast';
 import {
   STUDIO_LIGHTING_MOODS,
   UNIVERSE_EIGHT_ENVIRONMENTS,
@@ -112,6 +114,10 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
   });
 
   const audioRef = useRef<StudioAudioEngine | null>(null);
+  const captureSnapshotRef = useRef<(() => string | null) | null>(null);
+  const registerCapture = useCallback((fn: (() => string | null) | null) => {
+    captureSnapshotRef.current = fn;
+  }, []);
   const tasks = useLiveQuery(() => db.tasks.toArray(), []) ?? EMPTY_LIST;
   const projects = useLiveQuery(() => db.projects.toArray(), []) ?? EMPTY_LIST;
   const roboticsCount = useLiveQuery(() => db.robotics_records.count(), []) ?? 0;
@@ -257,6 +263,21 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
     setAudioEnabled(ok);
   };
 
+  const handleCaptureSnapshot = () => {
+    const dataUrl = captureSnapshotRef.current?.();
+    if (!dataUrl) {
+      toast('Enable 3D Studio mode to capture a snapshot', 'error');
+      return;
+    }
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = `yashwanth-3d-${activeStation}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    toast('Saved 3D Studio snapshot (.png)', 'success');
+  };
+
   const statsSummary = useMemo(
     () => ({
       openTasks: tasks.filter((t) => !t.done).length,
@@ -370,6 +391,17 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
                   >
                     <span>Labels</span>
                   </button>
+                  <span className="h-3 w-px bg-white/15 hidden sm:inline-block" />
+                  <button
+                    type="button"
+                    onClick={handleCaptureSnapshot}
+                    data-testid="universe-snapshot-btn"
+                    className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium text-slate-200 hover:text-[#C6A46B] hover:bg-white/5 cursor-pointer transition-colors"
+                    title="Download PNG render of current 3D studio view"
+                  >
+                    <Camera className="w-3.5 h-3.5 text-[#C6A46B]" />
+                    <span>Snap</span>
+                  </button>
                 </>
               )}
               <span className="h-3 w-px bg-white/15" />
@@ -453,6 +485,7 @@ export const UniversePage: React.FC<UniversePageProps> = ({ onNavigate }) => {
               piperPose={piperPose}
               statsSummary={statsSummary}
               onMetricsUpdate={setPerfMetrics}
+              onRegisterCapture={registerCapture}
               onWebglUnavailable={() => {
                 setWebglUnavailable(true);
                 setUse3D(false);

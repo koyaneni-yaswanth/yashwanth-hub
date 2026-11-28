@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   Bot,
+  Compass,
   Radio,
   Activity,
   CheckCircle2,
@@ -15,8 +16,9 @@ import { db } from '../db';
 import { Badge } from '../components/common/Badge';
 import { StatCard } from '../components/common/StatCard';
 import { Modal } from '../components/common/Modal';
+import { openUniverseStation } from '../lib/universeConfig';
 import { generateId } from '../lib/utils';
-import type { RoboticsProjectRecord } from '../types';
+import type { NavigationTab, RoboticsProjectRecord } from '../types';
 
 const EngineeringModelViewer = lazy(() =>
   import('../components/three/EngineeringModelViewer').then((m) => ({ default: m.EngineeringModelViewer }))
@@ -72,7 +74,9 @@ const INITIAL_ROBOTICS_BASELINES: RoboticsProjectRecord[] = [
   },
 ];
 
-export const RoboticsLabPage: React.FC = () => {
+export const RoboticsLabPage: React.FC<{ onNavigate?: (tab: NavigationTab) => void }> = ({
+  onNavigate,
+}) => {
   const [selectedProject, setSelectedProject] = useState<'All' | 'AgileX PiPER' | '3-Drone Swarm' | 'AWR2944 mmWave'>('All');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [isLogOpen, setIsLogOpen] = useState(false);
@@ -181,13 +185,29 @@ export const RoboticsLabPage: React.FC = () => {
             </p>
           </div>
 
-          <button
-            onClick={() => setIsLogOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-all cursor-pointer shadow-xs self-start lg:self-auto"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Log Experiment</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+            <button
+              type="button"
+              data-testid="robotics-open-universe-btn"
+              onClick={() =>
+                openUniverseStation(
+                  selectedProject === 'AWR2944 mmWave' ? 'experiment' : 'robotics',
+                  onNavigate
+                )
+              }
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-bg)] text-xs font-semibold text-[var(--hub-ink)] hover:border-[var(--hub-accent)] transition-all cursor-pointer"
+            >
+              <Compass className="w-3.5 h-3.5 text-[#C6A46B]" />
+              <span>Open in 3D Studio</span>
+            </button>
+            <button
+              onClick={() => setIsLogOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold hover:bg-[var(--hub-accent-hover)] transition-all cursor-pointer shadow-xs"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Log Experiment</span>
+            </button>
+          </div>
         </div>
       </div>
 

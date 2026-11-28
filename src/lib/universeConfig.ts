@@ -436,3 +436,23 @@ export function toFlagshipProjectRecord(
 export function stationById(id: UniverseStationId): UniverseStationMeta {
   return UNIVERSE_STATIONS.find((s) => s.id === id) || UNIVERSE_STATIONS[0];
 }
+
+export function openUniverseStation(
+  stationId: UniverseStationId,
+  onNavigate?: (tab: NavigationTab) => void
+): void {
+  try {
+    sessionStorage.setItem('yash_universe_target_station', stationId);
+  } catch {
+    /* storage unavailable */
+  }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('yash:universe-station', { detail: stationId }));
+  }
+  if (onNavigate) {
+    onNavigate('universe');
+  } else if (typeof window !== 'undefined') {
+    window.history.pushState({}, '', `/universe?station=${stationId}`);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }
+}

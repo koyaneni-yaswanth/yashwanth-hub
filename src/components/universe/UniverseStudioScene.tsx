@@ -43,6 +43,7 @@ interface UniverseStudioSceneProps {
     localOnline: boolean;
   };
   onMetricsUpdate?: (metrics: { tier: string; fps: number; webglActive: boolean }) => void;
+  onRegisterCapture?: (fn: (() => string | null) | null) => void;
   onWebglUnavailable: () => void;
 }
 
@@ -189,6 +190,7 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
   piperPose = null,
   statsSummary,
   onMetricsUpdate,
+  onRegisterCapture,
   onWebglUnavailable,
 }) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
@@ -208,6 +210,7 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
   const onHoverRef = useRef(onHoverStation);
   const onSelectRef = useRef(onSelectStation);
   const onMetricsRef = useRef(onMetricsUpdate);
+  const onRegisterCaptureRef = useRef(onRegisterCapture);
   const onFallbackRef = useRef(onWebglUnavailable);
 
   useEffect(() => {
@@ -225,6 +228,7 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
     onHoverRef.current = onHoverStation;
     onSelectRef.current = onSelectStation;
     onMetricsRef.current = onMetricsUpdate;
+    onRegisterCaptureRef.current = onRegisterCapture;
     onFallbackRef.current = onWebglUnavailable;
   }, [
     activeStation,
@@ -239,6 +243,7 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
     onHoverStation,
     onSelectStation,
     onMetricsUpdate,
+    onRegisterCapture,
     onWebglUnavailable,
   ]);
 
@@ -360,6 +365,15 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
             bloomStrength: 0.13,
           }
         );
+
+        onRegisterCaptureRef.current?.(() => {
+          try {
+            postfx.render(performance.now() * 0.001);
+            return renderer.domElement.toDataURL('image/png');
+          } catch {
+            return null;
+          }
+        });
 
         const pbrMaps = createProceduralDetailMaps(THREE);
         const managedGeos: import('three').BufferGeometry[] = [];
@@ -1600,6 +1614,7 @@ export const UniverseStudioScene: React.FC<UniverseStudioSceneProps> = ({
         raf = requestAnimationFrame(tick);
 
         cleanup = () => {
+          onRegisterCaptureRef.current?.(null);
           cancelAnimationFrame(raf);
           resizeObs.disconnect();
           renderer.domElement.removeEventListener('pointermove', onPointerMove);

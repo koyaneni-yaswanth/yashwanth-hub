@@ -136,6 +136,7 @@ test('GLSL Shaders, Physical Monitors, Whiteboard, Experiment Station & Reusable
   assert.ok(overlaySrc.includes('Auto-Solve'));
   assert.ok(overlaySrc.includes('EngineeringModelViewer'));
   assert.ok(overlaySrc.includes('Copy Bio'));
+  assert.ok(overlaySrc.includes('station-copy-link-btn'));
 
   const jccSrc = read('src/components/jarvis/JarvisCommandCenter.tsx');
   assert.ok(jccSrc.includes("onNavigate('universe')"));
@@ -143,6 +144,7 @@ test('GLSL Shaders, Physical Monitors, Whiteboard, Experiment Station & Reusable
   const universePageSrc = read('src/pages/UniversePage.tsx');
   assert.ok(!universePageSrc.includes('not optimized for mobile'), 'Never lock mobile users out');
   assert.ok(universePageSrc.includes('2D Accessible Studio'));
+  assert.ok(universePageSrc.includes('universe-snapshot-btn'));
 
   const roboticsSrc = read('src/pages/RoboticsLabPage.tsx');
   const startupSrc = read('src/pages/StartupCommandPage.tsx');
@@ -150,8 +152,10 @@ test('GLSL Shaders, Physical Monitors, Whiteboard, Experiment Station & Reusable
   const projectsSrc = read('src/pages/ProjectsPage.tsx');
   const headerSrc = read('src/components/layout/Header.tsx');
   const cmdSrc = read('src/components/common/CommandPalette.tsx');
-  assert.ok(roboticsSrc.includes('<EngineeringModelViewer'));
-  assert.ok(startupSrc.includes('<EngineeringModelViewer preset="pawan-turbine"'));
+  const configSrc = read('src/lib/universeConfig.ts');
+  assert.ok(configSrc.includes('export function openUniverseStation'));
+  assert.ok(roboticsSrc.includes('<EngineeringModelViewer') && roboticsSrc.includes('robotics-open-universe-btn'));
+  assert.ok(startupSrc.includes('<EngineeringModelViewer preset="pawan-turbine"') && startupSrc.includes('startup-open-universe-btn'));
   assert.ok(learningSrc.includes('Opportunities & Grants') && learningSrc.includes('TaskService.create'));
   assert.ok(projectsSrc.includes('projects-flagship-banner') && projectsSrc.includes('toFlagshipProjectRecord'));
   assert.ok(headerSrc.includes('header-mobile-3d-btn'));

@@ -35,6 +35,7 @@ import type { NavigationTab, Area } from '../../types';
 import { useTheme } from '../../context/ThemeContext';
 import { useFocusMode } from '../../context/FocusModeContext';
 import { FOCUS_WORKSPACES, HUB_DESTINATIONS } from '../../lib/hubArchitecture';
+import { openUniverseStation } from '../../lib/universeConfig';
 import { UniversalSearchService, type SearchHit } from '../../services/searchService';
 
 interface CommandPaletteProps {
@@ -104,15 +105,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
   if (!isOpen) return null;
 
-  const openUniverseStation = (stationId: string) => {
-    try {
-      sessionStorage.setItem('yash_universe_target_station', stationId);
-    } catch {
-      /* ignore */
-    }
-    window.dispatchEvent(new CustomEvent('yash:universe-station', { detail: stationId }));
-    onNavigate('universe');
-  };
+  const launchStation = (stationId: Parameters<typeof openUniverseStation>[0]) =>
+    openUniverseStation(stationId, onNavigate);
 
   const navItems = [
     { label: 'Enter 3D Digital Universe Studio (/universe)', tab: 'universe' as NavigationTab, icon: Compass, category: '3D Studio' },
@@ -149,31 +143,31 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const actionItems = [
     {
       label: 'Open 3D Engineering Whiteboard',
-      action: () => openUniverseStation('whiteboard'),
+      action: () => launchStation('whiteboard'),
       icon: PenTool,
       category: '3D Studio',
     },
     {
       label: 'Open 3D Physics & Radar Experiments',
-      action: () => openUniverseStation('experiment'),
+      action: () => launchStation('experiment'),
       icon: Compass,
       category: '3D Studio',
     },
     {
       label: 'Open 3D Rubik Calibration Cube',
-      action: () => openUniverseStation('cube'),
+      action: () => launchStation('cube'),
       icon: Compass,
       category: '3D Studio',
     },
     {
       label: 'Focus 3D PAWAN SHAKTI Turbine Bench',
-      action: () => openUniverseStation('energy'),
+      action: () => launchStation('energy'),
       icon: Wind,
       category: '3D Studio',
     },
     {
       label: 'Focus 3D PiPER 6-DOF Robotic Arm',
-      action: () => openUniverseStation('robotics'),
+      action: () => launchStation('robotics'),
       icon: Bot,
       category: '3D Studio',
     },

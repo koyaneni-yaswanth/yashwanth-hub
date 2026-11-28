@@ -21,8 +21,10 @@ import {
   Cpu,
   Download,
   Box,
+  Compass,
 } from 'lucide-react';
-import type { V3FAssessmentItem, V3FScore } from '../types';
+import type { NavigationTab, V3FAssessmentItem, V3FScore } from '../types';
+import { openUniverseStation } from '../lib/universeConfig';
 
 const EngineeringModelViewer = lazy(() =>
   import('../components/three/EngineeringModelViewer').then((m) => ({ default: m.EngineeringModelViewer }))
@@ -202,7 +204,9 @@ const BOM_DATA = [
   { item: 'Bearings & Mechanical Hardware', prototype: 10000, vol50: 5400, vol500: 4200, source: 'Standard Component Estimate' },
 ];
 
-export const StartupCommandPage: React.FC = () => {
+export const StartupCommandPage: React.FC<{ onNavigate?: (tab: NavigationTab) => void }> = ({
+  onNavigate,
+}) => {
   const [activeTab, setActiveTab] = useState<'v3f' | 'viewer' | 'telemetry' | 'plan15' | 'bom' | 'risks' | 'roadmap'>('v3f');
   const [assessmentItems, setAssessmentItems] = useState<V3FAssessmentItem[]>(INITIAL_V3F_DATA);
   const [filterCategory, setFilterCategory] = useState<string>('All');
@@ -502,6 +506,15 @@ export const StartupCommandPage: React.FC = () => {
             </button>
           );
         })}
+          <button
+            type="button"
+            data-testid="startup-open-universe-btn"
+            onClick={() => openUniverseStation('energy', onNavigate)}
+            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#C6A46B]/40 bg-[#C6A46B]/10 text-xs font-semibold text-[#C6A46B] hover:bg-[#C6A46B]/20 whitespace-nowrap transition-all cursor-pointer"
+          >
+            <Compass className="w-3.5 h-3.5" />
+            <span>Open 3D Studio Bench</span>
+          </button>
       </div>
 
       {/* TAB 1: V3F 6-CATEGORY ASSESSMENT */}

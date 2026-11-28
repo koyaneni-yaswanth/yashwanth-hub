@@ -441,9 +441,9 @@ function HubMain() {
       case 'contacts':
         return <ContactsPage currentArea={currentArea} areas={areas} />;
       case 'startup-command':
-        return <StartupCommandPage />;
+        return <StartupCommandPage onNavigate={(tab) => setCurrentTab(tab)} />;
       case 'robotics-lab':
-        return <RoboticsLabPage />;
+        return <RoboticsLabPage onNavigate={(tab) => setCurrentTab(tab)} />;
       case 'health-routine':
         return <HealthRoutinePage />;
       case 'buddy':
