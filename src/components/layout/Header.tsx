@@ -252,16 +252,16 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
           </div>
 
-          {/* Primary Quick Add Button */}
+          {/* Primary Quick Add Button (on phones, MobileNav provides the center '+' FAB cleanly without duplicating buttons) */}
           {onOpenQuickCapture && (
             <button
               onClick={onOpenQuickCapture}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold whitespace-nowrap hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer shadow-xs"
+              className="hidden md:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--hub-accent)] text-[var(--hub-accent-ink)] text-xs font-semibold whitespace-nowrap hover:bg-[var(--hub-accent-hover)] transition-colors cursor-pointer shadow-xs"
               title="Quick Add or Voice Capture (Ctrl+Q)"
               aria-label="Quick Add"
             >
               <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline">Quick Add</span>
+              <span>Quick Add</span>
             </button>
           )}
 
