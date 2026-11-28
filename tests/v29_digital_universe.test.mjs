@@ -160,8 +160,16 @@ test('GLSL Shaders, Physical Monitors, Whiteboard, Experiment Station & Reusable
   assert.ok(startupSrc.includes('<EngineeringModelViewer preset="pawan-turbine"') && startupSrc.includes('startup-open-universe-btn'));
   assert.ok(buddyPageSrc.includes('buddy-open-universe-btn') && buddyPageSrc.includes("openUniverseStation('jarvis'"));
   assert.ok(buddySceneSrc.includes('pointerParallax') && buddySceneSrc.includes('nodeMesh'));
-  assert.ok(learningSrc.includes('Opportunities & Grants') && learningSrc.includes('TaskService.create'));
-  assert.ok(projectsSrc.includes('projects-flagship-banner') && projectsSrc.includes('toFlagshipProjectRecord'));
+  assert.ok(
+    learningSrc.includes('Opportunities & Grants') &&
+      learningSrc.includes('TaskService.create') &&
+      learningSrc.includes('opportunity-open-3d-btn')
+  );
+  assert.ok(
+    projectsSrc.includes('projects-flagship-banner') &&
+      projectsSrc.includes('toFlagshipProjectRecord') &&
+      projectsSrc.includes('project-card-3d-btn')
+  );
   assert.ok(headerSrc.includes('header-mobile-3d-btn'));
   assert.ok(cmdSrc.includes('openUniverseStation') && cmdSrc.includes("tab: 'universe'"));
 });

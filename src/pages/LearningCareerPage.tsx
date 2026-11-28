@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { db } from '../db';
 import { generateId } from '../lib/utils';
+import { openUniverseStation } from '../lib/universeConfig';
 import { TaskService } from '../services/sync/taskService';
 import type { NavigationTab } from '../types';
 
@@ -735,14 +736,32 @@ export const LearningCareerPage: React.FC<LearningCareerPageProps> = ({ onNaviga
                     <span>Create Action Task</span>
                   </button>
                   {onNavigate && (
-                    <button
-                      type="button"
-                      onClick={() => handleDraftOpportunityWithJarvis(opp)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] hover:border-[var(--hub-accent)] text-xs font-semibold text-[var(--hub-ink)] cursor-pointer"
-                    >
-                      <Bot className="w-3.5 h-3.5 text-teal-600 dark:text-teal-300" />
-                      <span>Draft with JARVIS</span>
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleDraftOpportunityWithJarvis(opp)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--hub-bg)] border border-[var(--hub-line)] hover:border-[var(--hub-accent)] text-xs font-semibold text-[var(--hub-ink)] cursor-pointer"
+                      >
+                        <Bot className="w-3.5 h-3.5 text-teal-600 dark:text-teal-300" />
+                        <span>Draft with JARVIS</span>
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="opportunity-open-3d-btn"
+                        onClick={() => {
+                          const target = /wind|pawan|cleantech|nidhi|seed/i.test(`${opp.title} ${opp.fitSummary}`)
+                            ? 'energy'
+                            : /robot|piper|drone|swarm|radar/i.test(`${opp.title} ${opp.fitSummary}`)
+                            ? 'robotics'
+                            : 'projects';
+                          openUniverseStation(target, onNavigate);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#C6A46B]/40 bg-[#C6A46B]/10 text-[#C6A46B] hover:bg-[#C6A46B]/20 text-xs font-semibold cursor-pointer"
+                      >
+                        <Compass className="w-3.5 h-3.5" />
+                        <span>Open 3D Demo</span>
+                      </button>
+                    </>
                   )}
                 </div>
               </div>

@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   Gavel,
   BookOpen,
+  Compass,
 } from 'lucide-react';
 import { db } from '../db';
 import type {
@@ -24,6 +25,7 @@ import type {
   ProjectStatus,
   Priority,
   Area,
+  NavigationTab,
   ProjectGoal,
   ProjectDecision,
   ProjectRisk,
@@ -39,11 +41,25 @@ import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { SyncQueueService } from '../services/sync/syncQueueService';
 import { TaskService } from '../services/sync/taskService';
 import { AIGateway } from '../services/ai/aiGateway';
-import { FLAGSHIP_PORTFOLIO_SHOWCASES, toFlagshipProjectRecord } from '../lib/universeConfig';
+import {
+  FLAGSHIP_PORTFOLIO_SHOWCASES,
+  openUniverseStation,
+  toFlagshipProjectRecord,
+  type UniverseStationId,
+} from '../lib/universeConfig';
+
+function matchFlagshipStation(p: Project): UniverseStationId | null {
+  const exact = FLAGSHIP_PORTFOLIO_SHOWCASES.find((f) => f.title === p.title);
+  if (exact) return exact.stationId;
+  if (p.area === 'PAWAN SHAKTI') return 'energy';
+  if (/piper|swarm|awr2944/i.test(p.title)) return 'robotics';
+  return null;
+}
 
 interface ProjectsPageProps {
   currentArea: string;
   areas: Area[];
+  onNavigate?: (tab: NavigationTab) => void;
   onNavigateToTasks?: () => void;
   onNavigateToAI?: () => void;
 }
@@ -53,6 +69,7 @@ type WorkspaceTab = 'overview' | 'tasks_docs' | 'decisions' | 'risks_blockers' |
 export const ProjectsPage: React.FC<ProjectsPageProps> = ({
   currentArea,
   areas,
+  onNavigate,
   onNavigateToTasks,
   onNavigateToAI,
 }) => {
@@ -539,7 +556,22 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
             <p className="text-xs text-[var(--hub-muted)] max-w-3xl">{proj.description}</p>
           </div>
 
-          <div className="flex items-center gap-2 self-start">
+          <div className="flex flex-wrap items-center gap-2 self-start">
+            {(() => {
+              const targetStation = matchFlagshipStation(proj);
+              if (!targetStation) return null;
+              return (
+                <button
+                  type="button"
+                  data-testid="project-focus-3d-btn"
+                  onClick={() => openUniverseStation(targetStation, onNavigate)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[#C6A46B]/40 bg-[#C6A46B]/10 text-xs font-semibold text-[#C6A46B] hover:bg-[#C6A46B]/20 cursor-pointer"
+                >
+                  <Compass className="w-3.5 h-3.5" />
+                  <span>Focus in 3D</span>
+                </button>
+              );
+            })()}
             <button
               onClick={() => openEditModal(proj)}
               className="px-3 py-2 rounded-xl border border-[var(--hub-line)] bg-[var(--hub-surface)] text-xs font-semibold text-[var(--hub-ink)] cursor-pointer"
@@ -1046,7 +1078,7 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
           <div className="flex items-center bg-[var(--hub-surface)] border border-[var(--hub-line)] rounded-xl p-1 text-xs font-semibold">
             {(['kanban', 'list', 'milestones'] as const).map((mode) => (
               <button
@@ -1062,6 +1094,16 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
               </button>
             ))}
           </div>
+
+          <button
+            type="button"
+            data-testid="projects-open-universe-btn"
+            onClick={() => openUniverseStation('projects', onNavigate)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[#C6A46B]/40 bg-[#C6A46B]/10 text-[#C6A46B] text-xs font-semibold hover:bg-[#C6A46B]/20 transition-all cursor-pointer"
+          >
+            <Compass className="w-3.5 h-3.5" />
+            <span>3D Studio</span>
+          </button>
 
           <button
             onClick={openCreateModal}
@@ -1212,15 +1254,33 @@ export const ProjectsPage: React.FC<ProjectsPageProps> = ({
                         )}
                       </div>
 
-                      <button
-                        onClick={() => {
-                          setSelectedProjectId(p.id);
-                          setWorkspaceTab('overview');
-                        }}
-                        className="w-full py-1.5 rounded-lg bg-[var(--hub-surface)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-accent)] hover:border-[var(--hub-accent)] cursor-pointer"
-                      >
-                        Open Workspace
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => {
+                            setSelectedProjectId(p.id);
+                            setWorkspaceTab('overview');
+                          }}
+                          className="flex-1 py-1.5 rounded-lg bg-[var(--hub-surface)] border border-[var(--hub-line)] text-xs font-semibold text-[var(--hub-accent)] hover:border-[var(--hub-accent)] cursor-pointer"
+                        >
+                          Open Workspace
+                        </button>
+                        {(() => {
+                          const targetStation = matchFlagshipStation(p);
+                          if (!targetStation) return null;
+                          return (
+                            <button
+                              type="button"
+                              data-testid="project-card-3d-btn"
+                              onClick={() => openUniverseStation(targetStation, onNavigate)}
+                              title="Inspect Flagship project inside 3D Studio"
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#C6A46B]/40 bg-[#C6A46B]/10 text-[#C6A46B] text-xs font-semibold hover:bg-[#C6A46B]/20 cursor-pointer shrink-0"
+                            >
+                              <Compass className="w-3.5 h-3.5" />
+                              <span>3D</span>
+                            </button>
+                          );
+                        })()}
+                      </div>
                     </div>
                   );
                 })}

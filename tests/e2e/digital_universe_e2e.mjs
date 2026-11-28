@@ -213,18 +213,24 @@ async function main() {
     await page.click('text=Open 3D Engineering Whiteboard');
     await page.waitForSelector('[data-testid="studio-whiteboard"] canvas', { timeout: 10000 });
 
-    // Learning & Career -> Opportunities & Grants Radar -> Task Conversion
+    // Learning & Career -> Opportunities & Grants Radar -> Task Conversion & 3D Demo jump
     await page.goto(`${baseUrl}/?tab=learning-career`, { waitUntil: 'domcontentloaded' });
     await page.click('[data-testid="tab-opportunities"]');
     await page.waitForSelector('[data-testid="opportunities-radar-panel"]', { timeout: 8000 });
     await page.click('[data-testid="opportunities-radar-panel"] button:has-text("Create Action Task")');
     await page.waitForSelector('text=Task created for', { timeout: 6000 });
+    await page.click('[data-testid="opportunity-open-3d-btn"]');
+    await page.waitForSelector('[data-testid="studio-panel-energy"]', { timeout: 10000 });
 
-    // Projects page -> Sync Flagship Pillars button
+    // Projects page -> Sync Flagship Pillars button & Card 3D focus button
     await page.goto(`${baseUrl}/?tab=projects`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('[data-testid="projects-flagship-banner"]', { timeout: 8000 });
     await page.click('[data-testid="projects-flagship-banner"] button:has-text("Import Flagship Pillars")');
     await page.waitForSelector('text=AgileX PiPER 6-DOF Manipulator', { timeout: 6000 });
+    await page.waitForSelector('[data-testid="projects-open-universe-btn"]', { timeout: 6000 });
+    await page.waitForSelector('[data-testid="project-card-3d-btn"]', { timeout: 6000 });
+    await page.click('[data-testid="project-card-3d-btn"]');
+    await page.waitForSelector('[data-testid^="studio-panel-"]', { timeout: 10000 });
 
     await ctx.close();
 

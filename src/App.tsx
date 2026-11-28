@@ -410,6 +410,7 @@ function HubMain() {
           <ProjectsPage
             currentArea={currentArea}
             areas={areas}
+            onNavigate={(tab) => setCurrentTab(tab)}
             onNavigateToTasks={() => setCurrentTab('tasks')}
             onNavigateToAI={() => setCurrentTab('ai-assistant')}
           />
