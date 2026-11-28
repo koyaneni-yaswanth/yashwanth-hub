@@ -155,14 +155,25 @@ try {
     await page.waitForSelector('text=Google Gemini', { timeout: 5000 });
     await page.locator('button[aria-label="Close AI Gateway Modal"]').click();
 
+    // Pointer parallax sweep on 3D Buddy core canvas
+    const buddyCoreBox = await page.locator('[data-buddy-state]').boundingBox();
+    assert.ok(buddyCoreBox && buddyCoreBox.width > 120);
+    await page.mouse.move(buddyCoreBox.x + buddyCoreBox.width * 0.25, buddyCoreBox.y + buddyCoreBox.height * 0.35);
+    await page.mouse.move(buddyCoreBox.x + buddyCoreBox.width * 0.75, buddyCoreBox.y + buddyCoreBox.height * 0.65);
+
     await page.screenshot({ path: path.join(artifactDir, 'buddy_desktop_1440.png'), fullPage: false });
 
-    // Mobile 390x844 horizontal overflow check
+    // Mobile 390x844 horizontal overflow check (includes new 3D Studio pill button)
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(300);
     const mobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     assert.ok(mobileOverflow <= 2, `Mobile horizontal overflow detected: ${mobileOverflow}px`);
     await page.screenshot({ path: path.join(artifactDir, 'buddy_mobile_390.png'), fullPage: false });
+
+    // Jump directly from /buddy -> /universe JARVIS Core station
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.click('[data-testid="buddy-open-universe-btn"]');
+    await page.waitForSelector('[data-testid="studio-panel-jarvis"]', { timeout: 10000 });
 
     assert.deepEqual(errors, [], `Runtime errors on /buddy: ${errors.join('; ')}`);
     console.log('BUDDY E2E PASS: /buddy route, 3D states, chat, memory guard, handover & 390px mobile verified.');

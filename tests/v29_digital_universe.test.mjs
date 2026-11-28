@@ -148,6 +148,8 @@ test('GLSL Shaders, Physical Monitors, Whiteboard, Experiment Station & Reusable
 
   const roboticsSrc = read('src/pages/RoboticsLabPage.tsx');
   const startupSrc = read('src/pages/StartupCommandPage.tsx');
+  const buddyPageSrc = read('src/pages/BuddyPage.tsx');
+  const buddySceneSrc = read('src/components/buddy/BuddyCoreScene.tsx');
   const learningSrc = read('src/pages/LearningCareerPage.tsx');
   const projectsSrc = read('src/pages/ProjectsPage.tsx');
   const headerSrc = read('src/components/layout/Header.tsx');
@@ -156,6 +158,8 @@ test('GLSL Shaders, Physical Monitors, Whiteboard, Experiment Station & Reusable
   assert.ok(configSrc.includes('export function openUniverseStation'));
   assert.ok(roboticsSrc.includes('<EngineeringModelViewer') && roboticsSrc.includes('robotics-open-universe-btn'));
   assert.ok(startupSrc.includes('<EngineeringModelViewer preset="pawan-turbine"') && startupSrc.includes('startup-open-universe-btn'));
+  assert.ok(buddyPageSrc.includes('buddy-open-universe-btn') && buddyPageSrc.includes("openUniverseStation('jarvis'"));
+  assert.ok(buddySceneSrc.includes('pointerParallax') && buddySceneSrc.includes('nodeMesh'));
   assert.ok(learningSrc.includes('Opportunities & Grants') && learningSrc.includes('TaskService.create'));
   assert.ok(projectsSrc.includes('projects-flagship-banner') && projectsSrc.includes('toFlagshipProjectRecord'));
   assert.ok(headerSrc.includes('header-mobile-3d-btn'));

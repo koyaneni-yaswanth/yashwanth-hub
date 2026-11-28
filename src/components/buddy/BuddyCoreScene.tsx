@@ -211,8 +211,14 @@ export const BuddyCoreScene: React.FC<Props> = ({
         const cageMesh = new THREE.Mesh(cageGeo, cageMat);
         coreGroup.add(cageMesh);
 
-        // Three concentric orbital rings
-        const rings: Array<{ mesh: import('three').Mesh; mat: import('three').MeshBasicMaterial }> = [];
+        // Three concentric orbital rings + orbiting satellite telemetry beacons
+        const rings: Array<{
+          mesh: import('three').Mesh;
+          mat: import('three').MeshBasicMaterial;
+          nodeMesh: import('three').Mesh;
+          nodeMat: import('three').MeshStandardMaterial;
+        }> = [];
+        const nodeGeo = new THREE.IcosahedronGeometry(0.068, 1);
         const ringRadii = [2.05, 2.38, 2.72];
         const ringTilts: Array<[number, number]> = [
           [Math.PI / 2.2, 0.25],
@@ -228,8 +234,20 @@ export const BuddyCoreScene: React.FC<Props> = ({
           });
           const ring = new THREE.Mesh(rg, rm);
           ring.rotation.set(ringTilts[idx][0], 0, ringTilts[idx][1]);
+          const nodeColor = idx % 2 === 0 ? initialSpec.primaryHex : initialSpec.secondaryHex;
+          const nodeMat = new THREE.MeshStandardMaterial({
+            color: nodeColor,
+            emissive: nodeColor,
+            emissiveIntensity: 0.75,
+            metalness: 0.6,
+            roughness: 0.22,
+          });
+          const nodeMesh = new THREE.Mesh(nodeGeo, nodeMat);
+          const phaseAng = (idx * Math.PI * 2) / 3;
+          nodeMesh.position.set(Math.cos(phaseAng) * radius, Math.sin(phaseAng) * radius, 0);
+          ring.add(nodeMesh);
           coreGroup.add(ring);
-          rings.push({ mesh: ring, mat: rm });
+          rings.push({ mesh: ring, mat: rm, nodeMesh, nodeMat });
         });
 
         // Volumetric hex radar floor beneath companion
@@ -278,6 +296,20 @@ export const BuddyCoreScene: React.FC<Props> = ({
         let elapsed = 0;
         const targetPrimary = new THREE.Color();
         const targetSecondary = new THREE.Color();
+        const pointerParallax = { x: 0, y: 0 };
+
+        const onPointerMove = (ev: PointerEvent) => {
+          const rect = renderer.domElement.getBoundingClientRect();
+          if (rect.width <= 0 || rect.height <= 0) return;
+          pointerParallax.x = Math.max(-1, Math.min(1, ((ev.clientX - rect.left) / rect.width) * 2 - 1));
+          pointerParallax.y = Math.max(-1, Math.min(1, -((ev.clientY - rect.top) / rect.height) * 2 + 1));
+        };
+        const onPointerLeave = () => {
+          pointerParallax.x = 0;
+          pointerParallax.y = 0;
+        };
+        renderer.domElement.addEventListener('pointermove', onPointerMove, { passive: true });
+        renderer.domElement.addEventListener('pointerleave', onPointerLeave, { passive: true });
 
         const renderFrame = (nowTs: number) => {
           if (!isMounted) return;
@@ -331,8 +363,14 @@ export const BuddyCoreScene: React.FC<Props> = ({
               r.mesh.rotation.x += dt * 0.05 * dir * spec.spinMultiplier;
               const s = 1 + voiceBoost * (0.06 + idx * 0.02);
               r.mesh.scale.setScalar(s);
-              r.mat.color.lerp(idx % 2 === 0 ? targetPrimary : targetSecondary, Math.min(1, dt * 5));
+              const targetRingColor = idx % 2 === 0 ? targetPrimary : targetSecondary;
+              r.mat.color.lerp(targetRingColor, Math.min(1, dt * 5));
+              r.nodeMat.color.lerp(targetRingColor, Math.min(1, dt * 5));
+              r.nodeMat.emissive.lerp(targetRingColor, Math.min(1, dt * 5));
             });
+            camera.position.x += (pointerParallax.x * 0.68 - camera.position.x) * Math.min(1, dt * 4.5);
+            camera.position.y += (0.45 + pointerParallax.y * 0.42 - camera.position.y) * Math.min(1, dt * 4.5);
+            camera.lookAt(0, 0, 0);
             atmosphere.update(dt, elapsed, 1);
           }
 
@@ -347,6 +385,8 @@ export const BuddyCoreScene: React.FC<Props> = ({
         cleanup = () => {
           isMounted = false;
           cancelAnimationFrame(raf);
+          renderer.domElement.removeEventListener('pointermove', onPointerMove);
+          renderer.domElement.removeEventListener('pointerleave', onPointerLeave);
           ro.disconnect();
           coreGeo.dispose();
           coreMat.dispose();
@@ -354,9 +394,11 @@ export const BuddyCoreScene: React.FC<Props> = ({
           cageMat.dispose();
           floorGeo.dispose();
           floorMat.dispose();
+          nodeGeo.dispose();
           rings.forEach((r) => {
             r.mesh.geometry.dispose();
             r.mat.dispose();
+            r.nodeMat.dispose();
           });
           discTex.dispose();
           atmosphere.dispose();

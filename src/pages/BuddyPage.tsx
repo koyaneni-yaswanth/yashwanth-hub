@@ -11,6 +11,7 @@ import {
   Brain,
   Check,
   Clock,
+  Compass,
   Download,
   FileText,
   Mic,
@@ -32,6 +33,7 @@ import {
 import { BuddyCoreScene } from '../components/buddy/BuddyCoreScene';
 import { ProviderGatewayModal } from '../components/buddy/ProviderGatewayModal';
 import { SafeMarkdown } from '../components/common/SafeMarkdown';
+import { openUniverseStation } from '../lib/universeConfig';
 import { prepareImageFile, type PreparedImageAttachment } from '../lib/imageUpload';
 import { CompanionService } from '../services/companion/companionService';
 import { AIGateway } from '../services/ai/aiGateway';
@@ -687,6 +689,17 @@ export const BuddyPage: React.FC<BuddyPageProps> = ({ onNavigate }) => {
                 {pendingApprovals.length}
               </span>
             )}
+          </button>
+
+          <button
+            type="button"
+            data-testid="buddy-open-universe-btn"
+            onClick={() => openUniverseStation('jarvis', onNavigate)}
+            title="Inspect JARVIS Core inside 3D Studio (/universe)"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[#C6A46B]/35 bg-[#C6A46B]/10 hover:bg-[#C6A46B]/20 px-2.5 py-1.5 text-xs text-[#E8D5B0] transition cursor-pointer"
+          >
+            <Compass className="h-3.5 w-3.5 text-[#C6A46B]" />
+            <span className="hidden sm:inline">3D Studio</span>
           </button>
 
           <button
